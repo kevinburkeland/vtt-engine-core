@@ -1,7 +1,6 @@
 import 'package:collection/collection.dart';
 import 'package:meta/meta.dart';
 import '../crdt/crdt_lww_register.dart';
-import '../crdt/crdt_or_set.dart';
 import '../crdt/hybrid_logical_clock.dart';
 import '../rules/i_ruleset_module.dart';
 import '../rules/ruleset_edition.dart';
@@ -9,24 +8,13 @@ import 'session_graph_models.dart';
 import 'party_event.dart';
 import 'party_purse.dart';
 
-RulesetEdition _resolveRulesetEdition(dynamic raw) {
-  if (raw == null) return RulesetEdition.v2024;
-  if (raw is RulesetEdition) return raw;
-  if (raw is IRulesetModule) {
-    return raw.moduleId.contains('2014')
-        ? RulesetEdition.v2014
-        : RulesetEdition.v2024;
-  }
-  return RulesetEdition.fromString(raw.toString());
-}
-
 /// Immutable Campaign Profile representing an isolated campaign / DM workspace state.
 /// This is a pure Domain Entity devoid of persistence and serialization concerns.
 @immutable
 class CampaignProfile {
   final String id;
   final String name;
-  final RulesetEdition edition;
+  final dynamic edition;
   final DateTime createdAt;
   final DateTime lastPlayedAt;
   final RoomNodeState roomState;
@@ -37,11 +25,14 @@ class CampaignProfile {
   final List<PartyEvent> changeLog;
 
   /// Identifier of the active ruleset module.
-  String get rulesetId =>
-      edition == RulesetEdition.v2014 ? 'dnd5e_2014' : 'dnd5e_2024';
+  String get rulesetId {
+    if (edition is IRulesetModule) return (edition as IRulesetModule).moduleId;
+    if (edition is Enum) return (edition as Enum).name;
+    return edition?.toString() ?? 'dnd5e_2024';
+  }
 
   /// Legacy alias for compatibility.
-  RulesetEdition get rulesEdition => edition;
+  dynamic get rulesEdition => edition;
 
   String get notesMarkdown => notesRegister.value;
 
@@ -66,6 +57,7 @@ class CampaignProfile {
     required String id,
     required String name,
     dynamic edition = RulesetEdition.v2024,
+    String? rulesetId,
     required DateTime createdAt,
     required DateTime lastPlayedAt,
     required RoomNodeState roomState,
@@ -77,6 +69,7 @@ class CampaignProfile {
     List<PartyEvent> changeLog = const [],
     required String nodeId,
   }) {
+    final effectiveEdition = rulesetId ?? edition ?? RulesetEdition.v2024;
     final effectiveNotesRegister = notesRegister ??
         (notesMarkdown != null
             ? CrdtLwwRegister<String>(
@@ -99,7 +92,7 @@ class CampaignProfile {
     return CampaignProfile.raw(
       id: id,
       name: name,
-      edition: _resolveRulesetEdition(edition),
+      edition: effectiveEdition,
       createdAt: createdAt,
       lastPlayedAt: lastPlayedAt,
       roomState: roomState,
@@ -111,11 +104,41 @@ class CampaignProfile {
     );
   }
 
+  /// Factory creating an empty/initial campaign state.
+  factory CampaignProfile.initial({
+    required String id,
+    required String name,
+    dynamic edition = RulesetEdition.v2024,
+    String? rulesetId,
+    required String nodeId,
+    DateTime? now,
+  }) {
+    final timestamp = now ?? DateTime.now().toUtc();
+    return CampaignProfile(
+      id: id,
+      name: name,
+      edition: rulesetId ?? edition ?? RulesetEdition.v2024,
+      createdAt: timestamp,
+      lastPlayedAt: timestamp,
+      roomState: const RoomNodeState(
+        roomId: '',
+        roomCode: '',
+        title: '',
+      ),
+      partyCharacterIds: const [],
+      pinnedRuleIds: const {},
+      notesMarkdown: '',
+      partyPurse: const PartyPurse(),
+      nodeId: nodeId,
+    );
+  }
+
   /// Factory creating a fresh default campaign profile.
   factory CampaignProfile.defaultProfile({
     String? id,
     String? name,
     dynamic edition = RulesetEdition.v2024,
+    String? rulesetId,
     Set<String> defaultPinnedRules = const {},
     IRulesetModule? rulesetModule,
     required String nodeId,
@@ -123,39 +146,25 @@ class CampaignProfile {
     final now = DateTime.now();
     final profileId = id ?? 'campaign_${now.millisecondsSinceEpoch}';
     final campaignName = name ?? 'My Campaign';
+    final effectiveEdition = rulesetId ?? edition ?? RulesetEdition.v2024;
     final effectivePinned = defaultPinnedRules.isNotEmpty
         ? defaultPinnedRules
         : (rulesetModule?.defaultPinnedRules ??
             const <String>{'concentration', 'grapple_shove'});
-
-    return CampaignProfile(
+    return CampaignProfile.initial(
       id: profileId,
       name: campaignName,
-      edition: rulesetModule != null
-          ? _resolveRulesetEdition(rulesetModule)
-          : _resolveRulesetEdition(edition),
-      createdAt: now,
-      lastPlayedAt: now,
-      roomState: RoomNodeState(
-        roomId: 'room_$profileId',
-        roomCode: 'CR-101',
-        title: '$campaignName - Staging Area',
-        description: 'Active DM session staging node.',
-        entityLinks: const [],
-        containers: const [],
-        activeEncounter: const CrdtOrSet<EncounterParticipant>.empty(),
-      ),
-      partyCharacterIds: const [],
-      pinnedRuleIds: effectivePinned,
-      partyPurse: const PartyPurse(),
+      edition: effectiveEdition,
       nodeId: nodeId,
-    );
+      now: now,
+    ).copyWith(pinnedRuleIds: effectivePinned);
   }
 
   CampaignProfile copyWith({
     String? id,
     String? name,
     dynamic edition,
+    String? rulesetId,
     DateTime? createdAt,
     DateTime? lastPlayedAt,
     RoomNodeState? roomState,
@@ -187,7 +196,7 @@ class CampaignProfile {
     return CampaignProfile.raw(
       id: id ?? this.id,
       name: name ?? this.name,
-      edition: edition != null ? _resolveRulesetEdition(edition) : this.edition,
+      edition: edition ?? rulesetId ?? this.edition,
       createdAt: createdAt ?? this.createdAt,
       lastPlayedAt: lastPlayedAt ?? this.lastPlayedAt,
       roomState: roomState ?? this.roomState,

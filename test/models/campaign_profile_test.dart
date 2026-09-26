@@ -3,7 +3,6 @@ import 'package:vtt_engine_core/models/campaign_profile.dart';
 
 import 'package:vtt_engine_core/models/session_graph_models.dart';
 import 'package:vtt_engine_core/models/party_purse.dart';
-import 'package:vtt_engine_core/rules/ruleset_edition.dart';
 
 
 extension on PartyPurse {
@@ -27,7 +26,7 @@ void main() {
     final profileA = CampaignProfile(
       id: 'camp-1',
       name: 'Dragon Hunt',
-      edition: RulesetEdition.v2024,
+      edition: 'dnd5e_2024',
       createdAt: baseDate,
       lastPlayedAt: baseDate,
       roomState: room,
@@ -43,7 +42,7 @@ void main() {
       final profileB = CampaignProfile(
         id: 'camp-1',
         name: 'Dragon Hunt',
-        edition: RulesetEdition.v2024,
+        edition: 'dnd5e_2024',
         createdAt: DateTime.utc(
             2025, 1, 1), // timestamps differ but aren't equality gated
         lastPlayedAt: DateTime.utc(2025, 1, 2),
@@ -65,7 +64,7 @@ void main() {
     });
 
     test('detects differences in edition despite same id', () {
-      final modified = profileA.copyWith(edition: RulesetEdition.v2014);
+      final modified = profileA.copyWith(edition: 'dnd5e_2014');
       expect(profileA == modified, isFalse);
     });
 

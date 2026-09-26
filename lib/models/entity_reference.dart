@@ -66,39 +66,21 @@ class EntityReference<T extends DomainEntity> {
     this.customProperties = const {},
   });
 
-  static const Map<
-      String,
-      ({
-        String name,
-        String? prerequisite,
-        Map<String, dynamic> properties
-      })> _coreSrdFeats = {
-    'grappler': (
-      name: 'Grappler',
-      prerequisite: 'Strength or Dexterity 13+',
-      properties: {'advantageOnGrappled': true, 'fastDrag': true},
-    ),
-  };
-
   /// Converts this entity reference into an agnostic trait definition, resolving
   /// metadata from available compendiums if needed.
   ITraitDefinition toTraitDefinition() {
     final externalDef = externalTraitResolver?.call(slug);
-    final core =
-        externalDef == null ? _coreSrdFeats[slug.toLowerCase().trim()] : null;
     final props = <String, dynamic>{
       if (externalDef?.properties['prerequisite'] != null)
         'prerequisite': externalDef!.properties['prerequisite'],
-      if (core?.prerequisite != null) 'prerequisite': core!.prerequisite,
       ...?externalDef?.properties,
-      ...?core?.properties,
       ...customProperties,
     };
     return ITraitDefinition(
       id: slug,
       name: displayName.isNotEmpty
           ? displayName
-          : (externalDef?.name ?? core?.name ?? slug),
+          : (externalDef?.name ?? slug),
       category: refType.name,
       properties: props,
     );

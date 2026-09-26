@@ -1,7 +1,7 @@
 /// Standalone, pure Dart Virtual Tabletop (VTT) domain engine.
 ///
 /// Provides CRDT distributed state synchronization primitives, pure domain entities,
-/// multi-ruleset contracts (SRD 5.1/5.2.1), and ruleset-agnostic combat/dice simulation.
+/// pluggable multi-ruleset architecture, and ruleset-agnostic combat/dice simulation.
 library vtt_engine_core;
 
 // CRDT primitives
@@ -17,17 +17,14 @@ export 'currency/i_currency_system.dart';
 export 'homebrew/models/homebrew_entity.dart';
 export 'homebrew/ports/i_github_ingestor_port.dart';
 export 'homebrew/value_objects/github_repo_source.dart';
-export 'homebrew/value_objects/ruleset_version.dart' hide RulesetVersion;
+export 'homebrew/value_objects/ruleset_version.dart';
 
 // Domain Models & Value Objects
-export 'models/animated_object.dart';
 export 'models/campaign_profile.dart';
-export 'models/character_draft.dart';
 export 'models/character_models.dart';
 export 'models/condition.dart';
 export 'models/core_types.dart';
 export 'models/entity_reference.dart';
-export 'models/exhaustion_state.dart';
 export 'models/feature_grant.dart';
 export 'models/generic_tabletop_primitives.dart';
 export 'models/loot_models.dart';
@@ -38,7 +35,6 @@ export 'models/room_roll.dart';
 export 'models/session_graph_models.dart' hide listEquals;
 export 'models/spell_monster_equipment.dart';
 export 'models/value_objects/hit_points.dart';
-export 'models/weapon_mastery.dart';
 
 // Domain Ports
 export 'ports/i_campaign_repository.dart';
@@ -49,10 +45,8 @@ export 'ports/i_room_sync_payload_port.dart';
 export 'ports/transport_state.dart';
 
 // Domain Rules
-export 'rules/character_validation_engine.dart';
 export 'rules/i_combat_resolver.dart';
 export 'rules/i_ruleset_module.dart';
-export 'rules/ruleset_context.dart' hide RulesetVersion, ActionCost;
 export 'rules/ruleset_edition.dart';
 
 // Simulation

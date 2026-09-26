@@ -1987,13 +1987,7 @@ class Character extends DomainEntity {
     }
 
     final effectiveRulesetId = rulesEdition != null
-        ? (rulesEdition is RulesetEdition
-            ? (rulesEdition == RulesetEdition.v2024
-                ? 'dnd5e_2024'
-                : 'dnd5e_2014')
-            : (rulesEdition.toString().contains('2024')
-                ? 'dnd5e_2024'
-                : 'dnd5e_2014'))
+        ? (rulesEdition is Enum ? rulesEdition.name : rulesEdition.toString())
         : (rulesetId ?? this.rulesetId);
 
     return Character(

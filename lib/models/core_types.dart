@@ -1,11 +1,6 @@
 import 'package:meta/meta.dart';
-
-/// Supported Ruleset Baselines
-enum RulesetVersion {
-  v2014, // 5e SRD 5.1 (2014)
-  v2024, // 5e SRD 5.2.1 (2024)
-  homebrew,
-}
+import '../homebrew/value_objects/ruleset_version.dart';
+export '../homebrew/value_objects/ruleset_version.dart';
 
 /// Domain Entity Classification
 enum EntityType {
