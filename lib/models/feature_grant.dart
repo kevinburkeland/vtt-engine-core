@@ -1,5 +1,4 @@
 import 'package:meta/meta.dart';
-import 'character_models.dart';
 
 /// Atomic token types for declarative mechanic grants emitted by feats,
 /// races, backgrounds, class features, subclasses, and equipment items.
@@ -65,7 +64,7 @@ enum GrantType {
   bonusCantrip,
 
   /// Overrides or allows alternative ability score for attack and damage rolls
-  /// (e.g., Intelligence for magic weapons, Charisma for pact weapons).
+  /// (e.g., Mental for magic weapons, Presence for pact weapons).
   /// Payload: {ability, requiresMagic?, condition?}.
   attackAbilitySubstitution,
 
@@ -286,7 +285,7 @@ class FeatureGrant {
         label: label ?? '$armor Proficiency',
       );
 
-  /// Attack ability substitution (e.g. Intelligence for magic weapons, Charisma for pact/hex weapons).
+  /// Attack ability substitution (e.g. Mental for magic weapons, Presence for pact/hex weapons).
   factory FeatureGrant.attackAbilitySubstitution({
     required String grantId,
     required dynamic ability,
@@ -296,7 +295,7 @@ class FeatureGrant {
     String? label,
   }) {
     final abilityName =
-        ability is AbilityType ? ability.name : ability.toString();
+        ability is Enum ? ability.name : ability.toString();
     final isMagic = requiresMagicWeapon || requiresMagic;
     return FeatureGrant(
       type: GrantType.attackAbilitySubstitution,
@@ -324,8 +323,8 @@ class FeatureGrant {
         label: label,
       );
 
-  /// Flat or capped modifier to Armor Class.
-  factory FeatureGrant.armorClassModifier({
+  /// Flat or capped modifier to Defense.
+  factory FeatureGrant.defenseModifier({
     required String grantId,
     int? flatBonus,
     int? maxDexCap,
@@ -698,11 +697,11 @@ class GrantEvaluator {
   }
 
   /// Returns all skill proficiencies explicitly granted (not choices).
-  static Set<SkillType> evaluateGrantedSkills(List<FeatureGrant> grants) {
-    final skills = <SkillType>{};
+  static Set<String> evaluateGrantedSkills(List<FeatureGrant> grants) {
+    final skills = <String>{};
     for (final g in grants.where((g) => g.type == GrantType.bonusSkill)) {
-      final skill = _parseSkill(g.payload['skill']?.toString());
-      if (skill != null) skills.add(skill);
+      final skill = g.payload['skill']?.toString();
+      if (skill != null && skill.isNotEmpty) skills.add(skill);
     }
     return skills;
   }
@@ -716,12 +715,12 @@ class GrantEvaluator {
     return count;
   }
 
-  /// Returns all expertise grants as SkillType set.
-  static Set<SkillType> evaluateExpertiseGrants(List<FeatureGrant> grants) {
-    final skills = <SkillType>{};
+  /// Returns all expertise grants as string set.
+  static Set<String> evaluateExpertiseGrants(List<FeatureGrant> grants) {
+    final skills = <String>{};
     for (final g in grants.where((g) => g.type == GrantType.expertiseGrant)) {
-      final skill = _parseSkill(g.payload['skill']?.toString());
-      if (skill != null) skills.add(skill);
+      final skill = g.payload['skill']?.toString();
+      if (skill != null && skill.isNotEmpty) skills.add(skill);
     }
     return skills;
   }
@@ -769,20 +768,21 @@ class GrantEvaluator {
   }
 
   /// Returns valid attack ability substitution candidates for an item based on active grants.
-  static List<AbilityType> evaluateAttackAbilitySubstitutions(
+  static List<String> evaluateAttackAbilitySubstitutions(
     List<FeatureGrant> grants, {
     required bool isMagicWeapon,
   }) {
-    final validAbilities = <AbilityType>[];
+    final validAbilities = <String>[];
     for (final g
         in grants.where((g) => g.type == GrantType.attackAbilitySubstitution)) {
       final requiresMagic = g.payload['requiresMagic'] == true ||
           g.payload['requiresMagicWeapon'] == true;
       if (requiresMagic && !isMagicWeapon) continue;
       final abilityStr = g.payload['ability']?.toString();
-      final ability = AbilityType.fromLooseString(abilityStr);
-      if (!validAbilities.contains(ability)) {
-        validAbilities.add(ability);
+      if (abilityStr != null &&
+          abilityStr.isNotEmpty &&
+          !validAbilities.contains(abilityStr)) {
+        validAbilities.add(abilityStr);
       }
     }
     return validAbilities;
@@ -802,19 +802,5 @@ class GrantEvaluator {
       default:
         return 0;
     }
-  }
-
-  static SkillType? _parseSkill(String? raw) {
-    if (raw == null || raw.isEmpty) return null;
-    final clean = raw.trim().toLowerCase().replaceAll(RegExp(r'[\s_-]+'), '');
-    for (final s in SkillType.values) {
-      if (s.name.toLowerCase() == clean) return s;
-    }
-    // Common alternate spellings
-    const aliases = {
-      'animalhandling': SkillType.animalHandling,
-      'sleightofhand': SkillType.sleightOfHand,
-    };
-    return aliases[clean];
   }
 }

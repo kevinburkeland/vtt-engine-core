@@ -2,68 +2,37 @@ import 'package:meta/meta.dart';
 import '../homebrew/value_objects/ruleset_version.dart';
 export '../homebrew/value_objects/ruleset_version.dart';
 
-/// Domain Entity Classification
-enum EntityType {
-  spell,
-  monster,
-  equipment,
-  feat,
-  classFeature,
-  character,
-  species,
-  classDefinition,
-  subclass,
-  background,
-  custom,
+/// Generic Extensible Entity Type Classification.
+@immutable
+class EntityType {
+  final String key;
+  const EntityType(this.key);
+
+  static const EntityType character = EntityType('character');
+  static const EntityType item = EntityType('item');
+  static const EntityType custom = EntityType('custom');
+
+  String get name => key;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is EntityType && key == other.key;
+
+  @override
+  int get hashCode => key.hashCode;
+
+  @override
+  String toString() => key;
 }
 
-/// Standardized Action Types for activation economy
-enum ActionType {
-  action,
-  bonusAction,
-  reaction,
-  minute,
-  hour,
-  special,
-}
-
-/// Standardized Duration Types
+/// Standardized Duration Types for generic tabletop activation and effects.
 enum DurationType {
   instantaneous,
   rounds,
   timed,
   permanent,
   special,
-}
-
-/// Standardized 5e Damage Types
-enum DamageType {
-  acid,
-  bludgeoning,
-  cold,
-  fire,
-  force,
-  lightning,
-  necrotic,
-  piercing,
-  poison,
-  psychic,
-  radiant,
-  slashing,
-  thunder,
-  untyped,
-  variable;
-
-  /// Safely resolves a loose or unstructured string into a canonical [DamageType].
-  static DamageType fromLooseString(String? key) {
-    if (key == null) return DamageType.untyped;
-    final clean = key.trim().toLowerCase();
-    if (clean == 'choose' || clean == 'variable') return DamageType.variable;
-    for (final val in DamageType.values) {
-      if (val.name.toLowerCase() == clean) return val;
-    }
-    return DamageType.untyped;
-  }
 }
 
 /// Composite Entity Identifier supporting multi-ruleset coexistence.
@@ -106,5 +75,5 @@ class EntityId {
   int get hashCode => slug.hashCode ^ ruleset.hashCode;
 
   @override
-  String toString() => '$slug@${ruleset.name}';
+  String toString() => '$slug (${ruleset.name})';
 }

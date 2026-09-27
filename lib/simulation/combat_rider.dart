@@ -42,7 +42,7 @@ class ConditionRider extends CombatEffectRider {
       Object.hash(condition, requiresSave, saveDc, saveAttributeKey);
 }
 
-/// Drains an attribute score (e.g. Strength or Constitution).
+/// Drains an attribute score (e.g. Physique or Stamina).
 /// If [deathAtZero] is true, the target dies immediately if reduced to 0.
 @immutable
 class AttributeDrainRider extends CombatEffectRider {

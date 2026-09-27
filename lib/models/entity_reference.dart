@@ -2,7 +2,6 @@ import 'package:collection/collection.dart';
 import 'package:meta/meta.dart';
 import 'generic_tabletop_primitives.dart';
 import 'core_types.dart';
-import 'character_models.dart' show SkillType;
 
 bool _listEquals<T>(List<T>? a, List<T>? b) =>
     const ListEquality().equals(a, b);
@@ -51,7 +50,7 @@ class EntityReference<T extends DomainEntity> {
   final String slug;
   final RulesetVersion? rulesetPreferred;
   final String displayName;
-  final List<SkillType> grantedSkills;
+  final List<dynamic> grantedSkills;
   final Map<String, dynamic> customProperties;
 
   /// Optional pluggable hook for external compendium lookups when resolving traits.
@@ -91,16 +90,14 @@ class EntityReference<T extends DomainEntity> {
         'slug': slug,
         'rulesetPreferred': rulesetPreferred?.name,
         'displayName': displayName,
-        'grantedSkills': grantedSkills.map((s) => s.name).toList(),
+        'grantedSkills':
+            grantedSkills.map((s) => s is Enum ? s.name : s.toString()).toList(),
         if (customProperties.isNotEmpty) 'customProperties': customProperties,
       };
 
   factory EntityReference.fromMap(Map<String, dynamic> map) {
-    final refTypeStr = map['refType']?.toString() ?? 'spell';
-    final refType = EntityType.values.firstWhere(
-      (e) => e.name == refTypeStr,
-      orElse: () => EntityType.spell,
-    );
+    final refTypeStr = map['refType']?.toString() ?? 'custom';
+    final refType = EntityType(refTypeStr);
 
     RulesetVersion? ruleset;
     if (map['rulesetPreferred'] != null) {
@@ -112,19 +109,7 @@ class EntityReference<T extends DomainEntity> {
     }
 
     final rawSkills = map['grantedSkills'] as List?;
-    final skills = <SkillType>[];
-    if (rawSkills != null) {
-      for (final s in rawSkills) {
-        final skStr = s.toString();
-        final found = SkillType.values.cast<SkillType?>().firstWhere(
-              (val) => val?.name == skStr,
-              orElse: () => null,
-            );
-        if (found != null) {
-          skills.add(found);
-        }
-      }
-    }
+    final skills = (rawSkills ?? []).map((s) => s.toString()).toList();
 
     final customProps = map['customProperties'] is Map
         ? Map<String, dynamic>.from(map['customProperties'] as Map)
@@ -146,7 +131,7 @@ class EntityReference<T extends DomainEntity> {
     String? slug,
     RulesetVersion? rulesetPreferred,
     String? displayName,
-    List<SkillType>? grantedSkills,
+    List<dynamic>? grantedSkills,
     Map<String, dynamic>? customProperties,
   }) {
     return EntityReference<T>(
@@ -158,6 +143,15 @@ class EntityReference<T extends DomainEntity> {
       customProperties: customProperties ?? this.customProperties,
     );
   }
+
+  EntityReference<U> cast<U extends DomainEntity>() => EntityReference<U>(
+        refType: refType,
+        slug: slug,
+        rulesetPreferred: rulesetPreferred,
+        displayName: displayName,
+        grantedSkills: grantedSkills,
+        customProperties: customProperties,
+      );
 
   @override
   bool operator ==(Object other) =>

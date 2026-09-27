@@ -1,24 +1,24 @@
 import '../models/character_models.dart';
 
 /// Port (interface) defining character persistence operations in the Domain layer.
-abstract class ICharacterRepository {
+abstract class ICharacterRepository<T extends Character> {
   /// Loads all saved characters from persistent storage.
-  Future<List<Character>> loadCharacters();
+  Future<List<T>> loadCharacters();
 
   /// Retrieves a single character by ID, or null if not found.
-  Future<Character?> getCharacter(String id);
+  Future<T?> getCharacter(String id);
 
   /// Fetches characters matching the given IDs/slugs, preserving the order of requested IDs.
-  Future<List<Character>> getCharactersByIds(List<String> ids);
+  Future<List<T>> getCharactersByIds(List<String> ids);
 
   /// Saves or updates a single character in storage.
-  Future<void> saveCharacter(Character character);
+  Future<void> saveCharacter(T character);
 
   /// Saves multiple characters to storage.
-  Future<void> saveCharacters(List<Character> characters);
+  Future<void> saveCharacters(List<T> characters);
 
   /// Saves the complete character roster to persistent storage.
-  Future<void> saveRoster(List<Character> roster);
+  Future<void> saveRoster(List<T> roster);
 
   /// Deletes a character by ID.
   Future<void> deleteCharacter(String characterId);
@@ -33,8 +33,8 @@ abstract class ICharacterRepository {
   Future<void> clearActiveCharacterId();
 
   /// Reparses and updates a single character against current compendiums and rules.
-  Future<Character> reparseCharacter(Character character);
+  Future<T> reparseCharacter(T character);
 
   /// Reparses and updates all characters in the roster against current compendiums and rules.
-  Future<List<Character>> reparseAllCharacters();
+  Future<List<T>> reparseAllCharacters();
 }

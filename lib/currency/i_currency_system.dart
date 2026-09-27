@@ -48,7 +48,7 @@ class CurrencyDenomination {
 
 /// Abstract currency system contract decoupled from any specific tabletop ruleset.
 abstract interface class ICurrencySystem {
-  /// Unique identifier of the currency system (e.g. 'dnd5e_currency', 'scifi_credits', 'fantasy_silver_standard').
+  /// Unique identifier of the currency system (e.g. 'gold_standard', 'scifi_credits', 'fantasy_silver_standard').
   String get systemId;
 
   /// Human-readable display name of the currency system.

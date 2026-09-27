@@ -109,7 +109,7 @@ class EncounterParticipant {
   final int currentHp;
   final int maxHp;
   final int tempHp;
-  final int armorClass;
+  final int defense;
   final List<String> activeConditions;
   final bool isDefeated;
   final bool isDead;
@@ -122,6 +122,8 @@ class EncounterParticipant {
         isDead: isDead,
       );
 
+  int get defenseRating => defense;
+
   const EncounterParticipant({
     required this.participantId,
     required this.entityLink,
@@ -130,7 +132,7 @@ class EncounterParticipant {
     this.currentHp = 10,
     this.maxHp = 10,
     this.tempHp = 0,
-    this.armorClass = 10,
+    this.defense = 10,
     this.activeConditions = const [],
     this.isDefeated = false,
     this.isDead = false,
@@ -146,7 +148,7 @@ class EncounterParticipant {
     int? currentHp,
     int? maxHp,
     int? tempHp,
-    int? armorClass,
+    int? defense,
     List<String>? activeConditions,
     bool? isDefeated,
     bool? isDead,
@@ -166,7 +168,7 @@ class EncounterParticipant {
       currentHp: resolvedCurrentHp,
       maxHp: resolvedMaxHp,
       tempHp: resolvedTempHp,
-      armorClass: armorClass ?? this.armorClass,
+      defense: defense ?? this.defense,
       activeConditions: activeConditions ?? this.activeConditions,
       isDefeated: isDefeated ?? this.isDefeated,
       isDead: resolvedIsDead,
@@ -182,7 +184,7 @@ class EncounterParticipant {
         'currentHp': currentHp,
         'maxHp': maxHp,
         'tempHp': tempHp,
-        'armorClass': armorClass,
+        'defense': defense,
         'activeConditions': activeConditions,
         'isDefeated': isDefeated,
         'isDead': isDead,
@@ -214,7 +216,10 @@ class EncounterParticipant {
       currentHp: hp.currentHp,
       maxHp: hp.maxHp,
       tempHp: hp.tempHp,
-      armorClass: (map['armorClass'] as num?)?.toInt() ?? 10,
+      defense: (map['defense'] as num?)?.toInt() ??
+          (map['defenseRating'] as num?)?.toInt() ??
+          (map['ac'] as num?)?.toInt() ??
+          10,
       activeConditions:
           (map['activeConditions'] as List? ?? []).whereType<String>().toList(),
       isDefeated: map['isDefeated'] == true,

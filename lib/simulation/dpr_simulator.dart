@@ -133,7 +133,7 @@ class DprSimulator {
     );
   }
 
-  /// Runs Monte Carlo simulation using an injectable [ICombatResolver] decoupled from 5e rules math.
+  /// Runs Monte Carlo simulation using an injectable [ICombatResolver] decoupled from system-specific rules math.
   DprSimulationResult runWithResolver({
     required ICombatResolver resolver,
     required AttackIntent attack,

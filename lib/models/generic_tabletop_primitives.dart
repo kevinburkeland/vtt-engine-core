@@ -6,13 +6,13 @@ bool _mapEquals<K, V>(Map<K, V>? a, Map<K, V>? b) =>
 
 /// Attribute definition and scoring rules for an agnostic tabletop system.
 abstract interface class IAttributeSystem {
-  /// Canonical keys for all attributes in the system (e.g. ['strength', 'dexterity', ...]).
+  /// Canonical keys for all attributes in the system (e.g. ['physique', 'reflexes', ...]).
   List<String> get attributeKeys;
 
-  /// Short abbreviation for chips, badges, and headers (e.g. 'STR', 'DEX', 'POW', 'REF').
+  /// Short abbreviation for chips, badges, and headers (e.g. 'PHY', 'AGI', 'POW', 'REF').
   String getAbbreviation(String key);
 
-  /// Full human-readable display name (e.g. 'Strength', 'Power', 'Reflexes').
+  /// Full human-readable display name (e.g. 'Physique', 'Agility', 'Reflexes').
   String getDisplayName(String key);
 
   /// Calculates the effective modifier or check bonus from a raw attribute score.
@@ -142,27 +142,25 @@ class VitalsModification {
 @immutable
 class ActionBudget {
   final int actionsRemaining;
-  final int bonusActionsRemaining;
   final int reactionsRemaining;
   final Map<String, int> customActionTokens;
 
   const ActionBudget({
     this.actionsRemaining = 1,
-    this.bonusActionsRemaining = 1,
     this.reactionsRemaining = 1,
-    this.customActionTokens = const {},
-  });
+    Map<String, int>? customActionTokens,
+    Map<String, int>? customPools,
+  }) : customActionTokens = customActionTokens ?? customPools ?? const {};
+
+  Map<String, int> get customPools => customActionTokens;
 
   ActionBudget copyWith({
     int? actionsRemaining,
-    int? bonusActionsRemaining,
     int? reactionsRemaining,
     Map<String, int>? customActionTokens,
   }) {
     return ActionBudget(
       actionsRemaining: actionsRemaining ?? this.actionsRemaining,
-      bonusActionsRemaining:
-          bonusActionsRemaining ?? this.bonusActionsRemaining,
       reactionsRemaining: reactionsRemaining ?? this.reactionsRemaining,
       customActionTokens: customActionTokens != null
           ? Map.unmodifiable(customActionTokens)
@@ -175,20 +173,18 @@ class ActionBudget {
       identical(this, other) ||
       other is ActionBudget &&
           actionsRemaining == other.actionsRemaining &&
-          bonusActionsRemaining == other.bonusActionsRemaining &&
           reactionsRemaining == other.reactionsRemaining &&
           _mapEquals(customActionTokens, other.customActionTokens);
 
   @override
   int get hashCode => Object.hash(
         actionsRemaining,
-        bonusActionsRemaining,
         reactionsRemaining,
         const MapEquality<String, int>().hash(customActionTokens),
       );
 }
 
-enum ActionCost { action, bonusAction, reaction, free, special }
+enum ActionCost { standard, reaction, free, special }
 
 /// Rest resolution output.
 @immutable

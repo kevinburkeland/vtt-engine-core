@@ -2,7 +2,7 @@ import 'dart:math' as math;
 import 'package:meta/meta.dart';
 
 /// Immutable Value Object encapsulating Hit Points, Temporary Hit Points,
-/// damage absorption (5e RAW), and healing bounded by maximum HP.
+/// damage absorption, and healing bounded by maximum HP.
 @immutable
 class HitPoints {
   final int currentHp;
@@ -42,7 +42,7 @@ class HitPoints {
 
   /// Applies damage bounded by [maxHp] and 0.
   /// Pure math operation that clamps current HP. Ruleset-specific vitals resolution
-  /// (e.g. 5e Temporary HP absorption, Massive Damage instant death) is resolved
+  /// (e.g. Temporary HP absorption, Massive Damage instant death) is resolved
   /// via [ICombatResolver.resolveVitalsChange].
   HitPoints takeDamage(int amount) {
     if (amount <= 0) return this;
@@ -56,7 +56,7 @@ class HitPoints {
   }
 
   /// Applies healing bounded by [maxHp]. Does not affect temporary hit points.
-  /// Under 5e RAW:
+  /// Under standard tabletop rules:
   /// - A downed creature at 0 HP (unconscious/dying, but not permanently dead)
   ///   regains hit points and wakes up from standard healing.
   /// - A creature that has suffered permanent death ([isDead] == true) cannot be
@@ -77,7 +77,7 @@ class HitPoints {
   HitPoints revive(int amount) =>
       heal(amount, allowRevive: true).copyWith(isDead: false);
 
-  /// Grants Temporary Hit Points (5e RAW: non-stacking; overrides if higher, or if [forceOverride]).
+  /// Grants Temporary Hit Points (non-stacking; overrides if higher, or if [forceOverride]).
   HitPoints grantTempHp(int amount, {bool forceOverride = false}) {
     if (amount <= 0 && !forceOverride) return this;
     final newTemp = forceOverride

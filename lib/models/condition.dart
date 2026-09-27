@@ -1,4 +1,4 @@
-/// Core 5e Conditions & Combat Statuses affecting combat status, advantage, and aerial stability.
+/// Core Conditions & Combat Statuses affecting combat status, advantage, and aerial stability.
 /// Pure Dart model decoupled from Flutter UI dependencies.
 enum ArenaCondition {
   prone(

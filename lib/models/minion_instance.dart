@@ -88,7 +88,7 @@ class MinionStats {
   }
 
   /// Default pluggable stats provider across ruleset adapters.
-  /// Decoupled from concrete 5e ruleset mechanics; populated via DI or the active ruleset module.
+  /// Decoupled from concrete system-specific ruleset mechanics; populated via DI or the active ruleset module.
   static MinionStats Function(EntitySize size) defaultProvider = (size) {
     return _genericFallbackBaselines[size] ??
         _genericFallbackBaselines[EntitySize.medium]!;

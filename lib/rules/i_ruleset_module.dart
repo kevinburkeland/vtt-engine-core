@@ -4,10 +4,10 @@ import 'i_combat_resolver.dart';
 
 /// Pluggable Tabletop Ruleset Module interface.
 ///
-/// Implementations encapsulate all system-specific rules mechanics, attribute calculations,
+/// Implementations encapsulate system-specific rules mechanics, attribute calculations,
 /// resting frameworks, exhaustion states, action economies, and combat resolvers.
 abstract interface class IRulesetModule {
-  /// Unique machine-readable identifier for the ruleset module (e.g. 'dnd5e_2024', 'dnd5e_2014', 'pf2e').
+  /// Unique machine-readable identifier for the ruleset module (e.g. 'fantasy_module', 'space_opera_module', 'pf2e').
   String get moduleId;
 
   /// Human-readable title for UI selectors, badges, and headers.
@@ -16,8 +16,8 @@ abstract interface class IRulesetModule {
   /// Version or edition identifier of the ruleset.
   String get rulesetVersion;
 
-  /// Legal systems reference document citation.
-  String get srdCitation;
+  /// Optional legal / licensing citation for systems reference documents or open game licenses.
+  String? get legalCitation => null;
 
   /// The attribute system governing entity scores and modifiers in this ruleset.
   IAttributeSystem get attributeSystem;
@@ -25,14 +25,14 @@ abstract interface class IRulesetModule {
   /// The currency system governing denominations and conversions.
   ICurrencySystem get currencySystem;
 
-  /// Factory / mechanic for resolving exhaustion rules.
-  IExhaustionMechanic get exhaustionMechanic;
+  /// Optional factory / mechanic for resolving exhaustion rules (null if ruleset has no exhaustion).
+  IExhaustionMechanic? get exhaustionMechanic => null;
 
-  /// Factory / mechanic for resolving short and long rests.
-  IRestMechanic get restMechanic;
+  /// Optional factory / mechanic for resolving rests (null if ruleset has no rest recovery system).
+  IRestMechanic? get restMechanic => null;
 
-  /// Factory / mechanic for resolving action economy costs and budgets.
-  IActionEconomy get actionEconomy;
+  /// Optional factory / mechanic for resolving action economy costs and budgets.
+  IActionEconomy? get actionEconomy => null;
 
   /// Factory / mechanic for resolving attacks, damage, and vitals modifications.
   ICombatResolver get combatResolver;
@@ -41,10 +41,10 @@ abstract interface class IRulesetModule {
   Set<String> get defaultPinnedRules;
 
   /// Queries whether this ruleset module supports a named mechanical capability
-  /// (e.g. 'weapon_masteries', 'tactical_mind', 'inspiration', 'death_saves').
+  /// (e.g. 'tactical_mind', 'grit', 'luck').
   bool supportsFeature(String featureKey);
 
-  /// Calculates a derived entity statistic dynamically (e.g. 'ac', 'initiative', 'passive_perception').
+  /// Calculates a derived entity statistic dynamically (e.g. 'defense', 'initiative', 'perception').
   int calculateDerivedStat({
     required dynamic character,
     required String statKey,
@@ -57,7 +57,7 @@ abstract interface class IExhaustionMechanic {
   /// Maximum number of exhaustion tiers permitted before fatality.
   int get maxExhaustionTiers;
 
-  /// D20 test penalty (if applicable) at the given exhaustion tier.
+  /// Check / test penalty (if applicable) at the given exhaustion tier.
   int calculateD20Penalty(int tier);
 
   /// Movement speed reduction at the given exhaustion tier.
@@ -72,21 +72,17 @@ abstract interface class IExhaustionMechanic {
 
 /// Abstract Resting Mechanics resolver.
 abstract interface class IRestMechanic {
-  /// Resolves a short or field rest, applying spent recovery resources.
-  RestResult resolveShortRest({
+  /// Resolves rest of the specified rest type or duration (e.g. 'brief', 'extended', 'full').
+  RestResult resolveRest({
+    required String restType,
     required EntityVitals currentVitals,
-    required Map<String, int> spentRecoveryResources,
-  });
-
-  /// Resolves a long or extended rest, restoring vitals and standard pools.
-  RestResult resolveLongRest({
-    required EntityVitals currentVitals,
+    Map<String, int> spentRecoveryResources = const {},
   });
 }
 
 /// Abstract Action Economy resolver.
 abstract interface class IActionEconomy {
-  /// Resolves the action economy cost for consuming a consumable (e.g. potion: Action in 2014 vs Bonus Action in 2024).
+  /// Resolves the action economy cost for consuming a consumable.
   ActionCost getConsumableUsageCost(String consumableType);
 
   /// Validates whether an action of the given type can be taken with the current budget and conditions.

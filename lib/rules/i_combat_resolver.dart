@@ -7,7 +7,7 @@ bool _mapEquals<K, V>(Map<K, V>? a, Map<K, V>? b) =>
     const MapEquality().equals(a, b);
 bool _setEquals<T>(Set<T>? a, Set<T>? b) => const SetEquality().equals(a, b);
 
-/// Abstract attack declaration decoupled from 5e-specific calculations.
+/// Abstract attack declaration decoupled from system-specific calculations.
 @immutable
 class AttackIntent {
   final int attackBonus;
@@ -49,10 +49,10 @@ class AttackIntent {
       );
 }
 
-/// Abstract target defense profile decoupled from Armor Class.
+/// Abstract target defense profile decoupled from specific rulesets.
 @immutable
 class TargetDefenseProfile {
-  final int targetDefenseRating; // In 5e: Armor Class; In d100: Dodge Rating
+  final int targetDefenseRating; // e.g. Target defense value or dodge rating
   final Set<String> resistances;
   final Set<String> vulnerabilities;
   final Set<String> immunities;
@@ -136,7 +136,7 @@ class AttackResolution {
       );
 }
 
-/// Abstract Combat Resolver port decoupled from 5e rules math.
+/// Abstract Combat Resolver port decoupled from system-specific rules math.
 abstract interface class ICombatResolver {
   /// Evaluates an attack roll against target defense with the provided RNG stream.
   AttackResolution resolveAttack({

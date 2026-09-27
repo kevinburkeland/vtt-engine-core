@@ -79,7 +79,7 @@ class StorageSnapshotBundle {
   /// Serializes this bundle into an envelope byte array suitable for atomic disk persistence.
   Uint8List toBytes() {
     final envelope = <String, dynamic>{
-      'magic': 'DNDVAULT',
+      'magic': 'VTTVAULT',
       'schemaVersion': schemaVersion,
       'vaultId': vaultId,
       'exportedAt': exportedAt.toIso8601String(),

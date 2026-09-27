@@ -27,8 +27,9 @@ class CampaignProfile {
   /// Identifier of the active ruleset module.
   String get rulesetId {
     if (edition is IRulesetModule) return (edition as IRulesetModule).moduleId;
+    if (edition is RulesetIdentifier) return (edition as RulesetIdentifier).rulesetId;
     if (edition is Enum) return (edition as Enum).name;
-    return edition?.toString() ?? 'dnd5e_2024';
+    return edition?.toString() ?? 'generic_tabletop';
   }
 
   /// Legacy alias for compatibility.
@@ -42,7 +43,7 @@ class CampaignProfile {
   const CampaignProfile.raw({
     required this.id,
     required this.name,
-    this.edition = RulesetEdition.v2024,
+    this.edition = const RulesetIdentifier('generic_tabletop'),
     required this.createdAt,
     required this.lastPlayedAt,
     required this.roomState,
@@ -56,7 +57,7 @@ class CampaignProfile {
   factory CampaignProfile({
     required String id,
     required String name,
-    dynamic edition = RulesetEdition.v2024,
+    dynamic edition = const RulesetIdentifier('generic_tabletop'),
     String? rulesetId,
     required DateTime createdAt,
     required DateTime lastPlayedAt,
@@ -69,7 +70,8 @@ class CampaignProfile {
     List<PartyEvent> changeLog = const [],
     required String nodeId,
   }) {
-    final effectiveEdition = rulesetId ?? edition ?? RulesetEdition.v2024;
+    final effectiveEdition =
+        rulesetId ?? edition ?? const RulesetIdentifier('generic_tabletop');
     final effectiveNotesRegister = notesRegister ??
         (notesMarkdown != null
             ? CrdtLwwRegister<String>(
@@ -108,7 +110,7 @@ class CampaignProfile {
   factory CampaignProfile.initial({
     required String id,
     required String name,
-    dynamic edition = RulesetEdition.v2024,
+    dynamic edition = const RulesetIdentifier('generic_tabletop'),
     String? rulesetId,
     required String nodeId,
     DateTime? now,
@@ -117,7 +119,9 @@ class CampaignProfile {
     return CampaignProfile(
       id: id,
       name: name,
-      edition: rulesetId ?? edition ?? RulesetEdition.v2024,
+      edition: rulesetId ??
+          edition ??
+          const RulesetIdentifier('generic_tabletop'),
       createdAt: timestamp,
       lastPlayedAt: timestamp,
       roomState: const RoomNodeState(
@@ -133,11 +137,15 @@ class CampaignProfile {
     );
   }
 
+  static dynamic defaultRulesetEdition =
+      const RulesetIdentifier('generic_tabletop');
+  static Set<String> defaultPinnedRulesFallback = const {};
+
   /// Factory creating a fresh default campaign profile.
   factory CampaignProfile.defaultProfile({
     String? id,
     String? name,
-    dynamic edition = RulesetEdition.v2024,
+    dynamic edition,
     String? rulesetId,
     Set<String> defaultPinnedRules = const {},
     IRulesetModule? rulesetModule,
@@ -146,11 +154,12 @@ class CampaignProfile {
     final now = DateTime.now();
     final profileId = id ?? 'campaign_${now.millisecondsSinceEpoch}';
     final campaignName = name ?? 'My Campaign';
-    final effectiveEdition = rulesetId ?? edition ?? RulesetEdition.v2024;
+    final effectiveEdition = rulesetId ??
+        edition ??
+        defaultRulesetEdition;
     final effectivePinned = defaultPinnedRules.isNotEmpty
         ? defaultPinnedRules
-        : (rulesetModule?.defaultPinnedRules ??
-            const <String>{'concentration', 'grapple_shove'});
+        : (rulesetModule?.defaultPinnedRules ?? defaultPinnedRulesFallback);
     return CampaignProfile.initial(
       id: profileId,
       name: campaignName,
