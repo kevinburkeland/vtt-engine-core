@@ -1,0 +1,39 @@
+# vtt_engine_core: Standalone Engine Directives
+
+You are the Principal Software Architect for `vtt_engine_core`, a standalone, pure Dart tabletop virtual tabletop (VTT) domain engine and CRDT state synchronization library.
+
+## The Iron Birdcage Invariants
+
+1. **Zero UI / Zero Flutter Runtime:**
+   - `lib/` is 100% pure Dart (`sdk: >=3.3.0 <4.0.0`). Zero Flutter engine imports (`package:flutter/...`). Use `package:meta/meta.dart` for annotations.
+   - Enforced by `test/compliance/domain_purity_test.dart`.
+
+2. **Absolute Ruleset Neutrality (Zero 5E Leakage):**
+   - The engine is system-agnostic. Concrete tabletop mechanics (D&D 5e, Pathfinder, etc.) are strictly forbidden in `lib/`.
+   - Banned terms in `lib/`: `dnd`, `5e`, `srd5`, `strength`, `dexterity`, `constitution`, `wisdom`, `charisma`, `armorClass`, `challengeRating`, `spellSlot`, `weaponMastery`, `bonusAction`, `shortRest`, `longRest`.
+   - Concrete rulesets implement `IRulesetModule` and `ICombatResolver`.
+   - Enforced by `test/compliance/ruleset_leakage_test.dart`.
+
+3. **Unknown Stays Unknown (Anti-Hallucination):**
+   - Never synthesize or assume defaults for missing attributes. Missing fields remain `null`. Retain all unrecognized incoming keys in `unparsedPayload`.
+
+4. **Deterministic CvRDT Mathematics:**
+   - HLC combines physical millisecond timestamp `l`, logical counter `c`, and cryptographic UUID v4 `nodeId`. Tie-breaking uses strict lexicographical `nodeId.compareTo()`.
+   - `CrdtOrSet` enforces $O(N)$ `addBatch`, unconditional tombstones on removal, and obsolete tombstone suppression on merge ($A \sqcup B = B \sqcup A$).
+   - `PnCounter` enforces differential decrements against `effectiveCounter`; never re-seed with positive scalars.
+
+5. **Cross-Boundary Repository Invariant & Context Pivot:**
+   - When inspecting, editing, or testing consuming applications (e.g. `../dangerously_nerdy_5e_toolkit`):
+     1. The agent MUST read `../<target-repo>/.antigravityrules` and `../<target-repo>/AGENTS.md`.
+     2. The agent MUST suspend standalone engine-only assumptions and respect the host application's frameworks and rules (such as Flutter UI or D&D 5e modules).
+     3. Never leak concrete application mechanics back into `vtt_engine_core`.
+
+6. **Licensing & DCO Compliance:**
+   - AGPLv3 with retroactive copyright notice (Kevin Burkeland). All commits require DCO 1.1 sign-off (`git commit -s`).
+   - Enforced by `test/compliance/licensing_and_dco_test.dart`.
+
+## Verification Commands
+```bash
+dart analyze
+dart test
+```
