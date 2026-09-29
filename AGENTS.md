@@ -48,6 +48,13 @@ When inspecting, editing, or testing consuming applications (such as `../dangero
 - **Mandatory Ingestion:** The agent MUST read `../<target-repo>/.antigravityrules` and `../<target-repo>/AGENTS.md` before making modifications.
 - **Context Suspension:** The agent must suspend engine-only assumptions and respect host application conventions (Flutter UI, 5e modules, 48dp touch targets).
 - **Core Isolation:** Never import or leak concrete application or system mechanics back into `vtt_engine_core`.
+- **Pinned Git Dependency Synchronization Protocol:** Consuming applications consume `vtt_engine_core` via pinned Git commit SHAs in `pubspec.yaml`. When making upstream changes:
+  1. Complete and verify engine modifications (`dart analyze`, `dart test`).
+  2. Commit engine changes with DCO sign-off (`git commit -s`) to produce a concrete commit SHA on `main`.
+  3. Update consuming application's `pubspec.yaml` `ref` to the exact engine commit SHA.
+  4. Ensure `pubspec_overrides.yaml` and `dependency_overrides` are removed from the consuming repo.
+  5. Run `flutter pub get` in the consuming application to lock the resolved Git ref in `pubspec.lock`.
+  6. Execute consuming application static analysis and test suites against the fetched Git dependency. Never consider repositories integrated based on local path overrides.
 
 ### 1. Pure Dart & Zero UI Engine
 - No `package:flutter/...` imports in `lib/`. Use `package:meta/meta.dart` for annotations like `@immutable`.

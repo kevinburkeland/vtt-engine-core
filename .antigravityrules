@@ -22,11 +22,21 @@ You are the Principal Software Architect for `vtt_engine_core`, a standalone, pu
    - `CrdtOrSet` enforces $O(N)$ `addBatch`, unconditional tombstones on removal, and obsolete tombstone suppression on merge ($A \sqcup B = B \sqcup A$).
    - `PnCounter` enforces differential decrements against `effectiveCounter`; never re-seed with positive scalars.
 
-5. **Cross-Boundary Repository Invariant & Context Pivot:**
+5. **Cross-Boundary Repository Invariant & Pinned Dependency Synchronization:**
    - When inspecting, editing, or testing consuming applications (e.g. `../dangerously_nerdy_5e_toolkit`):
      1. The agent MUST read `../<target-repo>/.antigravityrules` and `../<target-repo>/AGENTS.md`.
      2. The agent MUST suspend standalone engine-only assumptions and respect the host application's frameworks and rules (such as Flutter UI or D&D 5e modules).
      3. Never leak concrete application mechanics back into `vtt_engine_core`.
+   - **Mandatory Pinned Git Dependency Synchronization:**
+     - Consuming applications consume `vtt_engine_core` via a pinned Git dependency (`git.ref`) in `pubspec.yaml`.
+     - Never consider repositories integrated merely because local working trees are compatible.
+     - When engine changes are made that a consuming repo must consume:
+       1. Verify `vtt-engine-core` changes with `dart analyze` and `dart test`.
+       2. Commit engine changes with DCO sign-off (`git commit -s`) to produce a concrete commit SHA on `main`.
+       3. Update the consuming repo's `pubspec.yaml` (`git.ref`) to that exact new engine commit SHA.
+       4. Remove any local `pubspec_overrides.yaml` or `dependency_overrides` from the consuming repo.
+       5. Run `flutter pub get` in the consuming repo so the pinned Git commit is actually fetched into the pub cache and locked in `pubspec.lock`.
+       6. Only then execute the consuming application's static analysis and test suites against the fetched Git dependency.
 
 6. **Licensing & DCO Compliance:**
    - AGPLv3 with retroactive copyright notice (Kevin Burkeland). All commits require DCO 1.1 sign-off (`git commit -s`).
