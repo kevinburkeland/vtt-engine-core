@@ -5,14 +5,14 @@ import 'package:meta/meta.dart';
 import '../rules/i_ruleset_module.dart';
 import 'core_types.dart';
 import 'entity_reference.dart';
-import 'feature_grant.dart';
 import 'party_purse.dart';
 import 'generic_tabletop_primitives.dart';
 
-bool listEquals<T>(List<T>? a, List<T>? b) => const ListEquality().equals(a, b);
-bool mapEquals<K, V>(Map<K, V>? a, Map<K, V>? b) =>
+bool _listEquals<T>(List<T>? a, List<T>? b) =>
+    const ListEquality().equals(a, b);
+bool _mapEquals<K, V>(Map<K, V>? a, Map<K, V>? b) =>
     const MapEquality().equals(a, b);
-bool setEquals<T>(Set<T>? a, Set<T>? b) => const SetEquality().equals(a, b);
+bool _setEquals<T>(Set<T>? a, Set<T>? b) => const SetEquality().equals(a, b);
 
 /// Starting Equipment Preset Item Request
 @immutable
@@ -188,7 +188,7 @@ class InventoryItemInstance {
           quantity == other.quantity &&
           isEquipped == other.isEquipped &&
           equippedSlot == other.equippedSlot &&
-          mapEquals(customProperties, other.customProperties);
+          _mapEquals(customProperties, other.customProperties);
 
   @override
   int get hashCode =>
@@ -200,218 +200,20 @@ class InventoryItemInstance {
       customProperties.length.hashCode;
 }
 
-/// Generic class progression slice (supporting single class or multiclassing)
-@immutable
-class ClassLevelProgression {
-  final EntityReference<DomainEntity> classRef;
-  final EntityReference<DomainEntity>? subclassRef;
-  final int level;
-  final bool isStartingClass;
-  final Map<String, List<String>> selectedFeatureOptions;
-  final Map<String, dynamic> customProperties;
-
-  const ClassLevelProgression({
-    required this.classRef,
-    this.subclassRef,
-    this.level = 1,
-    this.isStartingClass = false,
-    this.selectedFeatureOptions = const {},
-    this.customProperties = const {},
-  });
-
-  ClassLevelProgression copyWith({
-    EntityReference<DomainEntity>? classRef,
-    EntityReference<DomainEntity>? subclassRef,
-    int? level,
-    bool? isStartingClass,
-    Map<String, List<String>>? selectedFeatureOptions,
-    Map<String, dynamic>? customProperties,
-  }) {
-    return ClassLevelProgression(
-      classRef: classRef ?? this.classRef,
-      subclassRef: subclassRef ?? this.subclassRef,
-      level: level ?? this.level,
-      isStartingClass: isStartingClass ?? this.isStartingClass,
-      selectedFeatureOptions: selectedFeatureOptions != null
-          ? Map.unmodifiable(selectedFeatureOptions
-              .map((k, v) => MapEntry(k, List<String>.unmodifiable(v))))
-          : this.selectedFeatureOptions,
-      customProperties: customProperties ?? this.customProperties,
-    );
-  }
-
-  Map<String, dynamic> toMap() => {
-        'classRef': classRef.toMap(),
-        'subclassRef': subclassRef?.toMap(),
-        'level': level,
-        'isStartingClass': isStartingClass,
-        'selectedFeatureOptions': selectedFeatureOptions,
-        'customProperties': customProperties,
-      };
-
-  factory ClassLevelProgression.fromMap(Map<String, dynamic> map) {
-    final rawOptions = map['selectedFeatureOptions'];
-    final parsedOptions = <String, List<String>>{};
-    if (rawOptions is Map) {
-      rawOptions.forEach((key, val) {
-        if (val is List) {
-          parsedOptions[key.toString()] = val.map((e) => e.toString()).toList();
-        } else if (val != null) {
-          parsedOptions[key.toString()] = [val.toString()];
-        }
-      });
-    }
-
-    return ClassLevelProgression(
-      classRef: EntityReference<DomainEntity>.fromMap(
-          Map<String, dynamic>.from(map['classRef'] as Map? ?? {})),
-      subclassRef: map['subclassRef'] != null
-          ? EntityReference<DomainEntity>.fromMap(
-              Map<String, dynamic>.from(map['subclassRef'] as Map? ?? {}))
-          : null,
-      level: (map['level'] as num?)?.toInt() ?? 1,
-      isStartingClass: map['isStartingClass'] == true,
-      selectedFeatureOptions: parsedOptions,
-      customProperties:
-          Map<String, dynamic>.from(map['customProperties'] as Map? ?? {}),
-    );
-  }
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is ClassLevelProgression &&
-          runtimeType == other.runtimeType &&
-          classRef == other.classRef &&
-          subclassRef == other.subclassRef &&
-          level == other.level &&
-          isStartingClass == other.isStartingClass &&
-          mapEquals(selectedFeatureOptions, other.selectedFeatureOptions) &&
-          mapEquals(customProperties, other.customProperties);
-
-  @override
-  int get hashCode =>
-      classRef.hashCode ^
-      (subclassRef?.hashCode ?? 0) ^
-      level.hashCode ^
-      isStartingClass.hashCode ^
-      selectedFeatureOptions.length.hashCode ^
-      customProperties.length.hashCode;
-}
-
-/// Overall Character Progression aggregating all class levels
-@immutable
-class CharacterProgression {
-  final List<ClassLevelProgression> classes;
-  final int experiencePoints;
-  final Map<int, int> manualHpRolls;
-
-  const CharacterProgression({
-    required this.classes,
-    this.experiencePoints = 0,
-    this.manualHpRolls = const {},
-  });
-
-  int get totalLevel => classes.fold(0, (sum, c) => sum + c.level);
-
-  ClassLevelProgression? get startingClass =>
-      classes.where((c) => c.isStartingClass).firstOrNull ??
-      classes.firstOrNull;
-
-  ClassLevelProgression? getClass(String classSlug) =>
-      classes.where((c) => c.classRef.slug == classSlug).firstOrNull;
-
-  /// Retrieves all selected option IDs for a specific decision across all classes.
-  List<String> getSelectedOptionsForDecision(String decisionId) {
-    final results = <String>[];
-    for (final c in classes) {
-      final opts = c.selectedFeatureOptions[decisionId];
-      if (opts != null) results.addAll(opts);
-    }
-    return results;
-  }
-
-  /// Aggregates all selected feature option IDs across all classes dynamically.
-  Map<String, List<String>> getAllSelectedFeatureOptions() {
-    final merged = <String, List<String>>{};
-    for (final c in classes) {
-      c.selectedFeatureOptions.forEach((k, v) {
-        merged.putIfAbsent(k, () => []).addAll(v);
-      });
-    }
-    return merged;
-  }
-
-  CharacterProgression copyWith({
-    List<ClassLevelProgression>? classes,
-    int? experiencePoints,
-    Map<int, int>? manualHpRolls,
-  }) {
-    return CharacterProgression(
-      classes: classes != null ? List.unmodifiable(classes) : this.classes,
-      experiencePoints: experiencePoints ?? this.experiencePoints,
-      manualHpRolls: manualHpRolls != null
-          ? Map.unmodifiable(manualHpRolls)
-          : this.manualHpRolls,
-    );
-  }
-
-  Map<String, dynamic> toMap() => {
-        'classes': classes.map((c) => c.toMap()).toList(),
-        'experiencePoints': experiencePoints,
-        'manualHpRolls': manualHpRolls.map((k, v) => MapEntry(k.toString(), v)),
-      };
-
-  factory CharacterProgression.fromMap(Map<String, dynamic> map) {
-    final hpRolls = <int, int>{};
-    if (map['manualHpRolls'] is Map) {
-      (map['manualHpRolls'] as Map).forEach((k, v) {
-        final key = int.tryParse(k.toString());
-        if (key != null && v is num) hpRolls[key] = v.toInt();
-      });
-    }
-
-    return CharacterProgression(
-      classes: (map['classes'] as List? ?? [])
-          .whereType<Map>()
-          .map((c) =>
-              ClassLevelProgression.fromMap(Map<String, dynamic>.from(c)))
-          .toList(),
-      experiencePoints: (map['experiencePoints'] as num?)?.toInt() ?? 0,
-      manualHpRolls: hpRolls,
-    );
-  }
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is CharacterProgression &&
-          runtimeType == other.runtimeType &&
-          listEquals(classes, other.classes) &&
-          experiencePoints == other.experiencePoints &&
-          mapEquals(manualHpRolls, other.manualHpRolls);
-
-  @override
-  int get hashCode =>
-      Object.hashAll(classes) ^
-      experiencePoints.hashCode ^
-      manualHpRolls.length.hashCode;
-}
-
 /// Generic character resource pools.
 @immutable
 class CharacterResourcePool {
   final EntityVitals? _vitals;
-  final int _currentHp;
-  final int _tempHp;
+  final int? _currentHp;
+  final int? _tempHp;
   final Map<String, int> customResourcesCurrent;
   final Map<String, int> customResourcesMax;
   final Map<String, dynamic> auxiliaryData;
 
   const CharacterResourcePool({
     EntityVitals? vitals,
-    int currentHp = 10,
-    int tempHp = 0,
+    int? currentHp,
+    int? tempHp,
     this.customResourcesCurrent = const {},
     this.customResourcesMax = const {},
     this.auxiliaryData = const {},
@@ -419,19 +221,21 @@ class CharacterResourcePool {
         _currentHp = currentHp,
         _tempHp = tempHp;
 
-  int get currentHp => _vitals?.currentHp ?? _currentHp;
-  int get tempHp => _vitals?.temporaryHp ?? _tempHp;
+  int? get currentHp => _vitals?.currentHp ?? _currentHp;
+  int? get tempHp => _vitals?.temporaryHp ?? _tempHp;
 
-  EntityVitals get vitals =>
+  EntityVitals? get vitals =>
       _vitals ??
-      EntityVitals(
-        currentHp: _currentHp,
-        maxHp: 9999,
-        temporaryHp: _tempHp,
-        isDowned: _currentHp <= 0,
-        isDead: false,
-        auxiliaryPools: customResourcesCurrent,
-      );
+      (currentHp != null
+          ? EntityVitals(
+              currentHp: currentHp!,
+              maxHp: 9999,
+              temporaryHp: tempHp ?? 0,
+              isDowned: currentHp! <= 0,
+              isDead: false,
+              auxiliaryPools: customResourcesCurrent,
+            )
+          : null);
 
   CharacterResourcePool copyWith({
     EntityVitals? vitals,
@@ -458,8 +262,8 @@ class CharacterResourcePool {
   }
 
   Map<String, dynamic> toMap() => {
-        'currentHp': currentHp,
-        'tempHp': tempHp,
+        if (currentHp != null) 'currentHp': currentHp,
+        if (tempHp != null) 'tempHp': tempHp,
         'customResourcesCurrent': customResourcesCurrent,
         'customResourcesMax': customResourcesMax,
         'auxiliaryData': auxiliaryData,
@@ -481,8 +285,8 @@ class CharacterResourcePool {
     }
 
     return CharacterResourcePool(
-      currentHp: (map['currentHp'] as num?)?.toInt() ?? 10,
-      tempHp: (map['tempHp'] as num?)?.toInt() ?? 0,
+      currentHp: (map['currentHp'] as num?)?.toInt(),
+      tempHp: (map['tempHp'] as num?)?.toInt(),
       customResourcesCurrent: cur,
       customResourcesMax: max,
       auxiliaryData:
@@ -497,14 +301,14 @@ class CharacterResourcePool {
           runtimeType == other.runtimeType &&
           currentHp == other.currentHp &&
           tempHp == other.tempHp &&
-          mapEquals(customResourcesCurrent, other.customResourcesCurrent) &&
-          mapEquals(customResourcesMax, other.customResourcesMax) &&
-          mapEquals(auxiliaryData, other.auxiliaryData);
+          _mapEquals(customResourcesCurrent, other.customResourcesCurrent) &&
+          _mapEquals(customResourcesMax, other.customResourcesMax) &&
+          _mapEquals(auxiliaryData, other.auxiliaryData);
 
   @override
   int get hashCode =>
-      currentHp.hashCode ^
-      tempHp.hashCode ^
+      (currentHp?.hashCode ?? 0) ^
+      (tempHp?.hashCode ?? 0) ^
       customResourcesCurrent.length.hashCode ^
       customResourcesMax.length.hashCode ^
       auxiliaryData.length.hashCode;
@@ -563,7 +367,7 @@ class CharacterCondition {
           name == other.name &&
           durationRounds == other.durationRounds &&
           sourceEntityId == other.sourceEntityId &&
-          mapEquals(customProperties, other.customProperties);
+          _mapEquals(customProperties, other.customProperties);
 
   @override
   int get hashCode =>
@@ -632,7 +436,7 @@ class Character extends DomainEntity {
   final String name;
   final EntityReference<DomainEntity> speciesRef;
   final EntityReference<DomainEntity>? backgroundRef;
-  final CharacterProgression progression;
+  final dynamic progression;
   final AttributePool baseScores;
   final AttributePool bonusScores;
   final Map<dynamic, dynamic> traitProficiencies;
@@ -644,7 +448,7 @@ class Character extends DomainEntity {
   final List<EntityReference<DomainEntity>> feats;
   final CharacterResourcePool resources;
   final List<CharacterCondition> conditions;
-  final int baseSpeed;
+  final int? baseSpeed;
   final String rulesetId;
   @override
   final Map<String, dynamic> customProperties;
@@ -654,19 +458,19 @@ class Character extends DomainEntity {
     required this.name,
     required this.speciesRef,
     this.backgroundRef,
-    this.progression = const CharacterProgression(classes: []),
+    this.progression,
     this.baseScores = const AttributePool.zero(),
     this.bonusScores = const AttributePool.zero(),
     this.traitProficiencies = const {},
     this.savingThrowProficiencies = const {},
     this.toolProficiencies = const [],
-    this.languages = const ['Common'],
+    this.languages = const [],
     this.inventory = const [],
     this.purse = const PartyPurse(),
     this.feats = const [],
     this.resources = const CharacterResourcePool(),
     this.conditions = const [],
-    this.baseSpeed = 30,
+    this.baseSpeed,
     this.rulesetId = 'default',
     this.customProperties = const {},
   });
@@ -674,21 +478,11 @@ class Character extends DomainEntity {
   @override
   EntityType get entityType => EntityType.character;
 
-  int get totalLevel => progression.totalLevel;
-  int get proficiencyBonus => totalLevel <= 0 ? 2 : ((totalLevel - 1) ~/ 4) + 2;
-
-  String get classesSummary {
-    if (progression.classes.isEmpty) return 'Adventurer';
-    return progression.classes
-        .map((c) => '${c.classRef.displayName} ${c.level}')
-        .join(' / ');
-  }
-
   /// Machine-readable identifier of the active ruleset module.
   String get activeModuleId => rulesetId;
 
   /// Ruleset-agnostic vitals model exposing current HP, max HP, temp HP, downed, and death states.
-  EntityVitals get vitals => resources.vitals;
+  EntityVitals? get vitals => resources.vitals;
 
   /// Raw ability scores (base scores combined with bonuses).
   AttributePool get rawAbilityScores => baseScores.withBonus(bonusScores);
@@ -737,16 +531,14 @@ class Character extends DomainEntity {
       effectiveAbilityScores.getScore(key);
 
   /// Retrieves all active declarative feature grants across this character.
-  List<FeatureGrant> get activeGrants {
-    final list = <FeatureGrant>[];
+  List<dynamic> get activeGrants {
+    final list = <dynamic>[];
 
     void extractGrants(dynamic rawGrants) {
       if (rawGrants is! List) return;
       for (final item in rawGrants) {
-        if (item is FeatureGrant) {
+        if (item != null) {
           list.add(item);
-        } else if (item is Map) {
-          list.add(FeatureGrant.fromMap(Map<String, dynamic>.from(item)));
         }
       }
     }
@@ -754,12 +546,6 @@ class Character extends DomainEntity {
     extractGrants(customProperties['grants']);
     for (final featRef in feats) {
       extractGrants(featRef.customProperties['grants']);
-    }
-    for (final c in progression.classes) {
-      extractGrants(c.classRef.customProperties['grants']);
-      if (c.subclassRef != null) {
-        extractGrants(c.subclassRef!.customProperties['grants']);
-      }
     }
     for (final item in inventory.where((i) => i.isEquipped)) {
       extractGrants(item.customProperties['grants']);
@@ -783,20 +569,23 @@ class Character extends DomainEntity {
     }
 
     for (final g in activeGrants) {
-      if (g.type == GrantType.capabilityFlag) {
-        final key =
-            g.payload['flagKey']?.toString().toLowerCase().replaceAll('-', '_');
+      if (g is Map) {
+        final key = g['payload'] is Map
+            ? g['payload']['flagKey']?.toString().toLowerCase().replaceAll('-', '_')
+            : g['flagKey']?.toString().toLowerCase().replaceAll('-', '_');
         if (key == normalizedKey || key == flagKey.toLowerCase()) {
           return true;
         }
-      }
-    }
-
-    final allSelectedOptions = progression.getAllSelectedFeatureOptions();
-    for (final optionIds in allSelectedOptions.values) {
-      for (final optId in optionIds) {
-        final normOptId = optId.toLowerCase().replaceAll('-', '_');
-        if (normOptId == normalizedKey) return true;
+      } else if (g != null) {
+        try {
+          final payload = (g as dynamic).payload;
+          final key = payload is Map
+              ? payload['flagKey']?.toString().toLowerCase().replaceAll('-', '_')
+              : null;
+          if (key == normalizedKey || key == flagKey.toLowerCase()) {
+            return true;
+          }
+        } catch (_) {}
       }
     }
 
@@ -858,20 +647,17 @@ class Character extends DomainEntity {
     final attrKey = trait.governedAttribute;
     final baseMod =
         attrKey != null ? getAttributeModifier(attrKey, attributeSystem) : 0;
-    final mult = getTraitProficiency(trait.id);
-    final bonus = (proficiencyBonus * mult).floor();
-    return baseMod + bonus;
+    return baseMod;
   }
 
-  /// Dynamic Saving Throw Modifier calculation factoring in ability modifiers and proficiency.
-  int getSaveModifier(dynamic attributeKey, [IAttributeSystem? attributeSystem]) {
+  /// Dynamic Saving Throw Modifier calculation factoring in ability modifiers.
+  int getSaveModifier(dynamic attributeKey,
+      [IAttributeSystem? attributeSystem]) {
     final keyStr =
         (attributeKey is Enum ? attributeKey.name : attributeKey.toString())
             .trim()
             .toLowerCase();
-    final baseMod = getAttributeModifier(keyStr, attributeSystem);
-    final isProficient = hasSavingThrowProficiency(attributeKey);
-    return baseMod + (isProficient ? proficiencyBonus : 0);
+    return getAttributeModifier(keyStr, attributeSystem);
   }
 
   @override
@@ -880,7 +666,12 @@ class Character extends DomainEntity {
         'name': name,
         'speciesRef': speciesRef.toMap(),
         'backgroundRef': backgroundRef?.toMap(),
-        'progression': progression.toMap(),
+        if (progression != null)
+          'progression': progression is Map
+              ? progression
+              : (progression?.toMap != null
+                  ? (progression as dynamic).toMap()
+                  : progression.toString()),
         'baseScores': baseScores.toMap(),
         'bonusScores': bonusScores.toMap(),
         'traitProficiencies': traitProficiencies,
@@ -891,11 +682,11 @@ class Character extends DomainEntity {
         'purse': purse.toMap(),
         'feats': feats.map((f) => f.toMap()).toList(),
         'resources': resources.toMap(),
-        'currentHp': resources.currentHp,
-        'tempHp': resources.tempHp,
+        if (resources.currentHp != null) 'currentHp': resources.currentHp,
+        if (resources.tempHp != null) 'tempHp': resources.tempHp,
         'defense': queryStat('defense'),
         'conditions': conditions.map((c) => c.toMap()).toList(),
-        'baseSpeed': baseSpeed,
+        if (baseSpeed != null) 'baseSpeed': baseSpeed,
         'rulesetId': rulesetId,
         'customProperties': customProperties,
       };
@@ -927,8 +718,7 @@ class Character extends DomainEntity {
           ? EntityReference<DomainEntity>.fromMap(
               Map<String, dynamic>.from(map['backgroundRef'] as Map? ?? {}))
           : null,
-      progression: CharacterProgression.fromMap(
-          Map<String, dynamic>.from(map['progression'] as Map? ?? {})),
+      progression: map['progression'],
       baseScores: AttributePool.fromMap(
           Map<String, dynamic>.from(map['baseScores'] as Map? ?? {})),
       bonusScores: AttributePool.fromMap(
@@ -938,7 +728,7 @@ class Character extends DomainEntity {
       toolProficiencies: (map['toolProficiencies'] as List? ?? [])
           .whereType<String>()
           .toList(),
-      languages: (map['languages'] as List? ?? ['Common'])
+      languages: (map['languages'] as List? ?? const [])
           .whereType<String>()
           .toList(),
       inventory: (map['inventory'] as List? ?? [])
@@ -967,7 +757,7 @@ class Character extends DomainEntity {
           .whereType<Map>()
           .map((c) => CharacterCondition.fromMap(Map<String, dynamic>.from(c)))
           .toList(),
-      baseSpeed: (map['baseSpeed'] as num?)?.toInt() ?? 30,
+      baseSpeed: (map['baseSpeed'] as num?)?.toInt(),
       rulesetId: map['rulesetId']?.toString() ?? 'default',
       customProperties:
           Map<String, dynamic>.from(map['customProperties'] as Map? ?? {}),
@@ -979,7 +769,7 @@ class Character extends DomainEntity {
     String? name,
     EntityReference<DomainEntity>? speciesRef,
     EntityReference<DomainEntity>? backgroundRef,
-    CharacterProgression? progression,
+    dynamic progression,
     AttributePool? baseScores,
     AttributePool? bonusScores,
     Map<dynamic, dynamic>? traitProficiencies,
@@ -1003,19 +793,29 @@ class Character extends DomainEntity {
       progression: progression ?? this.progression,
       baseScores: baseScores ?? this.baseScores,
       bonusScores: bonusScores ?? this.bonusScores,
-      traitProficiencies: traitProficiencies ?? this.traitProficiencies,
-      savingThrowProficiencies:
-          savingThrowProficiencies ?? this.savingThrowProficiencies,
-      toolProficiencies: toolProficiencies ?? this.toolProficiencies,
-      languages: languages ?? this.languages,
-      inventory: inventory ?? this.inventory,
+      traitProficiencies: traitProficiencies != null
+          ? Map.unmodifiable(traitProficiencies)
+          : this.traitProficiencies,
+      savingThrowProficiencies: savingThrowProficiencies ?? this.savingThrowProficiencies,
+      toolProficiencies: toolProficiencies != null
+          ? List.unmodifiable(toolProficiencies)
+          : this.toolProficiencies,
+      languages:
+          languages != null ? List.unmodifiable(languages) : this.languages,
+      inventory: inventory != null
+          ? List.unmodifiable(inventory)
+          : this.inventory,
       purse: purse ?? this.purse,
-      feats: feats ?? this.feats,
+      feats: feats != null ? List.unmodifiable(feats) : this.feats,
       resources: resources ?? this.resources,
-      conditions: conditions ?? this.conditions,
+      conditions: conditions != null
+          ? List.unmodifiable(conditions)
+          : this.conditions,
       baseSpeed: baseSpeed ?? this.baseSpeed,
       rulesetId: rulesetId ?? this.rulesetId,
-      customProperties: customProperties ?? this.customProperties,
+      customProperties: customProperties != null
+          ? Map.unmodifiable(customProperties)
+          : this.customProperties,
     );
   }
 
@@ -1031,18 +831,18 @@ class Character extends DomainEntity {
           progression == other.progression &&
           baseScores == other.baseScores &&
           bonusScores == other.bonusScores &&
-          mapEquals(traitProficiencies, other.traitProficiencies) &&
-          setEquals(savingThrowProficiencies, other.savingThrowProficiencies) &&
-          listEquals(toolProficiencies, other.toolProficiencies) &&
-          listEquals(languages, other.languages) &&
-          listEquals(inventory, other.inventory) &&
+          _mapEquals(traitProficiencies, other.traitProficiencies) &&
+          _setEquals(savingThrowProficiencies, other.savingThrowProficiencies) &&
+          _listEquals(toolProficiencies, other.toolProficiencies) &&
+          _listEquals(languages, other.languages) &&
+          _listEquals(inventory, other.inventory) &&
           purse == other.purse &&
-          listEquals(feats, other.feats) &&
+          _listEquals(feats, other.feats) &&
           resources == other.resources &&
-          listEquals(conditions, other.conditions) &&
+          _listEquals(conditions, other.conditions) &&
           baseSpeed == other.baseSpeed &&
           rulesetId == other.rulesetId &&
-          mapEquals(customProperties, other.customProperties);
+          _mapEquals(customProperties, other.customProperties);
 
   @override
   int get hashCode =>
@@ -1050,7 +850,7 @@ class Character extends DomainEntity {
       name.hashCode ^
       speciesRef.hashCode ^
       (backgroundRef?.hashCode ?? 0) ^
-      progression.hashCode ^
+      (progression?.hashCode ?? 0) ^
       baseScores.hashCode ^
       bonusScores.hashCode ^
       traitProficiencies.length.hashCode ^
@@ -1062,7 +862,7 @@ class Character extends DomainEntity {
       feats.length.hashCode ^
       resources.hashCode ^
       conditions.length.hashCode ^
-      baseSpeed.hashCode ^
+      (baseSpeed?.hashCode ?? 0) ^
       rulesetId.hashCode ^
       customProperties.length.hashCode;
 }

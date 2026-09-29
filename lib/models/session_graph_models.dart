@@ -2,42 +2,154 @@ import 'package:collection/collection.dart';
 import 'package:meta/meta.dart';
 import '../crdt/crdt_or_set.dart';
 import '../crdt/hybrid_logical_clock.dart';
-import 'minion_instance.dart';
-import 'value_objects/hit_points.dart';
 import 'loot_models.dart';
 
-bool listEquals<T>(List<T>? a, List<T>? b) => const ListEquality().equals(a, b);
+bool _listEquals<T>(List<T>? a, List<T>? b) =>
+    const ListEquality().equals(a, b);
+bool _mapEquals<K, V>(Map<K, V>? a, Map<K, V>? b) =>
+    const MapEquality().equals(a, b);
 
-/// Entity Types bindable within a session or room node
-enum SessionRefType {
-  character,
-  monster,
-  npc,
-  lootContainer;
+/// Pure ruleset-agnostic categorical classification of entity links or tokens.
+@immutable
+class EntityCategory {
+  final String key;
+  final String displayName;
 
-  String get displayName => switch (this) {
-        SessionRefType.character => 'Player Character',
-        SessionRefType.monster => 'Monster',
-        SessionRefType.npc => 'NPC',
-        SessionRefType.lootContainer => 'Loot Container',
-      };
+  const EntityCategory(this.key, [String? displayName])
+      : displayName = displayName ?? key;
+
+  static const EntityCategory generic = EntityCategory('generic', 'Generic');
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is EntityCategory && key == other.key) ||
+      (other is Enum && key == other.name) ||
+      (other is String && key == other);
+
+  @override
+  int get hashCode => key.hashCode;
+
+  @override
+  String toString() => key;
 }
 
-/// Contextual pointer linking characters, monsters, or objects to a room or graph node
+/// Generic tabletop entity instance representing any game piece, token, character,
+/// prop, vehicle, meeple, or map element.
+@immutable
+class EntityInstance {
+  final String instanceId;
+  final String? entityDefinitionId;
+  final String? entityType;
+  final String displayName;
+  final Map<String, dynamic>? position;
+  final bool isVisible;
+  final Map<String, dynamic> runtimeData;
+  final Map<String, dynamic> customProperties;
+
+  const EntityInstance({
+    required this.instanceId,
+    this.entityDefinitionId,
+    this.entityType,
+    required this.displayName,
+    this.position,
+    this.isVisible = true,
+    this.runtimeData = const {},
+    this.customProperties = const {},
+  });
+
+  EntityInstance copyWith({
+    String? instanceId,
+    String? entityDefinitionId,
+    String? entityType,
+    String? displayName,
+    Map<String, dynamic>? position,
+    bool? isVisible,
+    Map<String, dynamic>? runtimeData,
+    Map<String, dynamic>? customProperties,
+  }) {
+    return EntityInstance(
+      instanceId: instanceId ?? this.instanceId,
+      entityDefinitionId: entityDefinitionId ?? this.entityDefinitionId,
+      entityType: entityType ?? this.entityType,
+      displayName: displayName ?? this.displayName,
+      position: position ?? this.position,
+      isVisible: isVisible ?? this.isVisible,
+      runtimeData: runtimeData != null
+          ? Map.unmodifiable(runtimeData)
+          : this.runtimeData,
+      customProperties: customProperties != null
+          ? Map.unmodifiable(customProperties)
+          : this.customProperties,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+        'instanceId': instanceId,
+        if (entityDefinitionId != null)
+          'entityDefinitionId': entityDefinitionId,
+        if (entityType != null) 'entityType': entityType,
+        'displayName': displayName,
+        if (position != null) 'position': position,
+        'isVisible': isVisible,
+        if (runtimeData.isNotEmpty) 'runtimeData': runtimeData,
+        if (customProperties.isNotEmpty)
+          'customProperties': customProperties,
+      };
+
+  factory EntityInstance.fromMap(Map<String, dynamic> map) {
+    return EntityInstance(
+      instanceId: map['instanceId']?.toString() ?? '',
+      entityDefinitionId: map['entityDefinitionId']?.toString(),
+      entityType: map['entityType']?.toString(),
+      displayName: map['displayName']?.toString() ?? '',
+      position: map['position'] != null
+          ? Map<String, dynamic>.from(map['position'] as Map)
+          : null,
+      isVisible: map['isVisible'] != false,
+      runtimeData: Map<String, dynamic>.from(map['runtimeData'] as Map? ?? {}),
+      customProperties:
+          Map<String, dynamic>.from(map['customProperties'] as Map? ?? {}),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is EntityInstance &&
+          runtimeType == other.runtimeType &&
+          instanceId == other.instanceId &&
+          entityDefinitionId == other.entityDefinitionId &&
+          entityType == other.entityType &&
+          displayName == other.displayName &&
+          _mapEquals(position, other.position) &&
+          isVisible == other.isVisible &&
+          _mapEquals(runtimeData, other.runtimeData) &&
+          _mapEquals(customProperties, other.customProperties);
+
+  @override
+  int get hashCode => Object.hash(
+        instanceId,
+        entityDefinitionId,
+        entityType,
+        displayName,
+        isVisible,
+      );
+}
+
+/// Contextual pointer linking characters, tokens, objects, or zones to a room or graph node
 @immutable
 class RoomEntityLink {
-  final SessionRefType refType;
+  final dynamic refType;
   final String entityId;
   final String displayName;
   final String? notes;
   final Map<String, dynamic>? position; // e.g. {"x": 2, "y": 5}
-  final bool
-      isIsolatedClone; // If true, runtime modifications don't mutate parent template
-  final Map<String, dynamic>?
-      cloneRuntimeData; // HP, condition overrides for clones
+  final bool isIsolatedClone; // If true, runtime modifications don't mutate parent template
+  final Map<String, dynamic>? cloneRuntimeData;
 
   const RoomEntityLink({
-    required this.refType,
+    this.refType = const EntityCategory('generic', 'Generic'),
     required this.entityId,
     required this.displayName,
     this.notes,
@@ -47,7 +159,7 @@ class RoomEntityLink {
   });
 
   RoomEntityLink copyWith({
-    SessionRefType? refType,
+    dynamic refType,
     String? entityId,
     String? displayName,
     String? notes,
@@ -67,7 +179,9 @@ class RoomEntityLink {
   }
 
   Map<String, dynamic> toMap() => {
-        'refType': refType.name,
+        'refType': refType is Enum
+            ? (refType as Enum).name
+            : (refType is EntityCategory ? (refType as EntityCategory).key : refType.toString()),
         'entityId': entityId,
         'displayName': displayName,
         'notes': notes,
@@ -76,15 +190,15 @@ class RoomEntityLink {
         'cloneRuntimeData': cloneRuntimeData,
       };
 
-  factory RoomEntityLink.fromMap(Map<String, dynamic> map) {
-    final typeStr = map['refType']?.toString() ?? 'character';
-    final refType = SessionRefType.values.firstWhere(
-      (t) => t.name == typeStr,
-      orElse: () => SessionRefType.character,
-    );
+  factory RoomEntityLink.fromMap(Map<String, dynamic> map,
+      {dynamic Function(String)? refTypeResolver}) {
+    final typeStr = map['refType']?.toString() ?? 'generic';
+    final resolvedRefType = refTypeResolver != null
+        ? refTypeResolver(typeStr)
+        : EntityCategory(typeStr, typeStr);
 
     return RoomEntityLink(
-      refType: refType,
+      refType: resolvedRefType,
       entityId: map['entityId']?.toString() ?? '',
       displayName: map['displayName']?.toString() ?? '',
       notes: map['notes']?.toString(),
@@ -97,46 +211,64 @@ class RoomEntityLink {
           : null,
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is RoomEntityLink &&
+          runtimeType == other.runtimeType &&
+          refType == other.refType &&
+          entityId == other.entityId &&
+          displayName == other.displayName &&
+          notes == other.notes &&
+          _mapEquals(position, other.position) &&
+          isIsolatedClone == other.isIsolatedClone &&
+          _mapEquals(cloneRuntimeData, other.cloneRuntimeData);
+
+  @override
+  int get hashCode => Object.hash(
+        refType,
+        entityId,
+        displayName,
+        notes,
+        isIsolatedClone,
+      );
 }
 
-/// Dynamic Combat and Turn-Tracker Participant in an active room encounter
+/// Dynamic Combat and Turn-Tracker Participant in an active room encounter.
+/// Decoupled from mandatory HP, defense, initiative, and death assumptions.
 @immutable
 class EncounterParticipant {
   final String participantId;
   final RoomEntityLink entityLink;
-  final int initiativeScore;
-  final int initiativeTieBreaker;
-  final int currentHp;
-  final int maxHp;
-  final int tempHp;
-  final int defense;
+  final int? initiativeScore;
+  final int? initiativeTieBreaker;
+  final int? currentHp;
+  final int? maxHp;
+  final int? tempHp;
+  final int? defense;
   final List<String> activeConditions;
-  final bool isDefeated;
-  final bool isDead;
+  final bool? isDefeated;
+  final bool? isDead;
   final bool isActiveTurn;
+  final Map<String, dynamic> customProperties;
 
-  HitPoints get hitPoints => HitPoints(
-        currentHp: currentHp,
-        maxHp: maxHp,
-        tempHp: tempHp,
-        isDead: isDead,
-      );
-
-  int get defenseRating => defense;
+  int? get defenseRating => defense;
 
   const EncounterParticipant({
     required this.participantId,
     required this.entityLink,
-    this.initiativeScore = 10,
-    this.initiativeTieBreaker = 0,
-    this.currentHp = 10,
-    this.maxHp = 10,
-    this.tempHp = 0,
-    this.defense = 10,
+    this.initiativeScore,
+    this.initiativeTieBreaker,
+    this.currentHp,
+    this.maxHp,
+    this.tempHp,
+    this.defense,
     this.activeConditions = const [],
-    this.isDefeated = false,
-    this.isDead = false,
+    this.isDefeated,
+    this.isDead,
     this.isActiveTurn = false,
+    this.customProperties = const {},
   });
 
   EncounterParticipant copyWith({
@@ -144,7 +276,7 @@ class EncounterParticipant {
     RoomEntityLink? entityLink,
     int? initiativeScore,
     int? initiativeTieBreaker,
-    HitPoints? hitPoints,
+    dynamic hitPoints,
     int? currentHp,
     int? maxHp,
     int? tempHp,
@@ -153,83 +285,123 @@ class EncounterParticipant {
     bool? isDefeated,
     bool? isDead,
     bool? isActiveTurn,
+    Map<String, dynamic>? customProperties,
   }) {
-    final int resolvedCurrentHp =
-        hitPoints?.currentHp ?? currentHp ?? this.currentHp;
-    final int resolvedMaxHp = hitPoints?.maxHp ?? maxHp ?? this.maxHp;
-    final int resolvedTempHp = hitPoints?.tempHp ?? tempHp ?? this.tempHp;
-    final bool resolvedIsDead = hitPoints?.isDead ?? isDead ?? this.isDead;
+    int? hpCurrent;
+    int? hpMax;
+    int? hpTemp;
+    bool? hpDead;
+    if (hitPoints != null) {
+      try {
+        hpCurrent = (hitPoints as dynamic).currentHp as int?;
+        hpMax = (hitPoints as dynamic).maxHp as int?;
+        hpTemp = (hitPoints as dynamic).tempHp as int?;
+        hpDead = (hitPoints as dynamic).isDead as bool?;
+      } catch (_) {}
+    }
 
     return EncounterParticipant(
       participantId: participantId ?? this.participantId,
       entityLink: entityLink ?? this.entityLink,
       initiativeScore: initiativeScore ?? this.initiativeScore,
       initiativeTieBreaker: initiativeTieBreaker ?? this.initiativeTieBreaker,
-      currentHp: resolvedCurrentHp,
-      maxHp: resolvedMaxHp,
-      tempHp: resolvedTempHp,
+      currentHp: hpCurrent ?? currentHp ?? this.currentHp,
+      maxHp: hpMax ?? maxHp ?? this.maxHp,
+      tempHp: hpTemp ?? tempHp ?? this.tempHp,
       defense: defense ?? this.defense,
       activeConditions: activeConditions ?? this.activeConditions,
       isDefeated: isDefeated ?? this.isDefeated,
-      isDead: resolvedIsDead,
+      isDead: hpDead ?? isDead ?? this.isDead,
       isActiveTurn: isActiveTurn ?? this.isActiveTurn,
+      customProperties: customProperties ?? this.customProperties,
     );
   }
 
   Map<String, dynamic> toMap() => {
         'participantId': participantId,
         'entityLink': entityLink.toMap(),
-        'initiativeScore': initiativeScore,
-        'initiativeTieBreaker': initiativeTieBreaker,
-        'currentHp': currentHp,
-        'maxHp': maxHp,
-        'tempHp': tempHp,
-        'defense': defense,
+        if (initiativeScore != null) 'initiativeScore': initiativeScore,
+        if (initiativeTieBreaker != null)
+          'initiativeTieBreaker': initiativeTieBreaker,
+        if (currentHp != null) 'currentHp': currentHp,
+        if (maxHp != null) 'maxHp': maxHp,
+        if (tempHp != null) 'tempHp': tempHp,
+        if (defense != null) 'defense': defense,
         'activeConditions': activeConditions,
-        'isDefeated': isDefeated,
-        'isDead': isDead,
+        if (isDefeated != null) 'isDefeated': isDefeated,
+        if (isDead != null) 'isDead': isDead,
         'isActiveTurn': isActiveTurn,
+        if (customProperties.isNotEmpty)
+          'customProperties': customProperties,
       };
 
   factory EncounterParticipant.fromMap(Map<String, dynamic> map) {
-    final cur = (map['currentHp'] as num?)?.toInt() ?? 10;
-    final max = (map['maxHp'] as num?)?.toInt() ?? 10;
-    final temp = (map['tempHp'] as num?)?.toInt() ?? 0;
-    final hp = map['hitPoints'] is Map
-        ? HitPoints(
-            currentHp:
-                ((map['hitPoints'] as Map)['currentHp'] as num?)?.toInt() ??
-                    cur,
-            maxHp: ((map['hitPoints'] as Map)['maxHp'] as num?)?.toInt() ?? max,
-            tempHp:
-                ((map['hitPoints'] as Map)['tempHp'] as num?)?.toInt() ?? temp,
-            isDead: (map['hitPoints'] as Map)['isDead'] == true,
-          )
-        : HitPoints(currentHp: cur, maxHp: max, tempHp: temp);
+    int? cur = (map['currentHp'] as num?)?.toInt();
+    int? max = (map['maxHp'] as num?)?.toInt();
+    int? temp = (map['tempHp'] as num?)?.toInt();
+    bool? isDead = map['isDead'] as bool?;
+    if (map['hitPoints'] is Map) {
+      final hpMap = map['hitPoints'] as Map;
+      cur ??= (hpMap['currentHp'] as num?)?.toInt();
+      max ??= (hpMap['maxHp'] as num?)?.toInt();
+      temp ??= (hpMap['tempHp'] as num?)?.toInt();
+      isDead ??= hpMap['isDead'] as bool?;
+    }
 
     return EncounterParticipant(
       participantId: map['participantId']?.toString() ?? '',
       entityLink: RoomEntityLink.fromMap(
           Map<String, dynamic>.from(map['entityLink'] as Map? ?? {})),
-      initiativeScore: (map['initiativeScore'] as num?)?.toInt() ?? 10,
-      initiativeTieBreaker: (map['initiativeTieBreaker'] as num?)?.toInt() ?? 0,
-      currentHp: hp.currentHp,
-      maxHp: hp.maxHp,
-      tempHp: hp.tempHp,
+      initiativeScore: (map['initiativeScore'] as num?)?.toInt(),
+      initiativeTieBreaker: (map['initiativeTieBreaker'] as num?)?.toInt(),
+      currentHp: cur,
+      maxHp: max,
+      tempHp: temp,
       defense: (map['defense'] as num?)?.toInt() ??
           (map['defenseRating'] as num?)?.toInt() ??
-          (map['ac'] as num?)?.toInt() ??
-          10,
+          (map['ac'] as num?)?.toInt(),
       activeConditions:
           (map['activeConditions'] as List? ?? []).whereType<String>().toList(),
-      isDefeated: map['isDefeated'] == true,
-      isDead: map['isDead'] == true || hp.isDead,
+      isDefeated: map['isDefeated'] is bool ? map['isDefeated'] as bool : null,
+      isDead: isDead ?? (map['isDead'] is bool ? map['isDead'] as bool : null),
       isActiveTurn: map['isActiveTurn'] == true,
+      customProperties:
+          Map<String, dynamic>.from(map['customProperties'] as Map? ?? {}),
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is EncounterParticipant &&
+          runtimeType == other.runtimeType &&
+          participantId == other.participantId &&
+          entityLink == other.entityLink &&
+          initiativeScore == other.initiativeScore &&
+          initiativeTieBreaker == other.initiativeTieBreaker &&
+          currentHp == other.currentHp &&
+          maxHp == other.maxHp &&
+          tempHp == other.tempHp &&
+          defense == other.defense &&
+          _listEquals(activeConditions, other.activeConditions) &&
+          isDefeated == other.isDefeated &&
+          isDead == other.isDead &&
+          isActiveTurn == other.isActiveTurn &&
+          _mapEquals(customProperties, other.customProperties);
+
+  @override
+  int get hashCode => Object.hash(
+        participantId,
+        entityLink,
+        initiativeScore,
+        currentHp,
+        maxHp,
+        defense,
+        isActiveTurn,
+      );
 }
 
-/// Root Node Representation of a dynamic Dungeon Room or Session Graph State
+/// Root Node Representation of a dynamic Dungeon Room or Session Graph State.
 @immutable
 class RoomNodeState {
   final String roomId;
@@ -237,14 +409,18 @@ class RoomNodeState {
   final String title;
   final String description;
   final List<RoomEntityLink> entityLinks;
+  final List<EntityInstance> entityInstances;
   final List<LootContainer> containers;
   final CrdtOrSet<EncounterParticipant> activeEncounter;
-  final CrdtOrSet<MinionInstance> activeMinions;
+  final CrdtOrSet<dynamic> activeMinions;
   final Map<String, dynamic> customProperties;
+
+  /// Hook for modules to provide custom deserializer for active minions / summons.
+  static dynamic Function(Map<String, dynamic>)? defaultMinionParser;
 
   List<EncounterParticipant> get activeEncounterList =>
       activeEncounter.activeValues;
-  List<MinionInstance> get activeMinionsList => activeMinions.activeValues;
+  List<dynamic> get activeMinionsList => activeMinions.activeValues;
 
   const RoomNodeState({
     required this.roomId,
@@ -252,9 +428,10 @@ class RoomNodeState {
     required this.title,
     this.description = '',
     this.entityLinks = const [],
+    this.entityInstances = const [],
     this.containers = const [],
     this.activeEncounter = const CrdtOrSet<EncounterParticipant>.empty(),
-    this.activeMinions = const CrdtOrSet<MinionInstance>.empty(),
+    this.activeMinions = const CrdtOrSet<dynamic>.empty(),
     this.customProperties = const {},
   });
 
@@ -264,9 +441,10 @@ class RoomNodeState {
     required String title,
     String description = '',
     List<RoomEntityLink> entityLinks = const [],
+    List<EntityInstance> entityInstances = const [],
     List<LootContainer> containers = const [],
     Iterable<EncounterParticipant>? activeEncounter,
-    Iterable<MinionInstance>? activeMinions,
+    Iterable<dynamic>? activeMinions,
     Map<String, dynamic> customProperties = const {},
   }) {
     final effectiveEncounter = activeEncounter != null
@@ -285,9 +463,9 @@ class RoomNodeState {
         : const CrdtOrSet<EncounterParticipant>.empty();
 
     final effectiveMinions = activeMinions != null
-        ? const CrdtOrSet<MinionInstance>.empty().addBatch(activeMinions.map(
+        ? const CrdtOrSet<dynamic>.empty().addBatch(activeMinions.map(
             (m) => (
-              id: m.id,
+              id: (m != null ? (m as dynamic).id ?? '' : '').toString(),
               item: m,
               timestamp: const HybridLogicalClock(
                 physicalTime: 0,
@@ -296,7 +474,7 @@ class RoomNodeState {
               ),
             ),
           ))
-        : const CrdtOrSet<MinionInstance>.empty();
+        : const CrdtOrSet<dynamic>.empty();
 
     return RoomNodeState(
       roomId: roomId,
@@ -304,6 +482,7 @@ class RoomNodeState {
       title: title,
       description: description,
       entityLinks: entityLinks,
+      entityInstances: entityInstances,
       containers: containers,
       activeEncounter: effectiveEncounter,
       activeMinions: effectiveMinions,
@@ -317,6 +496,7 @@ class RoomNodeState {
     String? title,
     String? description,
     List<RoomEntityLink>? entityLinks,
+    List<EntityInstance>? entityInstances,
     List<LootContainer>? containers,
     dynamic activeEncounter,
     dynamic activeMinions,
@@ -338,15 +518,16 @@ class RoomNodeState {
       resolvedEncounter = set;
     }
 
-    CrdtOrSet<MinionInstance>? resolvedMinions;
-    if (activeMinions is CrdtOrSet<MinionInstance>) {
+    CrdtOrSet<dynamic>? resolvedMinions;
+    if (activeMinions is CrdtOrSet<dynamic>) {
       resolvedMinions = activeMinions;
-    } else if (activeMinions is Iterable<MinionInstance>) {
+    } else if (activeMinions is Iterable<dynamic>) {
       final now = DateTime.now().millisecondsSinceEpoch;
-      var set = const CrdtOrSet<MinionInstance>.empty();
+      var set = const CrdtOrSet<dynamic>.empty();
       for (final m in activeMinions) {
+        final id = (m != null ? (m as dynamic).id ?? '' : '').toString();
         set = set.add(
-            m.id,
+            id,
             m,
             HybridLogicalClock(
                 physicalTime: now, logicalCounter: 0, nodeId: 'local'));
@@ -360,6 +541,7 @@ class RoomNodeState {
       title: title ?? this.title,
       description: description ?? this.description,
       entityLinks: entityLinks ?? this.entityLinks,
+      entityInstances: entityInstances ?? this.entityInstances,
       containers: containers ?? this.containers,
       activeEncounter: resolvedEncounter ?? this.activeEncounter,
       activeMinions: resolvedMinions ?? this.activeMinions,
@@ -373,34 +555,40 @@ class RoomNodeState {
         'title': title,
         'description': description,
         'entityLinks': entityLinks.map((e) => e.toMap()).toList(),
+        if (entityInstances.isNotEmpty)
+          'entityInstances': entityInstances.map((e) => e.toMap()).toList(),
         'containers': containers.map((c) => c.toMap()).toList(),
         'activeEncounter':
             activeEncounter.activeValues.map((e) => e.toMap()).toList(),
         'activeEncounter_crdt': activeEncounter.toMap((e) => e.toMap()),
-        'activeMinions':
-            activeMinions.activeValues.map((m) => m.toMap()).toList(),
-        'activeMinions_crdt': activeMinions.toMap((m) => m.toMap()),
+        'activeMinions': activeMinions.activeValues
+            .map((m) => m is Map ? m : (m as dynamic).toMap())
+            .toList(),
+        'activeMinions_crdt': activeMinions
+            .toMap((m) => m is Map ? m : (m as dynamic).toMap()),
         'customProperties': customProperties,
       };
 
-  factory RoomNodeState.fromMap(Map<String, dynamic> map) {
-    CrdtOrSet<MinionInstance> minionsSet =
-        const CrdtOrSet<MinionInstance>.empty();
+  factory RoomNodeState.fromMap(
+    Map<String, dynamic> map, {
+    dynamic Function(Map<String, dynamic>)? minionParser,
+  }) {
+    final parser = minionParser ?? defaultMinionParser ?? (m) => m;
+
+    CrdtOrSet<dynamic> minionsSet = const CrdtOrSet<dynamic>.empty();
     if (map['activeMinions_crdt'] is Map) {
       try {
-        minionsSet = CrdtOrSet<MinionInstance>.fromMap(
+        minionsSet = CrdtOrSet<dynamic>.fromMap(
           Map<dynamic, dynamic>.from(map['activeMinions_crdt'] as Map),
-          (raw) =>
-              MinionInstance.fromMap(Map<String, dynamic>.from(raw as Map)),
+          (raw) => parser(Map<String, dynamic>.from(raw as Map)),
         );
       } catch (_) {}
     } else if (map['activeMinions'] is Map &&
         (map['activeMinions'] as Map).containsKey('items')) {
       try {
-        minionsSet = CrdtOrSet<MinionInstance>.fromMap(
+        minionsSet = CrdtOrSet<dynamic>.fromMap(
           Map<dynamic, dynamic>.from(map['activeMinions'] as Map),
-          (raw) =>
-              MinionInstance.fromMap(Map<String, dynamic>.from(raw as Map)),
+          (raw) => parser(Map<String, dynamic>.from(raw as Map)),
         );
       } catch (_) {}
     } else if (map['activeMinions'] is List) {
@@ -409,9 +597,10 @@ class RoomNodeState {
       for (final raw in rawMinions) {
         if (raw is Map) {
           try {
-            final m = MinionInstance.fromMap(Map<String, dynamic>.from(raw));
+            final m = parser(Map<String, dynamic>.from(raw));
+            final id = (raw['id'] ?? (m != null ? (m as dynamic).id : '')).toString();
             minionsSet = minionsSet.add(
-                m.id,
+                id,
                 m,
                 HybridLogicalClock(
                     physicalTime: now, logicalCounter: 0, nodeId: 'genesis'));
@@ -457,15 +646,26 @@ class RoomNodeState {
       }
     }
 
+    final entityInstances = <EntityInstance>[];
+    if (map['entityInstances'] is List) {
+      for (final raw in (map['entityInstances'] as List)) {
+        if (raw is Map) {
+          entityInstances.add(
+              EntityInstance.fromMap(Map<String, dynamic>.from(raw)));
+        }
+      }
+    }
+
     return RoomNodeState(
       roomId: map['roomId']?.toString() ?? '',
       roomCode: map['roomCode']?.toString() ?? '',
-      title: map['title']?.toString() ?? 'Room',
+      title: map['title']?.toString() ?? '',
       description: map['description']?.toString() ?? '',
       entityLinks: (map['entityLinks'] as List? ?? [])
           .whereType<Map>()
-          .map((e) => RoomEntityLink.fromMap(Map<String, dynamic>.from(e)))
+          .map((l) => RoomEntityLink.fromMap(Map<String, dynamic>.from(l)))
           .toList(),
+      entityInstances: entityInstances,
       containers: (map['containers'] as List? ?? [])
           .whereType<Map>()
           .map((c) => LootContainer.fromMap(Map<String, dynamic>.from(c)))
@@ -486,10 +686,12 @@ class RoomNodeState {
           roomCode == other.roomCode &&
           title == other.title &&
           description == other.description &&
-          listEquals(entityLinks, other.entityLinks) &&
-          listEquals(containers, other.containers) &&
+          _listEquals(entityLinks, other.entityLinks) &&
+          _listEquals(entityInstances, other.entityInstances) &&
+          _listEquals(containers, other.containers) &&
           activeEncounter == other.activeEncounter &&
-          activeMinions == other.activeMinions;
+          activeMinions == other.activeMinions &&
+          _mapEquals(customProperties, other.customProperties);
 
   @override
   int get hashCode => Object.hash(

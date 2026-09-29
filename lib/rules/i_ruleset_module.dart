@@ -26,13 +26,24 @@ abstract interface class IRulesetModule {
   ICurrencySystem get currencySystem;
 
   /// Optional factory / mechanic for resolving exhaustion rules (null if ruleset has no exhaustion).
-  IExhaustionMechanic? get exhaustionMechanic => null;
+  IExhaustionMechanic? get exhaustionMechanic =>
+      getCapability<IExhaustionMechanic>();
 
   /// Optional factory / mechanic for resolving rests (null if ruleset has no rest recovery system).
-  IRestMechanic? get restMechanic => null;
+  IRestMechanic? get restMechanic => getCapability<IRestMechanic>();
 
   /// Optional factory / mechanic for resolving action economy costs and budgets.
-  IActionEconomy? get actionEconomy => null;
+  IActionEconomy? get actionEconomy => getCapability<IActionEconomy>();
+
+  /// Retrieves an optional mechanical capability supported by this ruleset.
+  T? getCapability<T extends IRulesetCapability>() {
+    if (this is T) return this as T;
+    return null;
+  }
+
+  /// Whether this ruleset provides the specified mechanical capability.
+  bool hasCapability<T extends IRulesetCapability>() =>
+      getCapability<T>() != null;
 
   /// Factory / mechanic for resolving attacks, damage, and vitals modifications.
   ICombatResolver get combatResolver;
@@ -52,8 +63,11 @@ abstract interface class IRulesetModule {
   });
 }
 
-/// Abstract Exhaustion Mechanics resolver.
-abstract interface class IExhaustionMechanic {
+/// Marker interface for optional ruleset capabilities and mechanical sub-frameworks.
+abstract interface class IRulesetCapability {}
+
+/// Abstract Exhaustion Mechanics resolver capability.
+abstract interface class IExhaustionMechanic implements IRulesetCapability {
   /// Maximum number of exhaustion tiers permitted before fatality.
   int get maxExhaustionTiers;
 
@@ -70,8 +84,8 @@ abstract interface class IExhaustionMechanic {
   String describeTierEffects(int tier);
 }
 
-/// Abstract Resting Mechanics resolver.
-abstract interface class IRestMechanic {
+/// Abstract Resting Mechanics resolver capability.
+abstract interface class IRestMechanic implements IRulesetCapability {
   /// Resolves rest of the specified rest type or duration (e.g. 'brief', 'extended', 'full').
   RestResult resolveRest({
     required String restType,
@@ -80,8 +94,8 @@ abstract interface class IRestMechanic {
   });
 }
 
-/// Abstract Action Economy resolver.
-abstract interface class IActionEconomy {
+/// Abstract Action Economy resolver capability.
+abstract interface class IActionEconomy implements IRulesetCapability {
   /// Resolves the action economy cost for consuming a consumable.
   ActionCost getConsumableUsageCost(String consumableType);
 

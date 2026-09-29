@@ -1,6 +1,5 @@
 import 'dart:math';
 import 'package:meta/meta.dart';
-import '../models/condition.dart';
 
 /// Pure domain Abstract Syntax Tree (AST) representing an effect rider attached
 /// to a precomputed combat action.
@@ -12,10 +11,10 @@ sealed class CombatEffectRider {
   const CombatEffectRider();
 }
 
-/// Applies an [ArenaCondition] to the target, optionally contingent upon a saving throw.
+/// Applies a condition or status effect to the target, optionally contingent upon a saving throw.
 @immutable
 class ConditionRider extends CombatEffectRider {
-  final ArenaCondition condition;
+  final dynamic condition;
   final bool requiresSave;
   final int? saveDc;
   final String? saveAttributeKey;
