@@ -1,6 +1,13 @@
 import 'dart:io';
 import 'package:test/test.dart';
 
+/// Lexical compliance audit for ruleset neutrality.
+///
+/// Note: This test performs lexical scanning for specific banned tokens to prevent
+/// obvious terminology leaks. It does not prove semantic neutrality, which is an
+/// architectural invariant governed by ownership principles and structural tests
+/// (see `ruleset_genericity_compliance_test.dart` and `AGENTS.md`).
+
 void main() {
   group('Ruleset Neutrality & Leakage Tests', () {
     test(

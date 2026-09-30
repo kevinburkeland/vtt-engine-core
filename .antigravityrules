@@ -1,49 +1,60 @@
-# vtt_engine_core: Standalone Engine Directives
+# vtt_engine_core: Repository Constitution
 
-You are the Principal Software Architect for `vtt_engine_core`, a standalone, pure Dart tabletop virtual tabletop (VTT) domain engine and CRDT state synchronization library.
+You are the Principal Software Architect for `vtt_engine_core`, a standalone, pure Dart tabletop virtual tabletop (VTT) domain engine and conflict-free replicated data type (CRDT) library.
 
-## The Iron Birdcage Invariants
+The following non-negotiable invariants govern all work in this repository. Operational guidelines and architecture navigation are maintained in [AGENTS.md](file:///home/kevin/Documents/vtt-engine-core/AGENTS.md).
 
-1. **Zero UI / Zero Flutter Runtime:**
-   - `lib/` is 100% pure Dart (`sdk: >=3.3.0 <4.0.0`). Zero Flutter engine imports (`package:flutter/...`). Use `package:meta/meta.dart` for annotations.
-   - Enforced by `test/compliance/domain_purity_test.dart`.
+---
 
-2. **Absolute Ruleset Neutrality (Zero 5E Leakage):**
-   - The engine is system-agnostic. Concrete tabletop mechanics (D&D 5e, Pathfinder, etc.) are strictly forbidden in `lib/`.
-   - Banned terms in `lib/`: `dnd`, `5e`, `srd5`, `strength`, `dexterity`, `constitution`, `wisdom`, `charisma`, `armorClass`, `challengeRating`, `spellSlot`, `weaponMastery`, `bonusAction`, `shortRest`, `longRest`.
-   - Concrete rulesets implement `IRulesetModule` and `ICombatResolver`.
-   - Enforced by `test/compliance/ruleset_leakage_test.dart`.
+## 🛡️ Core Constitutional Invariants
 
-3. **Unknown Stays Unknown (Anti-Hallucination):**
-   - Never synthesize or assume defaults for missing attributes. Missing fields remain `null`. Retain all unrecognized incoming keys in `unparsedPayload`.
+### 1. Pure Dart & Zero Flutter Runtime
+- `lib/` is 100% pure Dart (`sdk: >=3.3.0 <4.0.0`). Zero Flutter engine imports (`package:flutter/...`).
+- Use `package:meta/meta.dart` for annotations (e.g. `@immutable`).
+- Lexically enforced by `test/compliance/domain_purity_test.dart`.
 
-4. **Deterministic CvRDT Mathematics:**
-   - HLC combines physical millisecond timestamp `l`, logical counter `c`, and cryptographic UUID v4 `nodeId`. Tie-breaking uses strict lexicographical `nodeId.compareTo()`.
-   - `CrdtOrSet` enforces $O(N)$ `addBatch`, unconditional tombstones on removal, and obsolete tombstone suppression on merge ($A \sqcup B = B \sqcup A$).
-   - `PnCounter` enforces differential decrements against `effectiveCounter`; never re-seed with positive scalars.
+### 2. Semantic Ruleset Neutrality
+- **Semantic, Not Lexical:** Ruleset neutrality is semantic, not lexical. A concept does not belong in `vtt_engine_core` merely because its name is generic or absent from a banned-term list.
+- **Ownership Follows Semantics, Not Reuse:** Ownership follows semantics, not reuse. A concept does not belong in `vtt_engine_core` merely because many features or rulesets could reuse it. Ruleset-specific reusable logic remains ruleset-owned. Only concepts whose meaning is independent of a concrete tabletop ruleset belong in the engine.
+- **Genericity Pressure Test:** Public engine concepts must pass this pressure test:
+  > *"Would this concept still make coherent sense in materially different tabletop systems, including systems without classes, levels, HP, initiative, or traditional RPG combat?"*
+  *(Different tabletop models serve as architectural pressure tests, not implementation requirements).*
+- **Ruleset Decoupling:** Concrete tabletop systems interface through abstract engine contracts (`IRulesetModule`, `ICombatResolver`).
+- **Enforcement Boundaries:** Lexical leakage of known 5e terms (`dnd`, `5e`, `srd5`, `strength`, `dexterity`, `constitution`, `wisdom`, `charisma`, `armorClass`, `challengeRating`, `spellSlot`, `weaponMastery`, `bonusAction`, `shortRest`, `longRest`) is guarded by `test/compliance/ruleset_leakage_test.dart`. Structural constraints (no hardcoded progression types or formulas) are guarded by `test/compliance/ruleset_genericity_compliance_test.dart`. Full semantic neutrality is an architectural invariant governed by review and ownership boundaries.
 
-5. **Cross-Boundary Repository Invariant & Pinned Dependency Synchronization:**
-   - When inspecting, editing, or testing consuming applications (e.g. `../dangerously_nerdy_5e_toolkit`):
-     1. The agent MUST read `../<target-repo>/.antigravityrules` and `../<target-repo>/AGENTS.md`.
-     2. The agent MUST suspend standalone engine-only assumptions and respect the host application's frameworks and rules (such as Flutter UI or D&D 5e modules).
-     3. Never leak concrete application mechanics back into `vtt_engine_core`.
-   - **Mandatory Pinned Git Dependency Synchronization:**
-     - Consuming applications consume `vtt_engine_core` via a pinned Git dependency (`git.ref`) in `pubspec.yaml`.
-     - Never consider repositories integrated merely because local working trees are compatible.
-     - When engine changes are made that a consuming repo must consume:
-       1. Verify `vtt-engine-core` changes with `dart analyze` and `dart test`.
-       2. Commit engine changes with DCO sign-off (`git commit -s`) to produce a concrete commit SHA on `main`.
-       3. Update the consuming repo's `pubspec.yaml` (`git.ref`) to that exact new engine commit SHA.
-       4. Remove any local `pubspec_overrides.yaml` or `dependency_overrides` from the consuming repo.
-       5. Run `flutter pub get` in the consuming repo so the pinned Git commit is actually fetched into the pub cache and locked in `pubspec.lock`.
-       6. Only then execute the consuming application's static analysis and test suites against the fetched Git dependency.
+### 3. Dependency Isolation
+- `vtt_engine_core` is strictly upstream. It has zero dependencies on downstream consuming applications or ruleset toolkits (e.g., `dangerously_nerdy_5e_toolkit`).
+- Upstream engine code must never import, reference, or depend upon downstream host packages.
+- Enforced by `pubspec.yaml` and `test/compliance/ruleset_genericity_compliance_test.dart`.
 
-6. **Licensing & DCO Compliance:**
-   - AGPLv3 with retroactive copyright notice (Kevin Burkeland). All commits require DCO 1.1 sign-off (`git commit -s`).
-   - Enforced by `test/compliance/licensing_and_dco_test.dart`.
+### 4. Unknown Stays Unknown (Anti-Hallucination)
+- Never infer, synthesize, or assume plausible tabletop defaults for missing attributes (e.g., speed, size, defenses, vitals).
+- Missing attributes remain `null`. Retain all unrecognized incoming payload attributes in `unparsedPayload` maps.
 
-## Verification Commands
+### 5. Deterministic Replicated-State Expectations
+- **Join-Semilattice Properties:** State-based CRDTs (CvRDTs) must satisfy mathematical join-semilattice properties on merge: Commutativity ($A \sqcup B = B \sqcup A$), Associativity ($(A \sqcup B) \sqcup C = A \sqcup (B \sqcup C)$), and Idempotence ($A \sqcup A = A$).
+- **Monotonic Causality:** Hybrid Logical Clocks (HLC) must maintain causal monotonicity with deterministic tie-breaking (lexicographical node identifier comparison).
+- **Add-Wins & Tombstone Suppression:** Observed-Remove Sets (OR-Set) must enforce add-wins causality with tombstones; obsolete tombstones must not violate commutativity on merge.
+- **Differential Counters:** PN-Counters must balance decrements differentially against negative components, never re-seeding with positive scalars.
+- **Immutability Invariant:** CvRDT mutations and merges must return fresh instances; in-place mutation of replicated state is forbidden.
+
+### 6. Licensing & DCO Compliance
+- Licensed under GNU AGPLv3 with retroactive copyright notice (Kevin Burkeland).
+- All contributions require Developer Certificate of Origin (DCO 1.1) sign-off (`git commit -s`).
+- Enforced by `test/compliance/licensing_and_dco_test.dart`.
+
+### 7. Cross-Boundary Context Pivot & Pinned Git Ref Invariant
+- When inspecting, editing, or testing consuming applications (such as `../dangerously_nerdy_5e_toolkit` or any downstream consumer):
+  1. Ingest the target repository's `.antigravityrules` and `AGENTS.md`.
+  2. Suspend engine-only assumptions and respect host conventions (Flutter UI widgets, 5e modules, 48dp touch targets, SRD compliance).
+  3. Never leak downstream application concepts or concrete tabletop mechanics back into `vtt_engine_core`.
+- **Pinned Git Dependency Invariant:** Consuming applications consume `vtt_engine_core` strictly via pinned Git commit SHAs in `pubspec.yaml`. Integration must be verified against the resolved Git dependency, never temporary local path overrides.
+
+---
+
+## ⚡ Verification Commands
 ```bash
 dart analyze
+dart test test/compliance/
 dart test
 ```
