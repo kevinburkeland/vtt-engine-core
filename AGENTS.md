@@ -93,7 +93,7 @@ Before proposing or placing any public abstraction in `vtt_engine_core`, apply t
 - **Replicated State Primitives:** Put in `lib/crdt/`. Must satisfy CvRDT semilattice properties.
 - **I/O, Networking, or Persistence Contracts:** Put in `lib/ports/` or `lib/storage/ports/`. Must be pure Dart abstract contracts.
 - **Ruleset Extension Contracts:** Put in `lib/rules/`. Provide abstract SPI hooks (`IRulesetModule`, `ICombatResolver`) for external modules to implement.
-- **Ruleset-Specific Mechanics:** Put in the consuming application / ruleset module (e.g., `dangerously_nerdy_5e_toolkit/lib/infrastructure/modules/dnd5e/`), NEVER in `vtt_engine_core`.
+- **Ruleset-Specific Mechanics:** Put in the dedicated ruleset package (e.g., `vtt-ruleset-dnd5e`), NEVER in `vtt_engine_core`. Concrete D&D 5e mechanics belong in `../vtt-ruleset-dnd5e`.
 
 ---
 

@@ -23,7 +23,8 @@ The following non-negotiable invariants govern all work in this repository. Oper
 - **Enforcement Boundaries:** Lexical leakage of known 5e terms (`dnd`, `5e`, `srd5`, `strength`, `dexterity`, `constitution`, `wisdom`, `charisma`, `armorClass`, `challengeRating`, `spellSlot`, `weaponMastery`, `bonusAction`, `shortRest`, `longRest`) is guarded by `test/compliance/ruleset_leakage_test.dart`. Structural constraints (no hardcoded progression types or formulas) are guarded by `test/compliance/ruleset_genericity_compliance_test.dart`. Full semantic neutrality is an architectural invariant governed by review and ownership boundaries.
 
 ### 3. Dependency Isolation
-- `vtt_engine_core` is strictly upstream. It has zero dependencies on downstream consuming applications or ruleset toolkits (e.g., `dangerously_nerdy_5e_toolkit`).
+- `vtt_engine_core` is strictly upstream. It has zero dependencies on downstream consuming applications or ruleset packages (e.g., `vtt-ruleset-dnd5e`, `dangerously_nerdy_5e_toolkit`).
+- Concrete D&D 5e mechanics belong in `../vtt-ruleset-dnd5e`.
 - Upstream engine code must never import, reference, or depend upon downstream host packages.
 - Enforced by `pubspec.yaml` and `test/compliance/ruleset_genericity_compliance_test.dart`.
 
