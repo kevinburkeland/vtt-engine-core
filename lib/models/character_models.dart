@@ -126,17 +126,7 @@ class InventoryItemInstance {
   final dynamic equippedSlot;
   final Map<String, dynamic> customProperties;
 
-  InventoryItemInstance({
-    required this.itemRef,
-    required this.instanceId,
-    this.quantity = 1,
-    this.isEquipped = false,
-    this.equippedSlot,
-    Map<String, dynamic> customProperties = const {},
-  }) : customProperties =
-            Map.unmodifiable(Map<String, dynamic>.from(customProperties));
-
-  const InventoryItemInstance.raw({
+  const InventoryItemInstance({
     required this.itemRef,
     required this.instanceId,
     this.quantity = 1,
