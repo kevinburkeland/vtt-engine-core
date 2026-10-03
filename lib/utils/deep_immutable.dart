@@ -3,8 +3,10 @@
 ///
 /// Recursively handles:
 /// - [Map]: returns an unmodifiable Map with recursively deep-frozen entries.
-/// - [List]: returns an unmodifiable List with recursively deep-frozen elements.
-/// - [Set]: returns an unmodifiable Set with recursively deep-frozen elements.
+/// - [List]: returns an unmodifiable List with recursively deep-frozen elements,
+///   preserving common element types (e.g. List<String>) when possible.
+/// - [Set]: returns an unmodifiable Set with recursively deep-frozen elements,
+///   preserving common element types (e.g. Set<String>) when possible.
 ///
 /// Leaves (primitives, strings, numbers, booleans, enums, null, and immutable value objects)
 /// are returned as-is.
@@ -39,23 +41,56 @@ Map<String, dynamic> deepFreezeMap(Map<dynamic, dynamic>? map) {
 }
 
 /// Recursively defensively copies an iterable/list and its nested collections,
-/// returning an unmodifiable [List<dynamic>].
+/// returning an unmodifiable [List<dynamic>] (or typed [List<T>] when homogeneous).
 List<dynamic> deepFreezeList(Iterable<dynamic>? list) {
-  if (list == null || list.isEmpty) return const <dynamic>[];
+  if (list == null || list.isEmpty) {
+    if (list is List<String>) return const <String>[];
+    return const <dynamic>[];
+  }
   final copy = <dynamic>[];
   for (final item in list) {
     copy.add(deepFreezeValue(item));
+  }
+  if (list is List<String> || copy.every((e) => e is String)) {
+    return List<String>.unmodifiable(copy.cast<String>());
+  }
+  if (list is List<int> || copy.every((e) => e is int)) {
+    return List<int>.unmodifiable(copy.cast<int>());
+  }
+  if (list is List<double> || copy.every((e) => e is double)) {
+    return List<double>.unmodifiable(copy.cast<double>());
+  }
+  if (list is List<num> || copy.every((e) => e is num)) {
+    return List<num>.unmodifiable(copy.cast<num>());
+  }
+  if (list is List<bool> || copy.every((e) => e is bool)) {
+    return List<bool>.unmodifiable(copy.cast<bool>());
   }
   return List<dynamic>.unmodifiable(copy);
 }
 
 /// Recursively defensively copies an iterable/set and its nested collections,
-/// returning an unmodifiable [Set<dynamic>].
+/// returning an unmodifiable [Set<dynamic>] (or typed [Set<T>] when homogeneous).
 Set<dynamic> deepFreezeSet(Iterable<dynamic>? set) {
-  if (set == null || set.isEmpty) return const <dynamic>{};
+  if (set == null || set.isEmpty) {
+    if (set is Set<String>) return const <String>{};
+    return const <dynamic>{};
+  }
   final copy = <dynamic>{};
   for (final item in set) {
     copy.add(deepFreezeValue(item));
+  }
+  if (set is Set<String> || copy.every((e) => e is String)) {
+    return Set<String>.unmodifiable(copy.cast<String>());
+  }
+  if (set is Set<int> || copy.every((e) => e is int)) {
+    return Set<int>.unmodifiable(copy.cast<int>());
+  }
+  if (set is Set<num> || copy.every((e) => e is num)) {
+    return Set<num>.unmodifiable(copy.cast<num>());
+  }
+  if (set is Set<bool> || copy.every((e) => e is bool)) {
+    return Set<bool>.unmodifiable(copy.cast<bool>());
   }
   return Set<dynamic>.unmodifiable(copy);
 }
