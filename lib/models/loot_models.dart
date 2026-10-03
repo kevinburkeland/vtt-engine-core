@@ -1,3 +1,4 @@
+import '../utils/deep_immutable.dart';
 import 'package:meta/meta.dart';
 import 'character_models.dart';
 import 'party_purse.dart';
@@ -42,11 +43,9 @@ class LootContainer {
     this.purse = const PartyPurse.empty(),
     Map<String, dynamic> permissions = const {},
     Map<String, dynamic> customProperties = const {},
-  })  : items = List.unmodifiable(items),
-        permissions =
-            Map.unmodifiable(Map<String, dynamic>.from(permissions)),
-        customProperties =
-            Map.unmodifiable(Map<String, dynamic>.from(customProperties));
+  })  : items = List<InventoryItemInstance>.unmodifiable(items),
+        permissions = deepFreezeMap(permissions),
+        customProperties = deepFreezeMap(customProperties);
 
   const LootContainer.empty()
       : containerId = '',

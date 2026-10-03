@@ -1,3 +1,4 @@
+import '../utils/deep_immutable.dart';
 import 'package:collection/collection.dart';
 import 'package:meta/meta.dart';
 import '../crdt/crdt_or_set.dart';
@@ -56,12 +57,9 @@ class EntityInstance {
     this.isVisible = true,
     Map<String, dynamic> runtimeData = const {},
     Map<String, dynamic> customProperties = const {},
-  })  : position = position != null
-            ? Map.unmodifiable(Map<String, dynamic>.from(position))
-            : null,
-        runtimeData = Map.unmodifiable(Map<String, dynamic>.from(runtimeData)),
-        customProperties =
-            Map.unmodifiable(Map<String, dynamic>.from(customProperties));
+  })  : position = position != null ? deepFreezeMap(position) : null,
+        runtimeData = deepFreezeMap(runtimeData),
+        customProperties = deepFreezeMap(customProperties);
 
   const EntityInstance.empty()
       : instanceId = '',
@@ -171,12 +169,9 @@ class RoomEntityLink {
     Map<String, dynamic>? position,
     this.isIsolatedClone = false,
     Map<String, dynamic>? cloneRuntimeData,
-  })  : position = position != null
-            ? Map.unmodifiable(Map<String, dynamic>.from(position))
-            : null,
-        cloneRuntimeData = cloneRuntimeData != null
-            ? Map.unmodifiable(Map<String, dynamic>.from(cloneRuntimeData))
-            : null;
+  })  : position = position != null ? deepFreezeMap(position) : null,
+        cloneRuntimeData =
+            cloneRuntimeData != null ? deepFreezeMap(cloneRuntimeData) : null;
 
   const RoomEntityLink.empty()
       : refType = const EntityCategory('generic', 'Generic'),
@@ -299,8 +294,7 @@ class EncounterParticipant {
     this.isActiveTurn = false,
     Map<String, dynamic> customProperties = const {},
   })  : activeConditions = List.unmodifiable(activeConditions),
-        customProperties =
-            Map.unmodifiable(Map<String, dynamic>.from(customProperties));
+        customProperties = deepFreezeMap(customProperties);
 
   const EncounterParticipant.empty()
       : participantId = '',
@@ -482,8 +476,7 @@ class RoomNodeState {
   })  : entityLinks = List.unmodifiable(entityLinks),
         entityInstances = List.unmodifiable(entityInstances),
         containers = List.unmodifiable(containers),
-        customProperties =
-            Map.unmodifiable(Map<String, dynamic>.from(customProperties));
+        customProperties = deepFreezeMap(customProperties);
 
   const RoomNodeState.empty()
       : roomId = '',

@@ -1,3 +1,6 @@
+import 'package:vtt_engine_core/models/core_types.dart';
+import 'package:vtt_engine_core/models/entity_reference.dart';
+import 'package:vtt_engine_core/models/character_models.dart';
 import 'package:test/test.dart';
 import 'package:vtt_engine_core/crdt/pn_counter.dart';
 import 'package:vtt_engine_core/crdt/crdt_or_set.dart';
@@ -8,7 +11,6 @@ import 'package:vtt_engine_core/models/campaign_profile.dart';
 import 'package:vtt_engine_core/models/session_graph_models.dart';
 import 'package:vtt_engine_core/models/loot_models.dart';
 import 'package:vtt_engine_core/homebrew/models/homebrew_entity.dart';
-import 'package:vtt_engine_core/homebrew/value_objects/ruleset_version.dart';
 
 void main() {
   const clock = HybridLogicalClock(
@@ -319,6 +321,169 @@ void main() {
 
         expect(set.items['r1']!.value.entityLinks.length, 1);
         expect(set.items['r1']!.value.entityLinks.first.displayName, 'Altar');
+      });
+    });
+
+    group('9. Deep Immutability & Nested Alias Safety (Pass 2.1)', () {
+      test('InventoryItemInstance.customProperties cannot be mutated through external alias', () {
+        final props = <String, dynamic>{
+          'charges': 3,
+        };
+        final item = InventoryItemInstance(
+          itemRef: const EntityReference(
+            slug: 'wand-1',
+            refType: EntityType.item,
+            displayName: 'Wand of Wonder',
+          ),
+          instanceId: 'wand-inst-1',
+          customProperties: props,
+        );
+
+        props['charges'] = 0;
+        expect(item.customProperties['charges'], 3);
+        expect(() => item.customProperties['charges'] = 0, throwsUnsupportedError);
+      });
+
+      test('Nested Map in dynamic metadata is recursively defensive-copied and unmodifiable', () {
+        final source = <String, dynamic>{
+          'stats': <String, dynamic>{
+            'hp': 10,
+          }
+        };
+
+        final item = InventoryItemInstance(
+          itemRef: const EntityReference(
+            slug: 'amulet',
+            refType: EntityType.item,
+            displayName: 'Amulet',
+          ),
+          instanceId: 'am-1',
+          customProperties: source,
+        );
+
+        (source['stats'] as Map<String, dynamic>)['hp'] = 999;
+        expect((item.customProperties['stats'] as Map)['hp'], 10);
+        expect(
+          () => (item.customProperties['stats'] as Map)['hp'] = 999,
+          throwsUnsupportedError,
+        );
+      });
+
+      test('Nested List in dynamic metadata is recursively defensive-copied and unmodifiable', () {
+        final source = <String, dynamic>{
+          'inventory': <dynamic>[
+            {'name': 'Sword'}
+          ]
+        };
+
+        final item = InventoryItemInstance(
+          itemRef: const EntityReference(
+            slug: 'bag',
+            refType: EntityType.item,
+            displayName: 'Bag of Holding',
+          ),
+          instanceId: 'bag-1',
+          customProperties: source,
+        );
+
+        (source['inventory'] as List).clear();
+        expect((item.customProperties['inventory'] as List).length, 1);
+        expect(
+          ((item.customProperties['inventory'] as List).first as Map)['name'],
+          'Sword',
+        );
+
+        expect(
+          () => (item.customProperties['inventory'] as List).clear(),
+          throwsUnsupportedError,
+        );
+        expect(
+          () => ((item.customProperties['inventory'] as List).first as Map)['name'] = 'Dagger',
+          throwsUnsupportedError,
+        );
+      });
+
+      test('copyWith preserves deep defensive copy invariant for nested metadata', () {
+        final original = InventoryItemInstance(
+          itemRef: const EntityReference(
+            slug: 'ring',
+            refType: EntityType.item,
+            displayName: 'Ring',
+          ),
+          instanceId: 'ring-1',
+        );
+
+        final nested = <String, dynamic>{
+          'stats': <String, dynamic>{
+            'hp': 10,
+          }
+        };
+
+        final updated = original.copyWith(customProperties: nested);
+        (nested['stats'] as Map<String, dynamic>)['hp'] = 999;
+
+        expect((updated.customProperties['stats'] as Map)['hp'], 10);
+        expect(
+          () => (updated.customProperties['stats'] as Map)['hp'] = 999,
+          throwsUnsupportedError,
+        );
+      });
+
+      test('End-to-end CRDT aliasing chain: deep nested mutations cannot alter CRDT-stamped state', () {
+        final props = <String, dynamic>{
+          'magic': <String, dynamic>{
+            'charges': <dynamic>[1, 2, 3],
+          }
+        };
+
+        final item = InventoryItemInstance(
+          itemRef: const EntityReference(
+            slug: 'wand_of_magic_missiles',
+            refType: EntityType.item,
+            displayName: 'Wand of Magic Missiles',
+          ),
+          instanceId: 'wand-1',
+          customProperties: props,
+        );
+
+        final container = LootContainer(
+          containerId: 'chest-1',
+          name: 'Treasure Chest',
+          items: [item],
+        );
+
+        final room = RoomNodeState(
+          roomId: 'room-1',
+          roomCode: 'ABCD',
+          title: 'Dungeon Room',
+          containers: [container],
+        );
+
+        final set = const CrdtOrSet<RoomNodeState>.empty().add(
+          'room-1',
+          room,
+          clock,
+        );
+
+        // Mutate original deeply nested collection
+        ((props['magic'] as Map)['charges'] as List).clear();
+        (props['magic'] as Map)['overcharged'] = true;
+
+        // Verify CRDT-stamped state remains unpolluted and intact
+        final stampedRoom = set.items['room-1']!.value;
+        final stampedItem = stampedRoom.containers.first.items.first;
+        final magicMap = stampedItem.customProperties['magic'] as Map;
+
+        expect(magicMap['charges'], [1, 2, 3]);
+        expect(magicMap.containsKey('overcharged'), isFalse);
+        expect(
+          () => (magicMap['charges'] as List).add(4),
+          throwsUnsupportedError,
+        );
+        expect(
+          () => magicMap['overcharged'] = true,
+          throwsUnsupportedError,
+        );
       });
     });
   });

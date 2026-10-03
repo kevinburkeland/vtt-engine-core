@@ -1,3 +1,4 @@
+import '../../utils/deep_immutable.dart';
 import 'package:meta/meta.dart';
 import '../value_objects/ruleset_version.dart';
 
@@ -22,12 +23,9 @@ class HomebrewEntity {
     Map<String, dynamic> rawPayload = const {},
     Map<String, dynamic> normalizedData = const {},
     Map<String, dynamic> unparsedPayload = const {},
-  })  : rawPayload =
-            Map.unmodifiable(Map<String, dynamic>.from(rawPayload)),
-        normalizedData =
-            Map.unmodifiable(Map<String, dynamic>.from(normalizedData)),
-        unparsedPayload =
-            Map.unmodifiable(Map<String, dynamic>.from(unparsedPayload));
+  })  : rawPayload = deepFreezeMap(rawPayload),
+        normalizedData = deepFreezeMap(normalizedData),
+        unparsedPayload = deepFreezeMap(unparsedPayload);
 
   const HomebrewEntity.empty()
       : id = '',

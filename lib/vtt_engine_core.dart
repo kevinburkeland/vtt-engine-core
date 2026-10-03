@@ -61,3 +61,6 @@ export 'storage/models/storage_telemetry_report.dart';
 export 'storage/ports/i_campaign_snapshot_serializer_port.dart';
 export 'storage/ports/i_physical_snapshot_port.dart';
 export 'storage/ports/i_storage_durability_port.dart';
+
+// Utilities
+export 'utils/deep_immutable.dart';

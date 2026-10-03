@@ -1,3 +1,4 @@
+import '../utils/deep_immutable.dart';
 import 'dart:collection';
 import 'dart:math' as math;
 import 'package:collection/collection.dart';
@@ -126,14 +127,22 @@ class InventoryItemInstance {
   final dynamic equippedSlot;
   final Map<String, dynamic> customProperties;
 
-  const InventoryItemInstance({
+  InventoryItemInstance({
     required this.itemRef,
     required this.instanceId,
     this.quantity = 1,
     this.isEquipped = false,
     this.equippedSlot,
-    this.customProperties = const {},
-  });
+    Map<String, dynamic> customProperties = const {},
+  }) : customProperties = deepFreezeMap(customProperties);
+
+  const InventoryItemInstance.constant({
+    required this.itemRef,
+    required this.instanceId,
+    this.quantity = 1,
+    this.isEquipped = false,
+    this.equippedSlot,
+  }) : customProperties = const {};
 
   String get displayName => itemRef.displayName;
 
