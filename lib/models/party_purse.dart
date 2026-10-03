@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:meta/meta.dart';
 import '../crdt/pn_counter.dart';
+import '../crdt/replica_id.dart';
 
 /// Represents a ruleset-agnostic party currency ledger backed by CvRDT PN-Counter vectors
 /// for conflict-free distributed convergence across any denomination key.
@@ -83,34 +84,39 @@ class PartyPurse {
     if (direct != null) return direct;
     switch (clean) {
       case 'cp':
-        if (_cpCounter.positive.isNotEmpty || _cpCounter.negative.isNotEmpty)
+        if (_cpCounter.positive.isNotEmpty || _cpCounter.negative.isNotEmpty) {
           return _cpCounter;
+        }
         return _legacyCp > 0
-            ? PnCounter.withInitialValue(_legacyCp, nodeId: 'init')
+            ? PnCounter(positive: {'init': _legacyCp})
             : const PnCounter.empty();
       case 'sp':
-        if (_spCounter.positive.isNotEmpty || _spCounter.negative.isNotEmpty)
+        if (_spCounter.positive.isNotEmpty || _spCounter.negative.isNotEmpty) {
           return _spCounter;
+        }
         return _legacySp > 0
-            ? PnCounter.withInitialValue(_legacySp, nodeId: 'init')
+            ? PnCounter(positive: {'init': _legacySp})
             : const PnCounter.empty();
       case 'ep':
-        if (_epCounter.positive.isNotEmpty || _epCounter.negative.isNotEmpty)
+        if (_epCounter.positive.isNotEmpty || _epCounter.negative.isNotEmpty) {
           return _epCounter;
+        }
         return _legacyEp > 0
-            ? PnCounter.withInitialValue(_legacyEp, nodeId: 'init')
+            ? PnCounter(positive: {'init': _legacyEp})
             : const PnCounter.empty();
       case 'gp':
-        if (_gpCounter.positive.isNotEmpty || _gpCounter.negative.isNotEmpty)
+        if (_gpCounter.positive.isNotEmpty || _gpCounter.negative.isNotEmpty) {
           return _gpCounter;
+        }
         return _legacyGp > 0
-            ? PnCounter.withInitialValue(_legacyGp, nodeId: 'init')
+            ? PnCounter(positive: {'init': _legacyGp})
             : const PnCounter.empty();
       case 'pp':
-        if (_ppCounter.positive.isNotEmpty || _ppCounter.negative.isNotEmpty)
+        if (_ppCounter.positive.isNotEmpty || _ppCounter.negative.isNotEmpty) {
           return _ppCounter;
+        }
         return _legacyPp > 0
-            ? PnCounter.withInitialValue(_legacyPp, nodeId: 'init')
+            ? PnCounter(positive: {'init': _legacyPp})
             : const PnCounter.empty();
       default:
         return const PnCounter.empty();
@@ -177,47 +183,31 @@ class PartyPurse {
   /// Modifies balance for an arbitrary denomination key by [delta] (positive or negative),
   /// routing directly through CvRDT [PnCounter] vectors for conflict-free convergence.
   PartyPurse modifyDenomination(String denominationId, int delta,
-      {required String nodeId}) {
-    if (nodeId.trim().isEmpty) {
-      throw ArgumentError.value(
-          nodeId, 'nodeId', 'nodeId cannot be empty or whitespace.');
-    }
-    if (nodeId.trim().toLowerCase() == 'local') {
-      throw ArgumentError.value(
-          nodeId, 'nodeId', 'CRDT mutations cannot use "local" as replica identity.');
-    }
+      {required ReplicaId replicaId}) {
     if (delta == 0) return this;
     final clean = denominationId.trim().toLowerCase();
     final current = getCounter(clean);
     final updated = delta > 0
-        ? current.increment(delta, nodeId: nodeId)
-        : current.decrement(delta.abs(), nodeId: nodeId);
+        ? current.increment(delta, replicaId: replicaId)
+        : current.decrement(delta.abs(), replicaId: replicaId);
     final newCounters = Map<String, PnCounter>.from(allCounters)
       ..[clean] = updated;
     return PartyPurse.fromCounters(newCounters);
   }
 
   /// Sets balance for [denominationId] directly while preserving CvRDT PN-counter convergence.
-  /// Applies differential increments or decrements under [nodeId] so that decreases
+  /// Applies differential increments or decrements under [replicaId] so that decreases
   /// are recorded as negative counts rather than being lost during lattice joins.
   PartyPurse setDenomination(String denominationId, int targetVal,
-      {required String nodeId}) {
-    if (nodeId.trim().isEmpty) {
-      throw ArgumentError.value(
-          nodeId, 'nodeId', 'nodeId cannot be empty or whitespace.');
-    }
-    if (nodeId.trim().toLowerCase() == 'local') {
-      throw ArgumentError.value(
-          nodeId, 'nodeId', 'CRDT mutations cannot use "local" as replica identity.');
-    }
+      {required ReplicaId replicaId}) {
     final clean = denominationId.trim().toLowerCase();
     final current = getCounter(clean);
     final clampedTarget = targetVal.clamp(0, 9999999);
     final diff = clampedTarget - current.value;
     if (diff == 0) return this;
     final updated = diff > 0
-        ? current.increment(diff, nodeId: nodeId)
-        : current.decrement(-diff, nodeId: nodeId);
+        ? current.increment(diff, replicaId: replicaId)
+        : current.decrement(-diff, replicaId: replicaId);
     final newCounters = Map<String, PnCounter>.from(allCounters)
       ..[clean] = updated;
     return PartyPurse.fromCounters(newCounters);
@@ -236,40 +226,24 @@ class PartyPurse {
   }
 
   /// Adds another purse's denomination amounts to this purse.
-  PartyPurse add(PartyPurse other, {required String nodeId}) {
-    if (nodeId.trim().isEmpty) {
-      throw ArgumentError.value(
-          nodeId, 'nodeId', 'nodeId cannot be empty or whitespace.');
-    }
-    if (nodeId.trim().toLowerCase() == 'local') {
-      throw ArgumentError.value(
-          nodeId, 'nodeId', 'CRDT mutations cannot use "local" as replica identity.');
-    }
+  PartyPurse add(PartyPurse other, {required ReplicaId replicaId}) {
     var result = this;
     for (final entry in other.balances.entries) {
       if (entry.value > 0) {
         result =
-            result.modifyDenomination(entry.key, entry.value, nodeId: nodeId);
+            result.modifyDenomination(entry.key, entry.value, replicaId: replicaId);
       }
     }
     return result;
   }
 
   /// Deducts another purse's denomination amounts from this purse.
-  PartyPurse deduct(PartyPurse other, {required String nodeId}) {
-    if (nodeId.trim().isEmpty) {
-      throw ArgumentError.value(
-          nodeId, 'nodeId', 'nodeId cannot be empty or whitespace.');
-    }
-    if (nodeId.trim().toLowerCase() == 'local') {
-      throw ArgumentError.value(
-          nodeId, 'nodeId', 'CRDT mutations cannot use "local" as replica identity.');
-    }
+  PartyPurse deduct(PartyPurse other, {required ReplicaId replicaId}) {
     var result = this;
     for (final entry in other.balances.entries) {
       if (entry.value > 0) {
         result =
-            result.modifyDenomination(entry.key, -entry.value, nodeId: nodeId);
+            result.modifyDenomination(entry.key, -entry.value, replicaId: replicaId);
       }
     }
     return result;
@@ -338,13 +312,25 @@ class PartyPurse {
         final existingCounter = parsed[key];
         if (existingCounter == null) {
           parsed[key] = scalar > 0
-              ? PnCounter.withInitialValue(scalar, nodeId: 'init')
+              ? PnCounter(positive: {'init': scalar})
               : const PnCounter.empty();
         } else if (scalar != existingCounter.value) {
           final diff = scalar - existingCounter.value;
           parsed[key] = diff > 0
-              ? existingCounter.increment(diff, nodeId: 'cloud')
-              : existingCounter.decrement(-diff, nodeId: 'cloud');
+              ? PnCounter(
+                  positive: {
+                    ...existingCounter.positive,
+                    'cloud': (existingCounter.positive['cloud'] ?? 0) + diff,
+                  },
+                  negative: existingCounter.negative,
+                )
+              : PnCounter(
+                  positive: existingCounter.positive,
+                  negative: {
+                    ...existingCounter.negative,
+                    'cloud': (existingCounter.negative['cloud'] ?? 0) + (-diff),
+                  },
+                );
         }
       }
     });

@@ -31,33 +31,19 @@ void main() {
   });
 
   group('PnCounter Replica Identity Hardening', () {
-    test('withInitialValue, increment, and decrement reject "local" and empty nodeId', () {
-      expect(
-        () => PnCounter.withInitialValue(10, nodeId: 'local'),
-        throwsArgumentError,
-      );
-      expect(
-        () => PnCounter.withInitialValue(10, nodeId: '   '),
-        throwsArgumentError,
-      );
+    test('withInitialValue, increment, and decrement require strongly-typed ReplicaId', () {
+      final replica = ReplicaId('node-1');
+      final counter = PnCounter.withInitialValue(10, replicaId: replica);
+      expect(counter.value, equals(10));
+      expect(counter.positive['node-1'], equals(10));
 
-      final counter = PnCounter.withInitialValue(10, nodeId: 'node-1');
-      expect(
-        () => counter.increment(5, nodeId: 'local'),
-        throwsArgumentError,
-      );
-      expect(
-        () => counter.increment(5, nodeId: ''),
-        throwsArgumentError,
-      );
-      expect(
-        () => counter.decrement(2, nodeId: 'local'),
-        throwsArgumentError,
-      );
-      expect(
-        () => counter.decrement(2, nodeId: '   '),
-        throwsArgumentError,
-      );
+      final inc = counter.increment(5, replicaId: replica);
+      expect(inc.value, equals(15));
+      expect(inc.positive['node-1'], equals(15));
+
+      final dec = inc.decrement(2, replicaId: replica);
+      expect(dec.value, equals(13));
+      expect(dec.negative['node-1'], equals(2));
     });
 
     test('preserves historical "local" contributions from persisted maps', () {
@@ -71,8 +57,8 @@ void main() {
       expect(counter.positive['local'], equals(100));
       expect(counter.negative['local'], equals(20));
 
-      // Subsequent writes must use durable replica ID
-      final updated = counter.increment(10, nodeId: 'durable-replica');
+      // Subsequent active writes must use a typed ReplicaId
+      final updated = counter.increment(10, replicaId: ReplicaId('durable-replica'));
       expect(updated.value, equals(140));
       expect(updated.positive['durable-replica'], equals(10));
       expect(updated.positive['local'], equals(100));
@@ -80,35 +66,22 @@ void main() {
   });
 
   group('PartyPurse Replica Identity Hardening', () {
-    test('modifyDenomination, setDenomination, add, deduct reject "local" and empty nodeId', () {
+    test('modifyDenomination, setDenomination, add, deduct require strongly-typed ReplicaId', () {
       const purse = PartyPurse.empty();
+      final replica = ReplicaId('active-runtime-writer');
 
-      expect(
-        () => purse.modifyDenomination('gp', 50, nodeId: 'local'),
-        throwsArgumentError,
-      );
-      expect(
-        () => purse.modifyDenomination('gp', 50, nodeId: ''),
-        throwsArgumentError,
-      );
-      expect(
-        () => purse.setDenomination('gp', 100, nodeId: 'local'),
-        throwsArgumentError,
-      );
-      expect(
-        () => purse.setDenomination('gp', 100, nodeId: '   '),
-        throwsArgumentError,
-      );
+      final modified = purse.modifyDenomination('gp', 50, replicaId: replica);
+      expect(modified.getBalance('gp'), equals(50));
 
-      const other = PartyPurse.empty();
-      expect(
-        () => purse.add(other, nodeId: 'local'),
-        throwsArgumentError,
-      );
-      expect(
-        () => purse.deduct(other, nodeId: 'local'),
-        throwsArgumentError,
-      );
+      final set = modified.setDenomination('gp', 100, replicaId: replica);
+      expect(set.getBalance('gp'), equals(100));
+
+      final other = const PartyPurse.empty().modifyDenomination('sp', 20, replicaId: replica);
+      final added = set.add(other, replicaId: replica);
+      expect(added.getBalance('sp'), equals(20));
+
+      final deducted = added.deduct(other, replicaId: replica);
+      expect(deducted.getBalance('sp'), equals(0));
     });
   });
 

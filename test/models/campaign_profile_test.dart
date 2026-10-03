@@ -1,3 +1,4 @@
+import 'package:vtt_engine_core/crdt/replica_id.dart';
 import 'package:test/test.dart';
 import 'package:vtt_engine_core/models/campaign_profile.dart';
 
@@ -6,10 +7,10 @@ import 'package:vtt_engine_core/models/party_purse.dart';
 
 
 extension on PartyPurse {
-  PartyPurse setCoins({int? gp, int? sp, required String nodeId}) {
+  PartyPurse setCoins({int? gp, int? sp, required ReplicaId replicaId}) {
     var p = this;
-    if (gp != null) p = p.setDenomination('gp', gp, nodeId: nodeId);
-    if (sp != null) p = p.setDenomination('sp', sp, nodeId: nodeId);
+    if (gp != null) p = p.setDenomination('gp', gp, replicaId: replicaId);
+    if (sp != null) p = p.setDenomination('sp', sp, replicaId: replicaId);
     return p;
   }
 }
@@ -33,7 +34,7 @@ void main() {
       partyCharacterIds: const ['char-1', 'char-2'],
       pinnedRuleIds: const {'cover', 'grapple_shove'},
       notesMarkdown: 'Session 1 notes',
-      partyPurse: const PartyPurse.empty().setCoins(gp: 50, sp: 10, nodeId: 'test-node'),
+      partyPurse: const PartyPurse.empty().setCoins(gp: 50, sp: 10, replicaId: ReplicaId('test-node')),
       nodeId: 'test-node',
     );
 
@@ -50,7 +51,7 @@ void main() {
         partyCharacterIds: const ['char-1', 'char-2'],
         pinnedRuleIds: const {'cover', 'grapple_shove'},
         notesRegister: profileA.notesRegister,
-        partyPurse: const PartyPurse.empty().setCoins(gp: 50, sp: 10, nodeId: 'test-node'),
+        partyPurse: const PartyPurse.empty().setCoins(gp: 50, sp: 10, replicaId: ReplicaId('test-node')),
         nodeId: 'test-node',
       );
 
@@ -86,7 +87,7 @@ void main() {
 
     test('detects differences in partyPurse despite same id', () {
       final modified =
-          profileA.copyWith(partyPurse: const PartyPurse.empty().setCoins(gp: 100, nodeId: 'test-node'));
+          profileA.copyWith(partyPurse: const PartyPurse.empty().setCoins(gp: 100, replicaId: ReplicaId('test-node')));
       expect(profileA == modified, isFalse);
     });
   });

@@ -1,14 +1,19 @@
 import 'dart:math' as math;
 import 'package:meta/meta.dart';
+import 'replica_id.dart';
 
 /// Pure Dart CvRDT implementing a Positive-Negative Counter (PN-Counter).
 ///
 /// Maintains two grow-only vectors:
-/// - [positive]: Map of nodeId -> total positive increments (deposits).
-/// - [negative]: Map of nodeId -> total negative decrements (withdrawals).
+/// - [positive]: Map of writer component ID -> total positive increments (deposits).
+/// - [negative]: Map of writer component ID -> total negative decrements (withdrawals).
 ///
 /// Merging two counters takes component-wise maximums for both positive and negative vectors.
 /// The net counter value is clamped at zero ($\ge 0$) to model tabletop currency balances.
+///
+/// Invariant: Active mutation APIs require a strongly-typed [ReplicaId] identifying the
+/// active runtime writer. Historical serialized component maps may contain arbitrary string
+/// keys (e.g. legacy 'init', 'cloud', historical UUIDs) which remain valid immutable history.
 ///
 /// STRICT DDD INVARIANT: Zero Flutter imports in `lib/domain/`.
 @immutable
@@ -26,23 +31,15 @@ class PnCounter {
       : positive = const {},
         negative = const {};
 
-  /// Factory creating an initial PN-counter with a starting balance on a given node.
+  /// Factory creating an initial PN-counter with a starting balance on a given replica.
   factory PnCounter.withInitialValue(int initialValue,
-      {required String nodeId}) {
-    if (nodeId.trim().isEmpty) {
-      throw ArgumentError.value(
-          nodeId, 'nodeId', 'nodeId cannot be empty or whitespace.');
-    }
-    if (nodeId.trim().toLowerCase() == 'local') {
-      throw ArgumentError.value(
-          nodeId, 'nodeId', 'CRDT mutations cannot use "local" as replica identity.');
-    }
+      {required ReplicaId replicaId}) {
     final clamped = math.max(0, initialValue);
     if (clamped == 0) {
       return const PnCounter.empty();
     }
     return PnCounter(
-      positive: {nodeId: clamped},
+      positive: {replicaId.value: clamped},
       negative: const {},
     );
   }
@@ -56,20 +53,12 @@ class PnCounter {
   /// Current net value of the counter, guaranteed non-negative ($\ge 0$).
   int get value => math.max(0, positiveSum - negativeSum);
 
-  /// Increments the counter by [amount] for [nodeId].
-  PnCounter increment(int amount, {required String nodeId}) {
-    if (nodeId.trim().isEmpty) {
-      throw ArgumentError.value(
-          nodeId, 'nodeId', 'nodeId cannot be empty or whitespace.');
-    }
-    if (nodeId.trim().toLowerCase() == 'local') {
-      throw ArgumentError.value(
-          nodeId, 'nodeId', 'CRDT mutations cannot use "local" as replica identity.');
-    }
+  /// Increments the counter by [amount] for [replicaId].
+  PnCounter increment(int amount, {required ReplicaId replicaId}) {
     if (amount <= 0) return this;
-    final currentPos = positive[nodeId] ?? 0;
+    final currentPos = positive[replicaId.value] ?? 0;
     final updatedPos = Map<String, int>.from(positive);
-    updatedPos[nodeId] = currentPos + amount;
+    updatedPos[replicaId.value] = currentPos + amount;
 
     return PnCounter(
       positive: updatedPos,
@@ -77,20 +66,12 @@ class PnCounter {
     );
   }
 
-  /// Decrements the counter by [amount] for [nodeId].
-  PnCounter decrement(int amount, {required String nodeId}) {
-    if (nodeId.trim().isEmpty) {
-      throw ArgumentError.value(
-          nodeId, 'nodeId', 'nodeId cannot be empty or whitespace.');
-    }
-    if (nodeId.trim().toLowerCase() == 'local') {
-      throw ArgumentError.value(
-          nodeId, 'nodeId', 'CRDT mutations cannot use "local" as replica identity.');
-    }
+  /// Decrements the counter by [amount] for [replicaId].
+  PnCounter decrement(int amount, {required ReplicaId replicaId}) {
     if (amount <= 0) return this;
-    final currentNeg = negative[nodeId] ?? 0;
+    final currentNeg = negative[replicaId.value] ?? 0;
     final updatedNeg = Map<String, int>.from(negative);
-    updatedNeg[nodeId] = currentNeg + amount;
+    updatedNeg[replicaId.value] = currentNeg + amount;
 
     return PnCounter(
       positive: positive,

@@ -1,3 +1,4 @@
+import 'package:vtt_engine_core/crdt/replica_id.dart';
 import 'package:test/test.dart';
 import 'package:vtt_engine_core/models/party_purse.dart';
 import 'package:vtt_engine_core/crdt/pn_counter.dart';
@@ -9,17 +10,17 @@ extension on PartyPurse {
   PnCounter get gpCounter => getCounter('gp');
   PnCounter get spCounter => getCounter('sp');
 
-  PartyPurse setCoins({int? gp, int? sp, required String nodeId}) {
+  PartyPurse setCoins({int? gp, int? sp, required ReplicaId replicaId}) {
     var p = this;
-    if (gp != null) p = p.setDenomination('gp', gp, nodeId: nodeId);
-    if (sp != null) p = p.setDenomination('sp', sp, nodeId: nodeId);
+    if (gp != null) p = p.setDenomination('gp', gp, replicaId: replicaId);
+    if (sp != null) p = p.setDenomination('sp', sp, replicaId: replicaId);
     return p;
   }
 
-  PartyPurse withdrawCoins({int gp = 0, int sp = 0, required String nodeId}) {
+  PartyPurse withdrawCoins({int gp = 0, int sp = 0, required ReplicaId replicaId}) {
     var p = this;
-    if (gp > 0) p = p.modifyDenomination('gp', -(gp > p.gp ? p.gp : gp), nodeId: nodeId);
-    if (sp > 0) p = p.modifyDenomination('sp', -(sp > p.sp ? p.sp : sp), nodeId: nodeId);
+    if (gp > 0) p = p.modifyDenomination('gp', -(gp > p.gp ? p.gp : gp), replicaId: replicaId);
+    if (sp > 0) p = p.modifyDenomination('sp', -(sp > p.sp ? p.sp : sp), replicaId: replicaId);
     return p;
   }
 }
@@ -30,13 +31,13 @@ void main() {
         'setCoins decrements correctly and converges across CvRDT lattice join',
         () {
       // 1. Initial purse on Node A with 100 GP
-      final purseA = const PartyPurse.empty().setCoins(gp: 100, nodeId: 'nodeA');
+      final purseA = const PartyPurse.empty().setCoins(gp: 100, replicaId: ReplicaId('nodeA'));
       expect(purseA.gp, 100);
       expect(purseA.gpCounter.positive['nodeA'], 100);
       expect(purseA.gpCounter.negative['nodeA'] ?? 0, 0);
 
       // 2. Node A spends 40 GP, reducing balance to 60 GP
-      final updatedA = purseA.setCoins(gp: 60, nodeId: 'nodeA');
+      final updatedA = purseA.setCoins(gp: 60, replicaId: ReplicaId('nodeA'));
       expect(updatedA.gp, 60);
       expect(updatedA.gpCounter.positive['nodeA'], 100);
       expect(updatedA.gpCounter.negative['nodeA'], 40);
@@ -56,11 +57,11 @@ void main() {
     test('copyWith with scalar reduction records negative decrement vector',
         () {
       final initial =
-          const PartyPurse.empty().setCoins(gp: 50, sp: 20, nodeId: 'node1');
+          const PartyPurse.empty().setCoins(gp: 50, sp: 20, replicaId: ReplicaId('node1'));
       expect(initial.gp, 50);
       expect(initial.sp, 20);
 
-      final reduced = initial.setCoins(gp: 30, sp: 5, nodeId: 'node1');
+      final reduced = initial.setCoins(gp: 30, sp: 5, replicaId: ReplicaId('node1'));
       expect(reduced.gp, 30);
       expect(reduced.sp, 5);
       expect(reduced.gpCounter.negative['node1'], 20);
@@ -75,8 +76,8 @@ void main() {
     test(
         'withdrawCoins records negative decrement and preserves CvRDT lattice monotonicity',
         () {
-      final purse = const PartyPurse.empty().setCoins(gp: 150, nodeId: 'node-withdraw');
-      final afterWithdraw = purse.withdrawCoins(gp: 50, nodeId: 'node-withdraw');
+      final purse = const PartyPurse.empty().setCoins(gp: 150, replicaId: ReplicaId('node-withdraw'));
+      final afterWithdraw = purse.withdrawCoins(gp: 50, replicaId: ReplicaId('node-withdraw'));
       expect(afterWithdraw.gp, 100);
 
       final merged = afterWithdraw.merge(purse);
@@ -86,14 +87,14 @@ void main() {
 
     test('Multiple nodes spending concurrently converges deterministically',
         () {
-      final base = const PartyPurse.empty().setCoins(gp: 200, nodeId: 'init');
+      final base = const PartyPurse.empty().setCoins(gp: 200, replicaId: ReplicaId('init-replica'));
 
       // Node A spends 30 GP
-      final nodeA = base.withdrawCoins(gp: 30, nodeId: 'nodeA');
+      final nodeA = base.withdrawCoins(gp: 30, replicaId: ReplicaId('nodeA'));
       expect(nodeA.gp, 170);
 
       // Node B spends 50 GP
-      final nodeB = base.withdrawCoins(gp: 50, nodeId: 'nodeB');
+      final nodeB = base.withdrawCoins(gp: 50, replicaId: ReplicaId('nodeB'));
       expect(nodeB.gp, 150);
 
       // Merge on Node A

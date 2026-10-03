@@ -37,6 +37,7 @@ The following non-negotiable invariants govern all work in this repository. Oper
 - **Monotonic Causality:** Hybrid Logical Clocks (HLC) must maintain causal monotonicity with deterministic tie-breaking (lexicographical node identifier comparison).
 - **Add-Wins & Tombstone Suppression:** Observed-Remove Sets (OR-Set) must enforce add-wins causality with tombstones; obsolete tombstones must not violate commutativity on merge.
 - **Differential Counters:** PN-Counters must balance decrements differentially against negative components, never re-seeding with positive scalars.
+- **Active Writer Replica Identity:** Durable identity may identify an installation/storage context, but `ReplicaId` identifies one independently executing CRDT writer/runtime. For state-based counters (PN-counters), each component vector represents a single-writer monotonic stream; two concurrent writers/runtimes MUST NOT share one component identity. A historical component ID is immutable data, not authority to write that component again.
 - **Immutability Invariant:** CvRDT mutations and merges must return fresh instances; in-place mutation of replicated state is forbidden (structural immutability). Generic CRDTs do not clone arbitrary payload objects; concrete replicated payloads and boundaries must recursively defensively copy and freeze nested collections before stamping (transitive payload immutability).
 
 ### 6. Licensing & DCO Compliance

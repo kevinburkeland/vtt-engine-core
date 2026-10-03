@@ -1,3 +1,4 @@
+import 'package:vtt_engine_core/crdt/replica_id.dart';
 import 'package:vtt_engine_core/utils/deep_immutable.dart';
 import 'package:vtt_engine_core/models/core_types.dart';
 import 'package:vtt_engine_core/models/entity_reference.dart';
@@ -36,7 +37,7 @@ void main() {
       });
 
       test('PnCounter.positive and .negative cannot be mutated externally', () {
-        final counter = PnCounter.withInitialValue(10, nodeId: 'node-a');
+        final counter = PnCounter.withInitialValue(10, replicaId: ReplicaId('node-a'));
 
         expect(
           () => counter.positive['node-a'] = 999,
@@ -117,40 +118,40 @@ void main() {
     group('6. PartyPurse Immutability & Anti-Aliasing', () {
       test('PartyPurse cannot be mutated through constructor input map or denominationCounters', () {
         final sourceMap = <String, PnCounter>{
-          'gp': PnCounter.withInitialValue(50, nodeId: 'node-a'),
+          'gp': PnCounter.withInitialValue(50, replicaId: ReplicaId('node-a')),
         };
         final purse = PartyPurse(denominationCounters: sourceMap);
 
-        sourceMap['gp'] = PnCounter.withInitialValue(999, nodeId: 'node-a');
-        sourceMap['sp'] = PnCounter.withInitialValue(100, nodeId: 'node-a');
+        sourceMap['gp'] = PnCounter.withInitialValue(999, replicaId: ReplicaId('node-a'));
+        sourceMap['sp'] = PnCounter.withInitialValue(100, replicaId: ReplicaId('node-a'));
 
         expect(purse.getCounter('gp').value, 50);
         expect(purse.getCounter('sp').value, 0);
 
         expect(
-          () => purse.denominationCounters['gp'] = PnCounter.withInitialValue(1, nodeId: 'node-a'),
+          () => purse.denominationCounters['gp'] = PnCounter.withInitialValue(1, replicaId: ReplicaId('node-a')),
           throwsUnsupportedError,
         );
         expect(
-          () => purse.allCounters['gp'] = PnCounter.withInitialValue(1, nodeId: 'node-a'),
+          () => purse.allCounters['gp'] = PnCounter.withInitialValue(1, replicaId: ReplicaId('node-a')),
           throwsUnsupportedError,
         );
       });
 
       test('PartyPurse.fromCounters and copyWith protect against external mutable map aliases', () {
         final sourceMap = <String, PnCounter>{
-          'gp': PnCounter.withInitialValue(25, nodeId: 'node-a'),
+          'gp': PnCounter.withInitialValue(25, replicaId: ReplicaId('node-a')),
         };
         final purse = PartyPurse.fromCounters(sourceMap);
-        sourceMap['gp'] = PnCounter.withInitialValue(1000, nodeId: 'node-a');
+        sourceMap['gp'] = PnCounter.withInitialValue(1000, replicaId: ReplicaId('node-a'));
 
         expect(purse.getCounter('gp').value, 25);
 
         final copyMap = <String, PnCounter>{
-          'pp': PnCounter.withInitialValue(5, nodeId: 'node-a'),
+          'pp': PnCounter.withInitialValue(5, replicaId: ReplicaId('node-a')),
         };
         final copiedPurse = purse.copyWith(denominationCounters: copyMap);
-        copyMap['pp'] = PnCounter.withInitialValue(500, nodeId: 'node-a');
+        copyMap['pp'] = PnCounter.withInitialValue(500, replicaId: ReplicaId('node-a'));
 
         expect(copiedPurse.getCounter('pp').value, 5);
       });
