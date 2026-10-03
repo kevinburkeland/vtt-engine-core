@@ -1,3 +1,4 @@
+import 'package:vtt_engine_core/utils/deep_immutable.dart';
 import 'package:vtt_engine_core/models/core_types.dart';
 import 'package:vtt_engine_core/models/entity_reference.dart';
 import 'package:vtt_engine_core/models/character_models.dart';
@@ -330,7 +331,7 @@ void main() {
           'charges': 3,
         };
         final item = InventoryItemInstance(
-          itemRef: const EntityReference(
+          itemRef: const EntityReference.empty(
             slug: 'wand-1',
             refType: EntityType.item,
             displayName: 'Wand of Wonder',
@@ -352,7 +353,7 @@ void main() {
         };
 
         final item = InventoryItemInstance(
-          itemRef: const EntityReference(
+          itemRef: const EntityReference.empty(
             slug: 'amulet',
             refType: EntityType.item,
             displayName: 'Amulet',
@@ -377,7 +378,7 @@ void main() {
         };
 
         final item = InventoryItemInstance(
-          itemRef: const EntityReference(
+          itemRef: const EntityReference.empty(
             slug: 'bag',
             refType: EntityType.item,
             displayName: 'Bag of Holding',
@@ -405,7 +406,7 @@ void main() {
 
       test('copyWith preserves deep defensive copy invariant for nested metadata', () {
         final original = InventoryItemInstance(
-          itemRef: const EntityReference(
+          itemRef: const EntityReference.empty(
             slug: 'ring',
             refType: EntityType.item,
             displayName: 'Ring',
@@ -437,7 +438,7 @@ void main() {
         };
 
         final item = InventoryItemInstance(
-          itemRef: const EntityReference(
+          itemRef: const EntityReference.empty(
             slug: 'wand_of_magic_missiles',
             refType: EntityType.item,
             displayName: 'Wand of Magic Missiles',
@@ -484,6 +485,270 @@ void main() {
           () => magicMap['overcharged'] = true,
           throwsUnsupportedError,
         );
+      });
+    });
+
+    group('10. Transitive Replicated Payload Immutability Closure (Pass 2.2)', () {
+      test('deepFreeze runtime-type preservation for non-empty collections', () {
+        final listStr = deepFreezeList(<String>['a', 'b']);
+        expect(listStr, isA<List<String>>());
+        expect(() => listStr.add('c'), throwsUnsupportedError);
+
+        final listInt = deepFreezeList(<int>[1, 2]);
+        expect(listInt, isA<List<int>>());
+        expect(() => listInt.add(3), throwsUnsupportedError);
+
+        final listDouble = deepFreezeList(<double>[1.1, 2.2]);
+        expect(listDouble, isA<List<double>>());
+        expect(() => listDouble.add(3.3), throwsUnsupportedError);
+
+        final listNum = deepFreezeList(<num>[1, 2.5]);
+        expect(listNum, isA<List<num>>());
+        expect(() => listNum.add(3), throwsUnsupportedError);
+
+        final listBool = deepFreezeList(<bool>[true, false]);
+        expect(listBool, isA<List<bool>>());
+        expect(() => listBool.add(true), throwsUnsupportedError);
+
+        final setStr = deepFreezeSet(<String>{'a', 'b'});
+        expect(setStr, isA<Set<String>>());
+        expect(() => setStr.add('c'), throwsUnsupportedError);
+
+        final setInt = deepFreezeSet(<int>{1, 2});
+        expect(setInt, isA<Set<int>>());
+        expect(() => setInt.add(3), throwsUnsupportedError);
+
+        final setDouble = deepFreezeSet(<double>{1.1, 2.2});
+        expect(setDouble, isA<Set<double>>());
+        expect(() => setDouble.add(3.3), throwsUnsupportedError);
+
+        final setNum = deepFreezeSet(<num>{1, 2.5});
+        expect(setNum, isA<Set<num>>());
+        expect(() => setNum.add(3), throwsUnsupportedError);
+
+        final setBool = deepFreezeSet(<bool>{true, false});
+        expect(setBool, isA<Set<bool>>());
+        expect(() => setBool.add(true), throwsUnsupportedError);
+      });
+
+      test('deepFreeze runtime-type preservation for empty typed collections', () {
+        final emptyStrList = deepFreezeList(<String>[]);
+        expect(emptyStrList, isA<List<String>>());
+        expect(() => emptyStrList.add('a'), throwsUnsupportedError);
+
+        final emptyIntList = deepFreezeList(<int>[]);
+        expect(emptyIntList, isA<List<int>>());
+        expect(() => emptyIntList.add(1), throwsUnsupportedError);
+
+        final emptyDoubleList = deepFreezeList(<double>[]);
+        expect(emptyDoubleList, isA<List<double>>());
+        expect(() => emptyDoubleList.add(1.0), throwsUnsupportedError);
+
+        final emptyNumList = deepFreezeList(<num>[]);
+        expect(emptyNumList, isA<List<num>>());
+        expect(() => emptyNumList.add(1), throwsUnsupportedError);
+
+        final emptyBoolList = deepFreezeList(<bool>[]);
+        expect(emptyBoolList, isA<List<bool>>());
+        expect(() => emptyBoolList.add(true), throwsUnsupportedError);
+
+        final emptyStrSet = deepFreezeSet(<String>{});
+        expect(emptyStrSet, isA<Set<String>>());
+        expect(() => emptyStrSet.add('a'), throwsUnsupportedError);
+
+        final emptyIntSet = deepFreezeSet(<int>{});
+        expect(emptyIntSet, isA<Set<int>>());
+        expect(() => emptyIntSet.add(1), throwsUnsupportedError);
+
+        final emptyDoubleSet = deepFreezeSet(<double>{});
+        expect(emptyDoubleSet, isA<Set<double>>());
+        expect(() => emptyDoubleSet.add(1.0), throwsUnsupportedError);
+
+        final emptyNumSet = deepFreezeSet(<num>{});
+        expect(emptyNumSet, isA<Set<num>>());
+        expect(() => emptyNumSet.add(1), throwsUnsupportedError);
+
+        final emptyBoolSet = deepFreezeSet(<bool>{});
+        expect(emptyBoolSet, isA<Set<bool>>());
+        expect(() => emptyBoolSet.add(true), throwsUnsupportedError);
+      });
+
+      test('Direct EntityReference immutability and anti-aliasing', () {
+        final props = <String, dynamic>{
+          'weapon': <String, dynamic>{
+            'tags': <dynamic>['magic'],
+          },
+        };
+        final skills = <dynamic>['athletics', 'acrobatics'];
+
+        final ref = EntityReference<DomainEntity>(
+          refType: EntityType.item,
+          slug: 'sunblade',
+          displayName: 'Sun Blade',
+          grantedSkills: skills,
+          customProperties: props,
+        );
+
+        // Mutate original input collections
+        ((props['weapon'] as Map)['tags'] as List).clear();
+        skills.add('stealth');
+
+        // Ref remains unchanged
+        expect((ref.customProperties['weapon'] as Map)['tags'], ['magic']);
+        expect(ref.grantedSkills, ['athletics', 'acrobatics']);
+
+        // Mutations through ref collections throw
+        expect(
+          () => ((ref.customProperties['weapon'] as Map)['tags'] as List).add('radiant'),
+          throwsUnsupportedError,
+        );
+        expect(
+          () => (ref.customProperties['weapon'] as Map)['extra'] = 'val',
+          throwsUnsupportedError,
+        );
+        expect(
+          () => ref.grantedSkills.add('stealth'),
+          throwsUnsupportedError,
+        );
+
+        // copyWith and cast preserve defensive copying
+        final copied = ref.copyWith(
+          customProperties: {
+            'sub': {'val': 1}
+          },
+        );
+        expect(() => (copied.customProperties['sub'] as Map)['val'] = 2, throwsUnsupportedError);
+
+        final castRef = ref.cast<DomainEntity>();
+        expect(() => ((castRef.customProperties['weapon'] as Map)['tags'] as List).add('x'), throwsUnsupportedError);
+      });
+
+      test('Transitive EntityReference -> InventoryItemInstance -> LootContainer -> RoomNodeState -> CrdtOrSet', () {
+        final refProps = <String, dynamic>{
+          'weapon': <String, dynamic>{
+            'tags': <dynamic>['magic', 'finesse'],
+          }
+        };
+
+        final ref = EntityReference<DomainEntity>(
+          refType: EntityType.item,
+          slug: 'rapier-plus-1',
+          displayName: 'Rapier +1',
+          customProperties: refProps,
+        );
+
+        final item = InventoryItemInstance(
+          itemRef: ref,
+          instanceId: 'rapier-inst-1',
+        );
+
+        final container = LootContainer(
+          containerId: 'armory-1',
+          name: 'Armory Locker',
+          items: [item],
+        );
+
+        final room = RoomNodeState(
+          roomId: 'room-armory',
+          roomCode: 'ARMR',
+          title: 'The Armory',
+          containers: [container],
+        );
+
+        final crdt = const CrdtOrSet<RoomNodeState>.empty().add(
+          'room-armory',
+          room,
+          clock,
+        );
+
+        // Mutate original EntityReference input collections
+        ((refProps['weapon'] as Map)['tags'] as List).add('corrupted');
+
+        // Verify CRDT-stamped state is unchanged and unmodifiable
+        final stampedRoom = crdt.items['room-armory']!.value;
+        final stampedItem = stampedRoom.containers.first.items.first;
+        final stampedRef = stampedItem.itemRef;
+        final tags = (stampedRef.customProperties['weapon'] as Map)['tags'] as List;
+
+        expect(tags, ['magic', 'finesse']);
+        expect(() => tags.add('corrupted'), throwsUnsupportedError);
+      });
+
+      test('RoomNodeState.fromMap fallback deserializes deep-frozen activeMinions', () {
+        final rawMinion = <String, dynamic>{
+          'id': 'minion-raw-1',
+          'name': 'Animated Armor',
+          'traits': <String, dynamic>{
+            'resistances': <dynamic>['poison', 'psychic'],
+          },
+        };
+
+        final rawPayload = <String, dynamic>{
+          'roomId': 'room-arena',
+          'roomCode': 'ARNA',
+          'title': 'The Arena',
+          'activeMinions': [rawMinion],
+        };
+
+        // Deserialize WITHOUT passing any custom minionParser
+        final room = RoomNodeState.fromMap(rawPayload);
+
+        // Mutate original input raw map
+        ((rawMinion['traits'] as Map)['resistances'] as List).clear();
+        rawMinion['name'] = 'Mutated Armor';
+
+        // Check activeMinions in room
+        expect(room.activeMinions.activeValues.length, 1);
+        final minionInCrdt = room.activeMinions.activeValues.first as Map;
+        expect(minionInCrdt['name'], 'Animated Armor');
+        expect(
+          (minionInCrdt['traits'] as Map)['resistances'],
+          ['poison', 'psychic'],
+        );
+
+        // Verify that mutations through activeMinions throw
+        expect(
+          () => minionInCrdt['name'] = 'Changed',
+          throwsUnsupportedError,
+        );
+        expect(
+          () => ((minionInCrdt['traits'] as Map)['resistances'] as List).add('fire'),
+          throwsUnsupportedError,
+        );
+      });
+
+      test('RoomNodeState.fromLists and copyWith deep-freeze Map/List/Set in activeMinions', () {
+        final mutableMinion = <String, dynamic>{
+          'id': 'm1',
+          'tags': ['flying'],
+        };
+
+        final fromListsRoom = RoomNodeState.fromLists(
+          roomId: 'r1',
+          roomCode: 'R101',
+          title: 'Room 1',
+          activeMinions: [mutableMinion],
+        );
+
+        (mutableMinion['tags'] as List).add('invisible');
+
+        final minionFromLists = fromListsRoom.activeMinions.activeValues.first as Map;
+        expect(minionFromLists['tags'], ['flying']);
+        expect(() => (minionFromLists['tags'] as List).add('x'), throwsUnsupportedError);
+
+        final copyWithRoom = const RoomNodeState.empty().copyWith(
+          roomId: 'r2',
+          roomCode: 'R102',
+          title: 'Room 2',
+          nodeId: 'node-test-1',
+          activeMinions: [mutableMinion],
+        );
+
+        (mutableMinion['tags'] as List).clear();
+
+        final minionFromCopy = copyWithRoom.activeMinions.activeValues.first as Map;
+        expect(minionFromCopy['tags'], ['flying', 'invisible']);
+        expect(() => (minionFromCopy['tags'] as List).add('y'), throwsUnsupportedError);
       });
     });
   });

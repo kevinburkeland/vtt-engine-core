@@ -89,8 +89,8 @@ void main() {
     });
 
     test('Can represent a ruleset-neutral Character without class, level, or speed', () {
-      const character = Character(
-        id: EntityId(
+      final character = Character(
+        id: const EntityId(
           slug: 'inspector-legrasse',
           ruleset: RulesetVersion.homebrew,
         ),
@@ -106,8 +106,8 @@ void main() {
         // No speed
         baseSpeed: null,
         // Generic scores
-        baseScores: AttributePool({'sanity': 65, 'investigation': 70}),
-        bonusScores: AttributePool.zero(),
+        baseScores: const AttributePool({'sanity': 65, 'investigation': 70}),
+        bonusScores: const AttributePool.zero(),
         customProperties: {
           'occupation': 'Detective',
           'insanityStatus': 'normal',

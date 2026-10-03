@@ -45,6 +45,10 @@ Map<String, dynamic> deepFreezeMap(Map<dynamic, dynamic>? map) {
 List<dynamic> deepFreezeList(Iterable<dynamic>? list) {
   if (list == null || list.isEmpty) {
     if (list is List<String>) return const <String>[];
+    if (list is List<int>) return const <int>[];
+    if (list is List<double>) return const <double>[];
+    if (list is List<num>) return const <num>[];
+    if (list is List<bool>) return const <bool>[];
     return const <dynamic>[];
   }
   final copy = <dynamic>[];
@@ -53,6 +57,9 @@ List<dynamic> deepFreezeList(Iterable<dynamic>? list) {
   }
   if (list is List<String> || copy.every((e) => e is String)) {
     return List<String>.unmodifiable(copy.cast<String>());
+  }
+  if (list is List<num> && list is! List<int> && list is! List<double>) {
+    return List<num>.unmodifiable(copy.cast<num>());
   }
   if (list is List<int> || copy.every((e) => e is int)) {
     return List<int>.unmodifiable(copy.cast<int>());
@@ -74,6 +81,10 @@ List<dynamic> deepFreezeList(Iterable<dynamic>? list) {
 Set<dynamic> deepFreezeSet(Iterable<dynamic>? set) {
   if (set == null || set.isEmpty) {
     if (set is Set<String>) return const <String>{};
+    if (set is Set<int>) return const <int>{};
+    if (set is Set<double>) return const <double>{};
+    if (set is Set<num>) return const <num>{};
+    if (set is Set<bool>) return const <bool>{};
     return const <dynamic>{};
   }
   final copy = <dynamic>{};
@@ -83,8 +94,14 @@ Set<dynamic> deepFreezeSet(Iterable<dynamic>? set) {
   if (set is Set<String> || copy.every((e) => e is String)) {
     return Set<String>.unmodifiable(copy.cast<String>());
   }
+  if (set is Set<num> && set is! Set<int> && set is! Set<double>) {
+    return Set<num>.unmodifiable(copy.cast<num>());
+  }
   if (set is Set<int> || copy.every((e) => e is int)) {
     return Set<int>.unmodifiable(copy.cast<int>());
+  }
+  if (set is Set<double> || copy.every((e) => e is double)) {
+    return Set<double>.unmodifiable(copy.cast<double>());
   }
   if (set is Set<num> || copy.every((e) => e is num)) {
     return Set<num>.unmodifiable(copy.cast<num>());

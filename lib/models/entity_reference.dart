@@ -2,6 +2,7 @@ import 'package:collection/collection.dart';
 import 'package:meta/meta.dart';
 import 'generic_tabletop_primitives.dart';
 import 'core_types.dart';
+import '../utils/deep_immutable.dart';
 
 bool _listEquals<T>(List<T>? a, List<T>? b) =>
     const ListEquality().equals(a, b);
@@ -56,14 +57,23 @@ class EntityReference<T extends DomainEntity> {
   /// Optional pluggable hook for external compendium lookups when resolving traits.
   static ITraitDefinition? Function(String slug)? externalTraitResolver;
 
-  const EntityReference({
+  EntityReference({
     required this.refType,
     required this.slug,
     required this.displayName,
     this.rulesetPreferred,
-    this.grantedSkills = const [],
-    this.customProperties = const {},
-  });
+    List<dynamic>? grantedSkills,
+    Map<String, dynamic>? customProperties,
+  })  : grantedSkills = deepFreezeList(grantedSkills),
+        customProperties = deepFreezeMap(customProperties);
+
+  const EntityReference.empty({
+    required this.refType,
+    required this.slug,
+    required this.displayName,
+    this.rulesetPreferred,
+  })  : grantedSkills = const [],
+        customProperties = const {};
 
   /// Converts this entity reference into an agnostic trait definition, resolving
   /// metadata from available compendiums if needed.

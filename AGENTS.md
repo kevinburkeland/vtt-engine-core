@@ -106,7 +106,7 @@ Agents must distinguish non-negotiable invariants from refactorable implementati
 - **Deterministic Causality:** HLC combines physical millisecond timestamp `l`, logical counter `c`, and cryptographic node identifier. Tie-breaking must be strictly deterministic (lexicographical node identifier comparison).
 - **Add-Wins with Tombstones:** OR-Set additions must win over concurrent removals. Obsolete tombstones older than active additions must be suppressed on merge to preserve commutativity. Tombstone pruning must strictly anchor to authoritative network time.
 - **Differential Counters:** PN-Counter decrements must be applied differentially against negative components; counters must never be re-seeded with positive scalars.
-- **Immutability:** Mutators and merge operations must return a new instance. In-place mutation of CvRDT state is forbidden.
+- **Structural vs. Transitive Immutability:** Mutators and merge operations must return a new instance; in-place mutation of CvRDT state is forbidden (structural immutability). Furthermore, generic CRDT containers (`CrdtOrSet`, `CrdtLwwRegister`, `PnCounter`) do not clone arbitrary payload objects. Concrete replicated payload types (`EntityReference`, `InventoryItemInstance`, `LootContainer`, `RoomNodeState`, `RoomEntityLink`) and boundary parsers (`RoomNodeState.fromMap`, `RoomNodeState.fromLists`, `copyWith`) must deeply defensively freeze all nested collection metadata (`customProperties`, `grantedSkills`) before CRDT stamping (transitive payload immutability).
 
 *(Implementation details such as internal collection implementations, private field names, or specific batch helper signatures may be refactored as long as algorithmic complexity and convergence invariants are preserved).*
 

@@ -1,3 +1,5 @@
+
+
 import '../utils/deep_immutable.dart';
 import 'package:collection/collection.dart';
 import 'package:meta/meta.dart';
@@ -9,6 +11,16 @@ bool _listEquals<T>(List<T>? a, List<T>? b) =>
     const ListEquality().equals(a, b);
 bool _mapEquals<K, V>(Map<K, V>? a, Map<K, V>? b) =>
     const MapEquality().equals(a, b);
+
+String _resolveMinionId(dynamic m) {
+  if (m == null) return '';
+  if (m is Map) return (m['id'] ?? '').toString();
+  try {
+    return ((m as dynamic).id ?? '').toString();
+  } catch (_) {
+    return '';
+  }
+}
 
 /// Pure ruleset-agnostic categorical classification of entity links or tokens.
 @immutable
@@ -520,8 +532,8 @@ class RoomNodeState {
     final effectiveMinions = activeMinions != null
         ? const CrdtOrSet<dynamic>.empty().addBatch(activeMinions.map(
             (m) => (
-              id: (m != null ? (m as dynamic).id ?? '' : '').toString(),
-              item: m,
+              id: _resolveMinionId(m),
+              item: deepFreezeValue(m),
               timestamp: const HybridLogicalClock(
                 physicalTime: 0,
                 logicalCounter: 0,
@@ -597,10 +609,10 @@ class RoomNodeState {
       final now = DateTime.now().millisecondsSinceEpoch;
       var set = const CrdtOrSet<dynamic>.empty();
       for (final m in activeMinions) {
-        final id = (m != null ? (m as dynamic).id ?? '' : '').toString();
+        final id = _resolveMinionId(m);
         set = set.add(
             id,
-            m,
+            deepFreezeValue(m),
             HybridLogicalClock(
                 physicalTime: now, logicalCounter: 0, nodeId: nodeId));
       }
@@ -645,14 +657,17 @@ class RoomNodeState {
     Map<String, dynamic> map, {
     dynamic Function(Map<String, dynamic>)? minionParser,
   }) {
-    final parser = minionParser ?? defaultMinionParser ?? (m) => m;
+    final parser = minionParser ?? defaultMinionParser ?? (m) => deepFreezeMap(m);
 
     CrdtOrSet<dynamic> minionsSet = const CrdtOrSet<dynamic>.empty();
     if (map['activeMinions_crdt'] is Map) {
       try {
         minionsSet = CrdtOrSet<dynamic>.fromMap(
           Map<dynamic, dynamic>.from(map['activeMinions_crdt'] as Map),
-          (raw) => parser(Map<String, dynamic>.from(raw as Map)),
+          (raw) {
+            final parsed = parser(Map<String, dynamic>.from(raw as Map));
+            return deepFreezeValue(parsed);
+          },
         );
       } catch (_) {}
     } else if (map['activeMinions'] is Map &&
@@ -660,7 +675,10 @@ class RoomNodeState {
       try {
         minionsSet = CrdtOrSet<dynamic>.fromMap(
           Map<dynamic, dynamic>.from(map['activeMinions'] as Map),
-          (raw) => parser(Map<String, dynamic>.from(raw as Map)),
+          (raw) {
+            final parsed = parser(Map<String, dynamic>.from(raw as Map));
+            return deepFreezeValue(parsed);
+          },
         );
       } catch (_) {}
     } else if (map['activeMinions'] is List) {
@@ -669,8 +687,9 @@ class RoomNodeState {
       for (final raw in rawMinions) {
         if (raw is Map) {
           try {
-            final m = parser(Map<String, dynamic>.from(raw));
-            final id = (raw['id'] ?? (m != null ? (m as dynamic).id : '')).toString();
+            final parsed = parser(Map<String, dynamic>.from(raw));
+            final m = deepFreezeValue(parsed);
+            final id = (raw['id'] ?? _resolveMinionId(m)).toString();
             minionsSet = minionsSet.add(
                 id,
                 m,
