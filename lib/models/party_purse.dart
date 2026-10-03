@@ -169,7 +169,15 @@ class PartyPurse {
   /// Modifies balance for an arbitrary denomination key by [delta] (positive or negative),
   /// routing directly through CvRDT [PnCounter] vectors for conflict-free convergence.
   PartyPurse modifyDenomination(String denominationId, int delta,
-      {String nodeId = 'local'}) {
+      {required String nodeId}) {
+    if (nodeId.trim().isEmpty) {
+      throw ArgumentError.value(
+          nodeId, 'nodeId', 'nodeId cannot be empty or whitespace.');
+    }
+    if (nodeId.trim().toLowerCase() == 'local') {
+      throw ArgumentError.value(
+          nodeId, 'nodeId', 'CRDT mutations cannot use "local" as replica identity.');
+    }
     if (delta == 0) return this;
     final clean = denominationId.trim().toLowerCase();
     final current = getCounter(clean);
@@ -185,7 +193,15 @@ class PartyPurse {
   /// Applies differential increments or decrements under [nodeId] so that decreases
   /// are recorded as negative counts rather than being lost during lattice joins.
   PartyPurse setDenomination(String denominationId, int targetVal,
-      {String nodeId = 'local'}) {
+      {required String nodeId}) {
+    if (nodeId.trim().isEmpty) {
+      throw ArgumentError.value(
+          nodeId, 'nodeId', 'nodeId cannot be empty or whitespace.');
+    }
+    if (nodeId.trim().toLowerCase() == 'local') {
+      throw ArgumentError.value(
+          nodeId, 'nodeId', 'CRDT mutations cannot use "local" as replica identity.');
+    }
     final clean = denominationId.trim().toLowerCase();
     final current = getCounter(clean);
     final clampedTarget = targetVal.clamp(0, 9999999);
@@ -212,7 +228,15 @@ class PartyPurse {
   }
 
   /// Adds another purse's denomination amounts to this purse.
-  PartyPurse add(PartyPurse other, {String nodeId = 'local'}) {
+  PartyPurse add(PartyPurse other, {required String nodeId}) {
+    if (nodeId.trim().isEmpty) {
+      throw ArgumentError.value(
+          nodeId, 'nodeId', 'nodeId cannot be empty or whitespace.');
+    }
+    if (nodeId.trim().toLowerCase() == 'local') {
+      throw ArgumentError.value(
+          nodeId, 'nodeId', 'CRDT mutations cannot use "local" as replica identity.');
+    }
     var result = this;
     for (final entry in other.balances.entries) {
       if (entry.value > 0) {
@@ -224,7 +248,15 @@ class PartyPurse {
   }
 
   /// Deducts another purse's denomination amounts from this purse.
-  PartyPurse deduct(PartyPurse other, {String nodeId = 'local'}) {
+  PartyPurse deduct(PartyPurse other, {required String nodeId}) {
+    if (nodeId.trim().isEmpty) {
+      throw ArgumentError.value(
+          nodeId, 'nodeId', 'nodeId cannot be empty or whitespace.');
+    }
+    if (nodeId.trim().toLowerCase() == 'local') {
+      throw ArgumentError.value(
+          nodeId, 'nodeId', 'CRDT mutations cannot use "local" as replica identity.');
+    }
     var result = this;
     for (final entry in other.balances.entries) {
       if (entry.value > 0) {

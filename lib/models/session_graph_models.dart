@@ -501,11 +501,20 @@ class RoomNodeState {
     dynamic activeEncounter,
     dynamic activeMinions,
     Map<String, dynamic>? customProperties,
+    String? nodeId,
   }) {
     CrdtOrSet<EncounterParticipant>? resolvedEncounter;
     if (activeEncounter is CrdtOrSet<EncounterParticipant>) {
       resolvedEncounter = activeEncounter;
     } else if (activeEncounter is Iterable<EncounterParticipant>) {
+      if (nodeId == null || nodeId.trim().isEmpty) {
+        throw ArgumentError.value(
+            nodeId, 'nodeId', 'Valid nodeId required when converting activeEncounter Iterable to CrdtOrSet.');
+      }
+      if (nodeId.trim().toLowerCase() == 'local') {
+        throw ArgumentError.value(
+            nodeId, 'nodeId', 'CRDT mutations cannot use "local" as replica identity.');
+      }
       final now = DateTime.now().millisecondsSinceEpoch;
       var set = const CrdtOrSet<EncounterParticipant>.empty();
       for (final p in activeEncounter) {
@@ -513,7 +522,7 @@ class RoomNodeState {
             p.participantId,
             p,
             HybridLogicalClock(
-                physicalTime: now, logicalCounter: 0, nodeId: 'local'));
+                physicalTime: now, logicalCounter: 0, nodeId: nodeId));
       }
       resolvedEncounter = set;
     }
@@ -522,6 +531,14 @@ class RoomNodeState {
     if (activeMinions is CrdtOrSet<dynamic>) {
       resolvedMinions = activeMinions;
     } else if (activeMinions is Iterable<dynamic>) {
+      if (nodeId == null || nodeId.trim().isEmpty) {
+        throw ArgumentError.value(
+            nodeId, 'nodeId', 'Valid nodeId required when converting activeMinions Iterable to CrdtOrSet.');
+      }
+      if (nodeId.trim().toLowerCase() == 'local') {
+        throw ArgumentError.value(
+            nodeId, 'nodeId', 'CRDT mutations cannot use "local" as replica identity.');
+      }
       final now = DateTime.now().millisecondsSinceEpoch;
       var set = const CrdtOrSet<dynamic>.empty();
       for (final m in activeMinions) {
@@ -530,7 +547,7 @@ class RoomNodeState {
             id,
             m,
             HybridLogicalClock(
-                physicalTime: now, logicalCounter: 0, nodeId: 'local'));
+                physicalTime: now, logicalCounter: 0, nodeId: nodeId));
       }
       resolvedMinions = set;
     }

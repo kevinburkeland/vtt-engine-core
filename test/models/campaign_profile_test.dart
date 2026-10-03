@@ -6,7 +6,7 @@ import 'package:vtt_engine_core/models/party_purse.dart';
 
 
 extension on PartyPurse {
-  PartyPurse setCoins({int? gp, int? sp, String nodeId = 'local'}) {
+  PartyPurse setCoins({int? gp, int? sp, required String nodeId}) {
     var p = this;
     if (gp != null) p = p.setDenomination('gp', gp, nodeId: nodeId);
     if (sp != null) p = p.setDenomination('sp', sp, nodeId: nodeId);
@@ -33,7 +33,7 @@ void main() {
       partyCharacterIds: const ['char-1', 'char-2'],
       pinnedRuleIds: const {'cover', 'grapple_shove'},
       notesMarkdown: 'Session 1 notes',
-      partyPurse: const PartyPurse().setCoins(gp: 50, sp: 10),
+      partyPurse: const PartyPurse().setCoins(gp: 50, sp: 10, nodeId: 'test-node'),
       nodeId: 'test-node',
     );
 
@@ -50,7 +50,7 @@ void main() {
         partyCharacterIds: const ['char-1', 'char-2'],
         pinnedRuleIds: const {'cover', 'grapple_shove'},
         notesRegister: profileA.notesRegister,
-        partyPurse: const PartyPurse().setCoins(gp: 50, sp: 10),
+        partyPurse: const PartyPurse().setCoins(gp: 50, sp: 10, nodeId: 'test-node'),
         nodeId: 'test-node',
       );
 
@@ -86,7 +86,7 @@ void main() {
 
     test('detects differences in partyPurse despite same id', () {
       final modified =
-          profileA.copyWith(partyPurse: const PartyPurse().setCoins(gp: 100));
+          profileA.copyWith(partyPurse: const PartyPurse().setCoins(gp: 100, nodeId: 'test-node'));
       expect(profileA == modified, isFalse);
     });
   });

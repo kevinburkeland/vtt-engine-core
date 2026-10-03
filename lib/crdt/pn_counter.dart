@@ -23,7 +23,15 @@ class PnCounter {
 
   /// Factory creating an initial PN-counter with a starting balance on a given node.
   factory PnCounter.withInitialValue(int initialValue,
-      {String nodeId = 'local'}) {
+      {required String nodeId}) {
+    if (nodeId.trim().isEmpty) {
+      throw ArgumentError.value(
+          nodeId, 'nodeId', 'nodeId cannot be empty or whitespace.');
+    }
+    if (nodeId.trim().toLowerCase() == 'local') {
+      throw ArgumentError.value(
+          nodeId, 'nodeId', 'CRDT mutations cannot use "local" as replica identity.');
+    }
     final clamped = math.max(0, initialValue);
     if (clamped == 0) {
       return const PnCounter();
@@ -44,7 +52,15 @@ class PnCounter {
   int get value => math.max(0, positiveSum - negativeSum);
 
   /// Increments the counter by [amount] for [nodeId].
-  PnCounter increment(int amount, {String nodeId = 'local'}) {
+  PnCounter increment(int amount, {required String nodeId}) {
+    if (nodeId.trim().isEmpty) {
+      throw ArgumentError.value(
+          nodeId, 'nodeId', 'nodeId cannot be empty or whitespace.');
+    }
+    if (nodeId.trim().toLowerCase() == 'local') {
+      throw ArgumentError.value(
+          nodeId, 'nodeId', 'CRDT mutations cannot use "local" as replica identity.');
+    }
     if (amount <= 0) return this;
     final currentPos = positive[nodeId] ?? 0;
     final updatedPos = Map<String, int>.from(positive);
@@ -57,7 +73,15 @@ class PnCounter {
   }
 
   /// Decrements the counter by [amount] for [nodeId].
-  PnCounter decrement(int amount, {String nodeId = 'local'}) {
+  PnCounter decrement(int amount, {required String nodeId}) {
+    if (nodeId.trim().isEmpty) {
+      throw ArgumentError.value(
+          nodeId, 'nodeId', 'nodeId cannot be empty or whitespace.');
+    }
+    if (nodeId.trim().toLowerCase() == 'local') {
+      throw ArgumentError.value(
+          nodeId, 'nodeId', 'CRDT mutations cannot use "local" as replica identity.');
+    }
     if (amount <= 0) return this;
     final currentNeg = negative[nodeId] ?? 0;
     final updatedNeg = Map<String, int>.from(negative);

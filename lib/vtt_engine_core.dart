@@ -9,6 +9,7 @@ export 'crdt/crdt_lww_register.dart';
 export 'crdt/crdt_or_set.dart';
 export 'crdt/hybrid_logical_clock.dart';
 export 'crdt/pn_counter.dart';
+export 'crdt/replica_id.dart';
 
 // Currency
 export 'currency/i_currency_system.dart';

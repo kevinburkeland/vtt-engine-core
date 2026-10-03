@@ -9,14 +9,14 @@ extension on PartyPurse {
   PnCounter get gpCounter => getCounter('gp');
   PnCounter get spCounter => getCounter('sp');
 
-  PartyPurse setCoins({int? gp, int? sp, String nodeId = 'local'}) {
+  PartyPurse setCoins({int? gp, int? sp, required String nodeId}) {
     var p = this;
     if (gp != null) p = p.setDenomination('gp', gp, nodeId: nodeId);
     if (sp != null) p = p.setDenomination('sp', sp, nodeId: nodeId);
     return p;
   }
 
-  PartyPurse withdrawCoins({int gp = 0, int sp = 0, String nodeId = 'local'}) {
+  PartyPurse withdrawCoins({int gp = 0, int sp = 0, required String nodeId}) {
     var p = this;
     if (gp > 0) p = p.modifyDenomination('gp', -(gp > p.gp ? p.gp : gp), nodeId: nodeId);
     if (sp > 0) p = p.modifyDenomination('sp', -(sp > p.sp ? p.sp : sp), nodeId: nodeId);
@@ -75,8 +75,8 @@ void main() {
     test(
         'withdrawCoins records negative decrement and preserves CvRDT lattice monotonicity',
         () {
-      final purse = const PartyPurse().setCoins(gp: 150, nodeId: 'local');
-      final afterWithdraw = purse.withdrawCoins(gp: 50, nodeId: 'local');
+      final purse = const PartyPurse().setCoins(gp: 150, nodeId: 'node-withdraw');
+      final afterWithdraw = purse.withdrawCoins(gp: 50, nodeId: 'node-withdraw');
       expect(afterWithdraw.gp, 100);
 
       final merged = afterWithdraw.merge(purse);
