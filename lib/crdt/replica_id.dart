@@ -9,9 +9,6 @@ class ReplicaId implements Comparable<ReplicaId> {
 
   ReplicaId(String raw) : value = _validate(raw);
 
-  /// Unchecked constructor for internal serialization or constant fixtures where
-  /// the string has already been validated.
-  const ReplicaId.unsafe(this.value);
 
   static String _validate(String raw) {
     final clean = raw.trim();
