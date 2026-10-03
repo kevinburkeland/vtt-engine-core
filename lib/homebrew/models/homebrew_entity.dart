@@ -14,15 +14,29 @@ class HomebrewEntity {
   final Map<String, dynamic> normalizedData;
   final Map<String, dynamic> unparsedPayload;
 
-  const HomebrewEntity({
+  HomebrewEntity({
     required this.id,
     required this.name,
     required this.entityType,
     required this.ruleset,
-    this.rawPayload = const {},
-    this.normalizedData = const {},
-    this.unparsedPayload = const {},
-  });
+    Map<String, dynamic> rawPayload = const {},
+    Map<String, dynamic> normalizedData = const {},
+    Map<String, dynamic> unparsedPayload = const {},
+  })  : rawPayload =
+            Map.unmodifiable(Map<String, dynamic>.from(rawPayload)),
+        normalizedData =
+            Map.unmodifiable(Map<String, dynamic>.from(normalizedData)),
+        unparsedPayload =
+            Map.unmodifiable(Map<String, dynamic>.from(unparsedPayload));
+
+  const HomebrewEntity.empty()
+      : id = '',
+        name = '',
+        entityType = '',
+        ruleset = RulesetVersion.homebrew,
+        rawPayload = const {},
+        normalizedData = const {},
+        unparsedPayload = const {};
 
   HomebrewEntity copyWith({
     String? id,

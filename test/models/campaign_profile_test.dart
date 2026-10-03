@@ -17,7 +17,7 @@ extension on PartyPurse {
 void main() {
   group('CampaignProfile Deep Equality Tests', () {
     final baseDate = DateTime.utc(2024, 1, 1);
-    const room = RoomNodeState(
+    final room = RoomNodeState(
       roomId: 'room-1',
       roomCode: 'CR-101',
       title: 'Dungeon Room',
@@ -33,7 +33,7 @@ void main() {
       partyCharacterIds: const ['char-1', 'char-2'],
       pinnedRuleIds: const {'cover', 'grapple_shove'},
       notesMarkdown: 'Session 1 notes',
-      partyPurse: const PartyPurse().setCoins(gp: 50, sp: 10, nodeId: 'test-node'),
+      partyPurse: const PartyPurse.empty().setCoins(gp: 50, sp: 10, nodeId: 'test-node'),
       nodeId: 'test-node',
     );
 
@@ -50,7 +50,7 @@ void main() {
         partyCharacterIds: const ['char-1', 'char-2'],
         pinnedRuleIds: const {'cover', 'grapple_shove'},
         notesRegister: profileA.notesRegister,
-        partyPurse: const PartyPurse().setCoins(gp: 50, sp: 10, nodeId: 'test-node'),
+        partyPurse: const PartyPurse.empty().setCoins(gp: 50, sp: 10, nodeId: 'test-node'),
         nodeId: 'test-node',
       );
 
@@ -86,7 +86,7 @@ void main() {
 
     test('detects differences in partyPurse despite same id', () {
       final modified =
-          profileA.copyWith(partyPurse: const PartyPurse().setCoins(gp: 100, nodeId: 'test-node'));
+          profileA.copyWith(partyPurse: const PartyPurse.empty().setCoins(gp: 100, nodeId: 'test-node'));
       expect(profileA == modified, isFalse);
     });
   });

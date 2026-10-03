@@ -16,15 +16,16 @@ class CrdtOrSet<T> {
   CrdtOrSet({
     Map<String, CrdtLwwRegister<T>> items = const {},
     Map<String, HybridLogicalClock> tombstones = const {},
-  })  : items = Map.unmodifiable(items),
-        tombstones = Map.unmodifiable(tombstones);
+  })  : items = Map.unmodifiable(Map<String, CrdtLwwRegister<T>>.from(items)),
+        tombstones = Map.unmodifiable(Map<String, HybridLogicalClock>.from(tombstones));
 
   const CrdtOrSet.empty()
       : items = const {},
         tombstones = const {};
 
   /// Returns the current list of active (non-tombstoned) values.
-  List<T> get activeValues => items.values.map((r) => r.value).toList();
+  List<T> get activeValues =>
+      List.unmodifiable(items.values.map((r) => r.value));
 
   /// Returns the count of active values.
   int get length => items.length;

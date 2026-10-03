@@ -4,7 +4,7 @@ import 'package:vtt_engine_core/crdt/pn_counter.dart';
 void main() {
   group('PnCounter CvRDT Properties & Mathematics', () {
     test('Default constructor creates empty counter with value 0', () {
-      const counter = PnCounter();
+      const counter = PnCounter.empty();
       expect(counter.value, 0);
       expect(counter.positiveSum, 0);
       expect(counter.negativeSum, 0);
@@ -18,7 +18,7 @@ void main() {
     });
 
     test('increments and decrements advance respective vectors per node', () {
-      var counter = const PnCounter();
+      var counter = const PnCounter.empty();
       counter = counter.increment(50, nodeId: 'player-1');
       counter = counter.increment(25, nodeId: 'player-2');
       counter = counter.decrement(10, nodeId: 'player-1');
@@ -30,7 +30,7 @@ void main() {
     });
 
     test('value clamps at zero when decrements exceed increments', () {
-      var counter = const PnCounter();
+      var counter = const PnCounter.empty();
       counter = counter.increment(20, nodeId: 'node-a');
       counter = counter.decrement(50, nodeId: 'node-a');
 
@@ -40,16 +40,16 @@ void main() {
     });
 
     test('CvRDT Lattice Merge: Idempotent, Commutative, and Associative', () {
-      final a = const PnCounter()
+      final a = const PnCounter.empty()
           .increment(100, nodeId: 'node-1')
           .decrement(30, nodeId: 'node-1');
 
-      final b = const PnCounter()
+      final b = const PnCounter.empty()
           .increment(100, nodeId: 'node-1')
           .increment(50, nodeId: 'node-2')
           .decrement(10, nodeId: 'node-2');
 
-      final c = const PnCounter()
+      final c = const PnCounter.empty()
           .increment(75, nodeId: 'node-3')
           .decrement(20, nodeId: 'node-1');
 
@@ -100,7 +100,7 @@ void main() {
     });
 
     test('Serialization round-trip: toMap and fromMap preserve vectors', () {
-      final original = const PnCounter()
+      final original = const PnCounter.empty()
           .increment(200, nodeId: 'node-x')
           .decrement(45, nodeId: 'node-y');
 

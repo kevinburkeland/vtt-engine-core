@@ -81,7 +81,7 @@ void main() {
 
   group('PartyPurse Replica Identity Hardening', () {
     test('modifyDenomination, setDenomination, add, deduct reject "local" and empty nodeId', () {
-      final purse = const PartyPurse();
+      const purse = PartyPurse.empty();
 
       expect(
         () => purse.modifyDenomination('gp', 50, nodeId: 'local'),
@@ -100,7 +100,7 @@ void main() {
         throwsArgumentError,
       );
 
-      const other = PartyPurse();
+      const other = PartyPurse.empty();
       expect(
         () => purse.add(other, nodeId: 'local'),
         throwsArgumentError,
@@ -114,9 +114,9 @@ void main() {
 
   group('RoomNodeState copyWith Replica Identity Hardening', () {
     test('rejects raw Iterable activeEncounter with "local" or null nodeId', () {
-      const room = RoomNodeState(roomId: 'r1', roomCode: 'ROOM1', title: 'Test Room');
+      final room = RoomNodeState(roomId: 'r1', roomCode: 'ROOM1', title: 'Test Room');
       final participants = [
-        const EncounterParticipant(
+        EncounterParticipant(
           participantId: 'p1',
           entityLink: RoomEntityLink(
             entityId: 'e1',

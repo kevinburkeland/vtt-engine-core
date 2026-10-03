@@ -4,7 +4,7 @@ import 'package:vtt_engine_core/models/party_purse.dart';
 void main() {
   group('Dynamic PartyPurse Ruleset-Agnostic Lattice Tests', () {
     test('supports arbitrary custom currency denominations', () {
-      var purse = const PartyPurse();
+      var purse = const PartyPurse.empty();
 
       purse = purse.modifyDenomination('credits', 500, nodeId: 'nodeA');
       purse = purse.modifyDenomination('scrip', 150, nodeId: 'nodeA');
@@ -17,11 +17,11 @@ void main() {
     test(
         'reconciles concurrent mutations across heterogeneous nodes deterministically',
         () {
-      final nodeA = const PartyPurse()
+      final nodeA = const PartyPurse.empty()
           .modifyDenomination('credits', 300, nodeId: 'nodeA')
           .modifyDenomination('mana_shards', 50, nodeId: 'nodeA');
 
-      final nodeB = const PartyPurse()
+      final nodeB = const PartyPurse.empty()
           .modifyDenomination('credits', 200, nodeId: 'nodeB')
           .modifyDenomination('mana_shards', 30, nodeId: 'nodeB');
 
@@ -37,7 +37,7 @@ void main() {
     });
 
     test('serializes and deserializes custom denominations cleanly', () {
-      final original = const PartyPurse()
+      final original = const PartyPurse.empty()
           .modifyDenomination('gp', 100, nodeId: 'runner1')
           .modifyDenomination('credits', 2500, nodeId: 'runner1');
 

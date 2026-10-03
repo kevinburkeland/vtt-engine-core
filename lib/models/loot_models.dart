@@ -32,17 +32,32 @@ class LootContainer {
   final Map<String, dynamic> permissions;
   final Map<String, dynamic> customProperties;
 
-  const LootContainer({
+  LootContainer({
     required this.containerId,
     required this.name,
     this.type = LootContainerType.chest,
     this.isLocked = false,
     this.capacityWeightLbs,
-    this.items = const [],
-    this.purse = const PartyPurse(),
-    this.permissions = const {},
-    this.customProperties = const {},
-  });
+    List<InventoryItemInstance> items = const [],
+    this.purse = const PartyPurse.empty(),
+    Map<String, dynamic> permissions = const {},
+    Map<String, dynamic> customProperties = const {},
+  })  : items = List.unmodifiable(items),
+        permissions =
+            Map.unmodifiable(Map<String, dynamic>.from(permissions)),
+        customProperties =
+            Map.unmodifiable(Map<String, dynamic>.from(customProperties));
+
+  const LootContainer.empty()
+      : containerId = '',
+        name = '',
+        type = LootContainerType.chest,
+        isLocked = false,
+        capacityWeightLbs = null,
+        items = const [],
+        purse = const PartyPurse.empty(),
+        permissions = const {},
+        customProperties = const {};
 
   int get itemCount => items.fold(0, (sum, i) => sum + i.quantity);
 
@@ -110,7 +125,7 @@ class LootContainer {
       purse: map['purse'] != null
           ? PartyPurse.fromMap(
               Map<String, dynamic>.from(map['purse'] as Map? ?? {}))
-          : const PartyPurse(),
+          : const PartyPurse.empty(),
       permissions: Map<String, dynamic>.from(map['permissions'] as Map? ?? {}),
       customProperties:
           Map<String, dynamic>.from(map['customProperties'] as Map? ?? {}),

@@ -16,10 +16,15 @@ class PnCounter {
   final Map<String, int> positive;
   final Map<String, int> negative;
 
-  const PnCounter({
-    this.positive = const <String, int>{},
-    this.negative = const <String, int>{},
-  });
+  PnCounter({
+    Map<String, int> positive = const {},
+    Map<String, int> negative = const {},
+  })  : positive = Map.unmodifiable(Map<String, int>.from(positive)),
+        negative = Map.unmodifiable(Map<String, int>.from(negative));
+
+  const PnCounter.empty()
+      : positive = const {},
+        negative = const {};
 
   /// Factory creating an initial PN-counter with a starting balance on a given node.
   factory PnCounter.withInitialValue(int initialValue,
@@ -34,7 +39,7 @@ class PnCounter {
     }
     final clamped = math.max(0, initialValue);
     if (clamped == 0) {
-      return const PnCounter();
+      return const PnCounter.empty();
     }
     return PnCounter(
       positive: {nodeId: clamped},
@@ -67,7 +72,7 @@ class PnCounter {
     updatedPos[nodeId] = currentPos + amount;
 
     return PnCounter(
-      positive: Map.unmodifiable(updatedPos),
+      positive: updatedPos,
       negative: negative,
     );
   }
@@ -89,7 +94,7 @@ class PnCounter {
 
     return PnCounter(
       positive: positive,
-      negative: Map.unmodifiable(updatedNeg),
+      negative: updatedNeg,
     );
   }
 
@@ -114,22 +119,22 @@ class PnCounter {
     }
 
     return PnCounter(
-      positive: Map.unmodifiable(mergedPos),
-      negative: Map.unmodifiable(mergedNeg),
+      positive: mergedPos,
+      negative: mergedNeg,
     );
   }
 
   /// Converts this PN-Counter to a serializable map.
   Map<String, dynamic> toMap() {
     return {
-      'positive': positive,
-      'negative': negative,
+      'positive': Map<String, int>.from(positive),
+      'negative': Map<String, int>.from(negative),
     };
   }
 
   /// Reconstitutes a PN-Counter from a map.
   factory PnCounter.fromMap(Map<String, dynamic>? map) {
-    if (map == null) return const PnCounter();
+    if (map == null) return const PnCounter.empty();
 
     final rawPos = map['positive'];
     final pos = <String, int>{};
@@ -152,8 +157,8 @@ class PnCounter {
     }
 
     return PnCounter(
-      positive: Map.unmodifiable(pos),
-      negative: Map.unmodifiable(neg),
+      positive: pos,
+      negative: neg,
     );
   }
 

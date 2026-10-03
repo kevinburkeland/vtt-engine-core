@@ -30,7 +30,7 @@ void main() {
         'setCoins decrements correctly and converges across CvRDT lattice join',
         () {
       // 1. Initial purse on Node A with 100 GP
-      final purseA = const PartyPurse().setCoins(gp: 100, nodeId: 'nodeA');
+      final purseA = const PartyPurse.empty().setCoins(gp: 100, nodeId: 'nodeA');
       expect(purseA.gp, 100);
       expect(purseA.gpCounter.positive['nodeA'], 100);
       expect(purseA.gpCounter.negative['nodeA'] ?? 0, 0);
@@ -56,7 +56,7 @@ void main() {
     test('copyWith with scalar reduction records negative decrement vector',
         () {
       final initial =
-          const PartyPurse().setCoins(gp: 50, sp: 20, nodeId: 'node1');
+          const PartyPurse.empty().setCoins(gp: 50, sp: 20, nodeId: 'node1');
       expect(initial.gp, 50);
       expect(initial.sp, 20);
 
@@ -75,7 +75,7 @@ void main() {
     test(
         'withdrawCoins records negative decrement and preserves CvRDT lattice monotonicity',
         () {
-      final purse = const PartyPurse().setCoins(gp: 150, nodeId: 'node-withdraw');
+      final purse = const PartyPurse.empty().setCoins(gp: 150, nodeId: 'node-withdraw');
       final afterWithdraw = purse.withdrawCoins(gp: 50, nodeId: 'node-withdraw');
       expect(afterWithdraw.gp, 100);
 
@@ -86,7 +86,7 @@ void main() {
 
     test('Multiple nodes spending concurrently converges deterministically',
         () {
-      final base = const PartyPurse().setCoins(gp: 200, nodeId: 'init');
+      final base = const PartyPurse.empty().setCoins(gp: 200, nodeId: 'init');
 
       // Node A spends 30 GP
       final nodeA = base.withdrawCoins(gp: 30, nodeId: 'nodeA');

@@ -40,19 +40,21 @@ class CampaignProfile {
   static const _listEquality = ListEquality<String>();
   static const _setEquality = SetEquality<String>();
 
-  const CampaignProfile.raw({
+  CampaignProfile.raw({
     required this.id,
     required this.name,
     this.edition = const RulesetIdentifier('generic_tabletop'),
     required this.createdAt,
     required this.lastPlayedAt,
     required this.roomState,
-    this.partyCharacterIds = const [],
-    this.pinnedRuleIds = const {},
+    List<String> partyCharacterIds = const [],
+    Set<String> pinnedRuleIds = const {},
     required this.notesRegister,
-    this.partyPurse = const PartyPurse(),
-    this.changeLog = const [],
-  });
+    this.partyPurse = const PartyPurse.empty(),
+    List<PartyEvent> changeLog = const [],
+  })  : partyCharacterIds = List.unmodifiable(partyCharacterIds),
+        pinnedRuleIds = Set.unmodifiable(pinnedRuleIds),
+        changeLog = List.unmodifiable(changeLog);
 
   factory CampaignProfile({
     required String id,
@@ -66,7 +68,7 @@ class CampaignProfile {
     Set<String> pinnedRuleIds = const {},
     CrdtLwwRegister<String>? notesRegister,
     String? notesMarkdown,
-    PartyPurse partyPurse = const PartyPurse(),
+    PartyPurse partyPurse = const PartyPurse.empty(),
     List<PartyEvent> changeLog = const [],
     required String nodeId,
   }) {
@@ -124,15 +126,11 @@ class CampaignProfile {
           const RulesetIdentifier('generic_tabletop'),
       createdAt: timestamp,
       lastPlayedAt: timestamp,
-      roomState: const RoomNodeState(
-        roomId: '',
-        roomCode: '',
-        title: '',
-      ),
+      roomState: const RoomNodeState.empty(),
       partyCharacterIds: const [],
       pinnedRuleIds: const {},
       notesMarkdown: '',
-      partyPurse: const PartyPurse(),
+      partyPurse: const PartyPurse.empty(),
       nodeId: nodeId,
     );
   }

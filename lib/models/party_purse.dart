@@ -18,20 +18,27 @@ class PartyPurse {
   final PnCounter _gpCounter;
   final PnCounter _ppCounter;
 
-  const PartyPurse({
-    this.denominationCounters = const {},
+  PartyPurse({
+    Map<String, PnCounter> denominationCounters = const {},
     int cp = 0,
     int sp = 0,
     int ep = 0,
     int gp = 0,
     int pp = 0,
-    PnCounter cpCounter = const PnCounter(),
-    PnCounter spCounter = const PnCounter(),
-    PnCounter epCounter = const PnCounter(),
-    PnCounter gpCounter = const PnCounter(),
-    PnCounter ppCounter = const PnCounter(),
+    PnCounter cpCounter = const PnCounter.empty(),
+    PnCounter spCounter = const PnCounter.empty(),
+    PnCounter epCounter = const PnCounter.empty(),
+    PnCounter gpCounter = const PnCounter.empty(),
+    PnCounter ppCounter = const PnCounter.empty(),
     Map<String, PnCounter> customCounters = const {},
-  })  : _legacyCp = cp,
+  })  : denominationCounters = Map.unmodifiable(
+          Map<String, PnCounter>.from(
+            denominationCounters.isNotEmpty
+                ? denominationCounters
+                : customCounters,
+          ),
+        ),
+        _legacyCp = cp,
         _legacySp = sp,
         _legacyEp = ep,
         _legacyGp = gp,
@@ -49,24 +56,25 @@ class PartyPurse {
         _legacyEp = 0,
         _legacyGp = 0,
         _legacyPp = 0,
-        _cpCounter = const PnCounter(),
-        _spCounter = const PnCounter(),
-        _epCounter = const PnCounter(),
-        _gpCounter = const PnCounter(),
-        _ppCounter = const PnCounter();
+        _cpCounter = const PnCounter.empty(),
+        _spCounter = const PnCounter.empty(),
+        _epCounter = const PnCounter.empty(),
+        _gpCounter = const PnCounter.empty(),
+        _ppCounter = const PnCounter.empty();
 
   PartyPurse.fromCounters(Map<String, PnCounter> counters)
-      : denominationCounters = Map.unmodifiable(counters),
+      : denominationCounters =
+            Map.unmodifiable(Map<String, PnCounter>.from(counters)),
         _legacyCp = 0,
         _legacySp = 0,
         _legacyEp = 0,
         _legacyGp = 0,
         _legacyPp = 0,
-        _cpCounter = const PnCounter(),
-        _spCounter = const PnCounter(),
-        _epCounter = const PnCounter(),
-        _gpCounter = const PnCounter(),
-        _ppCounter = const PnCounter();
+        _cpCounter = const PnCounter.empty(),
+        _spCounter = const PnCounter.empty(),
+        _epCounter = const PnCounter.empty(),
+        _gpCounter = const PnCounter.empty(),
+        _ppCounter = const PnCounter.empty();
 
   /// Retrieves the PN-counter for [denominationId].
   PnCounter getCounter(String denominationId) {
@@ -79,33 +87,33 @@ class PartyPurse {
           return _cpCounter;
         return _legacyCp > 0
             ? PnCounter.withInitialValue(_legacyCp, nodeId: 'init')
-            : const PnCounter();
+            : const PnCounter.empty();
       case 'sp':
         if (_spCounter.positive.isNotEmpty || _spCounter.negative.isNotEmpty)
           return _spCounter;
         return _legacySp > 0
             ? PnCounter.withInitialValue(_legacySp, nodeId: 'init')
-            : const PnCounter();
+            : const PnCounter.empty();
       case 'ep':
         if (_epCounter.positive.isNotEmpty || _epCounter.negative.isNotEmpty)
           return _epCounter;
         return _legacyEp > 0
             ? PnCounter.withInitialValue(_legacyEp, nodeId: 'init')
-            : const PnCounter();
+            : const PnCounter.empty();
       case 'gp':
         if (_gpCounter.positive.isNotEmpty || _gpCounter.negative.isNotEmpty)
           return _gpCounter;
         return _legacyGp > 0
             ? PnCounter.withInitialValue(_legacyGp, nodeId: 'init')
-            : const PnCounter();
+            : const PnCounter.empty();
       case 'pp':
         if (_ppCounter.positive.isNotEmpty || _ppCounter.negative.isNotEmpty)
           return _ppCounter;
         return _legacyPp > 0
             ? PnCounter.withInitialValue(_legacyPp, nodeId: 'init')
-            : const PnCounter();
+            : const PnCounter.empty();
       default:
-        return const PnCounter();
+        return const PnCounter.empty();
     }
   }
 
@@ -163,7 +171,7 @@ class PartyPurse {
       }
     }
     denominationCounters.forEach((k, v) => map[k] = v);
-    return map;
+    return Map.unmodifiable(map);
   }
 
   /// Modifies balance for an arbitrary denomination key by [delta] (positive or negative),
@@ -331,7 +339,7 @@ class PartyPurse {
         if (existingCounter == null) {
           parsed[key] = scalar > 0
               ? PnCounter.withInitialValue(scalar, nodeId: 'init')
-              : const PnCounter();
+              : const PnCounter.empty();
         } else if (scalar != existingCounter.value) {
           final diff = scalar - existingCounter.value;
           parsed[key] = diff > 0

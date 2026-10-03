@@ -35,13 +35,13 @@ void main() {
   group('Generic Tabletop Entity & State Representation', () {
     test('Can represent an entity with no class, no level, no proficiency bonus, no HP, no initiative, and no concept of death', () {
       // Represents a worker-placement meeple or an abstract entity
-      const meepleRef = RoomEntityLink(
-        refType: EntityCategory('worker_meeple', 'Worker Meeple'),
+      final meepleRef = RoomEntityLink(
+        refType: const EntityCategory('worker_meeple', 'Worker Meeple'),
         entityId: 'meeple-blue-1',
         displayName: 'Blue Worker',
       );
 
-      const participant = EncounterParticipant(
+      final participant = EncounterParticipant(
         participantId: 'part-1',
         entityLink: meepleRef,
         // No initiative
@@ -130,7 +130,7 @@ void main() {
     });
 
     test('EntityInstance models arbitrary game pieces without taxonomy constraints', () {
-      const piece = EntityInstance(
+      final piece = EntityInstance(
         instanceId: 'ship-galleon-42',
         entityDefinitionId: 'ship_heavy_galleon',
         entityType: 'vehicle',

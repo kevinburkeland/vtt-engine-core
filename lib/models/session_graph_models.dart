@@ -47,16 +47,31 @@ class EntityInstance {
   final Map<String, dynamic> runtimeData;
   final Map<String, dynamic> customProperties;
 
-  const EntityInstance({
+  EntityInstance({
     required this.instanceId,
     this.entityDefinitionId,
     this.entityType,
     required this.displayName,
-    this.position,
+    Map<String, dynamic>? position,
     this.isVisible = true,
-    this.runtimeData = const {},
-    this.customProperties = const {},
-  });
+    Map<String, dynamic> runtimeData = const {},
+    Map<String, dynamic> customProperties = const {},
+  })  : position = position != null
+            ? Map.unmodifiable(Map<String, dynamic>.from(position))
+            : null,
+        runtimeData = Map.unmodifiable(Map<String, dynamic>.from(runtimeData)),
+        customProperties =
+            Map.unmodifiable(Map<String, dynamic>.from(customProperties));
+
+  const EntityInstance.empty()
+      : instanceId = '',
+        entityDefinitionId = null,
+        entityType = null,
+        displayName = '',
+        position = null,
+        isVisible = true,
+        runtimeData = const {},
+        customProperties = const {};
 
   EntityInstance copyWith({
     String? instanceId,
@@ -148,15 +163,29 @@ class RoomEntityLink {
   final bool isIsolatedClone; // If true, runtime modifications don't mutate parent template
   final Map<String, dynamic>? cloneRuntimeData;
 
-  const RoomEntityLink({
+  RoomEntityLink({
     this.refType = const EntityCategory('generic', 'Generic'),
     required this.entityId,
     required this.displayName,
     this.notes,
-    this.position,
+    Map<String, dynamic>? position,
     this.isIsolatedClone = false,
-    this.cloneRuntimeData,
-  });
+    Map<String, dynamic>? cloneRuntimeData,
+  })  : position = position != null
+            ? Map.unmodifiable(Map<String, dynamic>.from(position))
+            : null,
+        cloneRuntimeData = cloneRuntimeData != null
+            ? Map.unmodifiable(Map<String, dynamic>.from(cloneRuntimeData))
+            : null;
+
+  const RoomEntityLink.empty()
+      : refType = const EntityCategory('generic', 'Generic'),
+        entityId = '',
+        displayName = '',
+        notes = null,
+        position = null,
+        isIsolatedClone = false,
+        cloneRuntimeData = null;
 
   RoomEntityLink copyWith({
     dynamic refType,
@@ -255,7 +284,7 @@ class EncounterParticipant {
 
   int? get defenseRating => defense;
 
-  const EncounterParticipant({
+  EncounterParticipant({
     required this.participantId,
     required this.entityLink,
     this.initiativeScore,
@@ -264,12 +293,29 @@ class EncounterParticipant {
     this.maxHp,
     this.tempHp,
     this.defense,
-    this.activeConditions = const [],
+    List<String> activeConditions = const [],
     this.isDefeated,
     this.isDead,
     this.isActiveTurn = false,
-    this.customProperties = const {},
-  });
+    Map<String, dynamic> customProperties = const {},
+  })  : activeConditions = List.unmodifiable(activeConditions),
+        customProperties =
+            Map.unmodifiable(Map<String, dynamic>.from(customProperties));
+
+  const EncounterParticipant.empty()
+      : participantId = '',
+        entityLink = const RoomEntityLink.empty(),
+        initiativeScore = null,
+        initiativeTieBreaker = null,
+        currentHp = null,
+        maxHp = null,
+        tempHp = null,
+        defense = null,
+        activeConditions = const [],
+        isDefeated = null,
+        isDead = null,
+        isActiveTurn = false,
+        customProperties = const {};
 
   EncounterParticipant copyWith({
     String? participantId,
@@ -422,18 +468,34 @@ class RoomNodeState {
       activeEncounter.activeValues;
   List<dynamic> get activeMinionsList => activeMinions.activeValues;
 
-  const RoomNodeState({
+  RoomNodeState({
     required this.roomId,
     required this.roomCode,
     required this.title,
     this.description = '',
-    this.entityLinks = const [],
-    this.entityInstances = const [],
-    this.containers = const [],
+    List<RoomEntityLink> entityLinks = const [],
+    List<EntityInstance> entityInstances = const [],
+    List<LootContainer> containers = const [],
     this.activeEncounter = const CrdtOrSet<EncounterParticipant>.empty(),
     this.activeMinions = const CrdtOrSet<dynamic>.empty(),
-    this.customProperties = const {},
-  });
+    Map<String, dynamic> customProperties = const {},
+  })  : entityLinks = List.unmodifiable(entityLinks),
+        entityInstances = List.unmodifiable(entityInstances),
+        containers = List.unmodifiable(containers),
+        customProperties =
+            Map.unmodifiable(Map<String, dynamic>.from(customProperties));
+
+  const RoomNodeState.empty()
+      : roomId = '',
+        roomCode = '',
+        title = '',
+        description = '',
+        entityLinks = const [],
+        entityInstances = const [],
+        containers = const [],
+        activeEncounter = const CrdtOrSet<EncounterParticipant>.empty(),
+        activeMinions = const CrdtOrSet<dynamic>.empty(),
+        customProperties = const {};
 
   factory RoomNodeState.fromLists({
     required String roomId,

@@ -126,7 +126,17 @@ class InventoryItemInstance {
   final dynamic equippedSlot;
   final Map<String, dynamic> customProperties;
 
-  const InventoryItemInstance({
+  InventoryItemInstance({
+    required this.itemRef,
+    required this.instanceId,
+    this.quantity = 1,
+    this.isEquipped = false,
+    this.equippedSlot,
+    Map<String, dynamic> customProperties = const {},
+  }) : customProperties =
+            Map.unmodifiable(Map<String, dynamic>.from(customProperties));
+
+  const InventoryItemInstance.raw({
     required this.itemRef,
     required this.instanceId,
     this.quantity = 1,
@@ -466,7 +476,7 @@ class Character extends DomainEntity {
     this.toolProficiencies = const [],
     this.languages = const [],
     this.inventory = const [],
-    this.purse = const PartyPurse(),
+    this.purse = const PartyPurse.empty(),
     this.feats = const [],
     this.resources = const CharacterResourcePool(),
     this.conditions = const [],
@@ -739,7 +749,7 @@ class Character extends DomainEntity {
       purse: map['purse'] != null
           ? PartyPurse.fromMap(
               Map<String, dynamic>.from(map['purse'] as Map? ?? {}))
-          : const PartyPurse(),
+          : const PartyPurse.empty(),
       feats: (map['feats'] as List? ?? [])
           .whereType<Map>()
           .map((f) => EntityReference<DomainEntity>.fromMap(
