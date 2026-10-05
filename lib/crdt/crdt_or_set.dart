@@ -5,6 +5,14 @@ import 'hybrid_logical_clock.dart';
 /// Observed-Remove Set (OR-Set) with explicit Tombstone tracking.
 /// Provides deterministic reconciliation for collections (e.g., active conditions,
 /// minion rosters) and prevents resurrection of deleted items across distributed nodes.
+///
+/// Implements explicit ADD-WINS semantics when item and tombstone timestamps are identical:
+/// - item timestamp > tombstone -> item wins
+/// - item timestamp < tombstone -> tombstone wins
+/// - item timestamp == tombstone -> ITEM WINS
+///
+/// Concurrent items with identical timestamp and divergent payload values fail loudly and
+/// symmetrically with a [StateError].
 @immutable
 class CrdtOrSet<T> {
   /// Maps item ID to the Register containing the item and its insertion timestamp.
@@ -62,12 +70,16 @@ class CrdtOrSet<T> {
   Iterator<T> get iterator => activeValues.iterator;
 
   /// Adds or updates an item with the given [id] and [timestamp].
-  /// If a tombstone exists for [id] that is newer than [timestamp], the addition is rejected.
+  /// Follows explicit ADD-WINS semantics against existing tombstones.
   CrdtOrSet<T> add(String id, T item, HybridLogicalClock timestamp) {
     return addBatch([(id: id, item: item, timestamp: timestamp)]);
   }
 
   /// Adds or updates multiple items in a single batch operation to avoid O(N^2) map copies.
+  /// Follows explicit ADD-WINS semantics:
+  /// - If item timestamp >= existing tombstone timestamp: addition wins and clears tombstone.
+  /// - If item timestamp < existing tombstone timestamp: addition is defeated by tombstone.
+  /// - If identical timestamp already exists in items with divergent value: fails loudly.
   CrdtOrSet<T> addBatch(
       Iterable<({String id, T item, HybridLogicalClock timestamp})> entries) {
     if (entries.isEmpty) return this;
@@ -77,7 +89,25 @@ class CrdtOrSet<T> {
     for (final entry in entries) {
       final id = entry.id;
       final ts = entry.timestamp;
-      if (!newTombstones.containsKey(id) || ts.isAfter(newTombstones[id]!)) {
+      final tombstone = newTombstones[id];
+
+      // Add-wins: tombstone defeats item ONLY if tombstone is strictly newer.
+      // If ts >= tombstone, item wins.
+      if (tombstone != null && tombstone.isAfter(ts)) {
+        continue;
+      }
+
+      final existingItem = newItems[id];
+      if (existingItem != null && existingItem.timestamp == ts) {
+        if (existingItem.value != entry.item) {
+          throw StateError(
+            'CRDT Collision: CrdtOrSet detected identical timestamp $ts with '
+            'divergent item values for ID "$id": "${existingItem.value}" vs "${entry.item}".',
+          );
+        }
+        // Same timestamp, same value: idempotent
+        newTombstones.remove(id);
+      } else if (existingItem == null || ts.isAfter(existingItem.timestamp)) {
         newItems[id] = CrdtLwwRegister(value: entry.item, timestamp: ts);
         newTombstones.remove(id);
       }
@@ -90,26 +120,28 @@ class CrdtOrSet<T> {
   }
 
   /// Removes an item with the given [id] at [timestamp], recording a tombstone.
-  /// Unconditionally records the tombstone if [timestamp] is strictly newer than
-  /// any existing tombstone for [id], regardless of whether the item currently exists in items.
+  /// Follows explicit ADD-WINS semantics:
+  /// - If an active item has timestamp >= removal timestamp, removal is defeated (item wins).
+  /// - If removal timestamp > active item timestamp, item is removed and tombstone is recorded.
+  /// - Never leaves both an active item and an equal/newer tombstone in a contradictory state.
   CrdtOrSet<T> remove(String id, HybridLogicalClock timestamp) {
-    final newItems = Map<String, CrdtLwwRegister<T>>.from(items);
-    final newTombstones = Map<String, HybridLogicalClock>.from(tombstones);
-
-    final currentItem = newItems[id];
+    final currentItem = items[id];
     if (currentItem != null) {
-      if (timestamp.isAfter(currentItem.timestamp)) {
-        newItems.remove(id);
-      } else {
-        // Item was added/revived strictly after this removal timestamp.
-        return CrdtOrSet(
-          items: Map.unmodifiable(newItems),
-          tombstones: Map.unmodifiable(newTombstones),
-        );
+      if (!timestamp.isAfter(currentItem.timestamp)) {
+        // Item was added at an equal or newer timestamp; Add-Wins keeps the item.
+        return this;
       }
     }
 
-    final existingTombstone = newTombstones[id];
+    final existingTombstone = tombstones[id];
+    if (existingTombstone != null && !timestamp.isAfter(existingTombstone)) {
+      if (currentItem == null) {
+        return this;
+      }
+    }
+
+    final newItems = Map<String, CrdtLwwRegister<T>>.from(items)..remove(id);
+    final newTombstones = Map<String, HybridLogicalClock>.from(tombstones);
     if (existingTombstone == null || timestamp.isAfter(existingTombstone)) {
       newTombstones[id] = timestamp;
     }
@@ -120,45 +152,76 @@ class CrdtOrSet<T> {
     );
   }
 
-  /// Merges this OR-Set with a [remote] OR-Set deterministically.
+  /// Merges this OR-Set with [remote] deterministically as a CvRDT lattice join.
+  /// Implements explicit ADD-WINS for exact timestamps and fails loudly and
+  /// symmetrically on identical timestamp collisions with divergent item payloads.
   CrdtOrSet<T> merge(CrdtOrSet<T> remote) {
-    final mergedItems = Map<String, CrdtLwwRegister<T>>.from(items);
-    final mergedTombstones = Map<String, HybridLogicalClock>.from(tombstones);
+    if (identical(this, remote)) return this;
 
-    // Merge tombstones
-    remote.tombstones.forEach((id, remoteTs) {
-      final localTs = mergedTombstones[id];
-      final localItem = mergedItems[id];
+    final allIds = <String>{
+      ...items.keys,
+      ...tombstones.keys,
+      ...remote.items.keys,
+      ...remote.tombstones.keys,
+    };
 
-      // If local item is strictly newer than the remote tombstone,
-      // the tombstone is obsolete (the item was revived) and must not be added.
-      if (localItem != null && localItem.timestamp.isAfter(remoteTs)) {
-        return;
-      }
+    final mergedItems = <String, CrdtLwwRegister<T>>{};
+    final mergedTombstones = <String, HybridLogicalClock>{};
 
-      if (localTs == null || remoteTs.isAfter(localTs)) {
-        mergedTombstones[id] = remoteTs;
-        // If remote tombstone is newer than our item, delete our item
-        if (localItem != null && remoteTs.isAfter(localItem.timestamp)) {
-          mergedItems.remove(id);
+    for (final id in allIds) {
+      final localItem = items[id];
+      final remoteItem = remote.items[id];
+      final localTomb = tombstones[id];
+      final remoteTomb = remote.tombstones[id];
+
+      // 1. Resolve best candidate item for this ID
+      CrdtLwwRegister<T>? candidateItem;
+      if (localItem != null && remoteItem != null) {
+        if (localItem.timestamp == remoteItem.timestamp) {
+          if (localItem.value != remoteItem.value) {
+            throw StateError(
+              'CRDT Collision: CrdtOrSet merge detected identical timestamp '
+              '${localItem.timestamp} with divergent item values for ID "$id": '
+              '"${localItem.value}" vs "${remoteItem.value}".',
+            );
+          }
+          candidateItem = localItem;
+        } else if (localItem.timestamp.isAfter(remoteItem.timestamp)) {
+          candidateItem = localItem;
+        } else {
+          candidateItem = remoteItem;
         }
+      } else {
+        candidateItem = localItem ?? remoteItem;
       }
-    });
 
-    // Merge items
-    remote.items.forEach((id, remoteReg) {
-      final localTombstone = mergedTombstones[id];
-      // Only merge if the item is newer than the local tombstone
-      if (localTombstone == null ||
-          remoteReg.timestamp.isAfter(localTombstone)) {
-        final localReg = mergedItems[id];
-        if (localReg == null ||
-            remoteReg.timestamp.isAfter(localReg.timestamp)) {
-          mergedItems[id] = remoteReg;
-          mergedTombstones.remove(id);
-        }
+      // 2. Resolve best candidate tombstone for this ID
+      HybridLogicalClock? candidateTomb;
+      if (localTomb != null && remoteTomb != null) {
+        candidateTomb =
+            localTomb.isAfter(remoteTomb) ? localTomb : remoteTomb;
+      } else {
+        candidateTomb = localTomb ?? remoteTomb;
       }
-    });
+
+      // 3. Reconcile item vs tombstone under ADD-WINS:
+      // item timestamp > tombstone -> item wins
+      // item timestamp < tombstone -> tombstone wins
+      // item timestamp == tombstone -> item wins
+      if (candidateItem != null && candidateTomb != null) {
+        if (!candidateTomb.isAfter(candidateItem.timestamp)) {
+          // candidateItem.timestamp >= candidateTomb -> ADD WINS!
+          mergedItems[id] = candidateItem;
+        } else {
+          // candidateTomb is strictly newer -> TOMBSTONE WINS!
+          mergedTombstones[id] = candidateTomb;
+        }
+      } else if (candidateItem != null) {
+        mergedItems[id] = candidateItem;
+      } else if (candidateTomb != null) {
+        mergedTombstones[id] = candidateTomb;
+      }
+    }
 
     return CrdtOrSet(
       items: Map.unmodifiable(mergedItems),

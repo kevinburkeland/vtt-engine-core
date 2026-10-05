@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:meta/meta.dart';
 import '../crdt/pn_counter.dart';
 import '../crdt/replica_id.dart';
@@ -87,36 +88,46 @@ class PartyPurse {
         if (_cpCounter.positive.isNotEmpty || _cpCounter.negative.isNotEmpty) {
           return _cpCounter;
         }
-        return _legacyCp > 0
-            ? PnCounter(positive: {'init': _legacyCp})
+        return _legacyCp != 0
+            ? (_legacyCp > 0
+                ? PnCounter(positive: {'init': _legacyCp})
+                : PnCounter(negative: {'init': _legacyCp.abs()}))
             : const PnCounter.empty();
       case 'sp':
         if (_spCounter.positive.isNotEmpty || _spCounter.negative.isNotEmpty) {
           return _spCounter;
         }
-        return _legacySp > 0
-            ? PnCounter(positive: {'init': _legacySp})
+        return _legacySp != 0
+            ? (_legacySp > 0
+                ? PnCounter(positive: {'init': _legacySp})
+                : PnCounter(negative: {'init': _legacySp.abs()}))
             : const PnCounter.empty();
       case 'ep':
         if (_epCounter.positive.isNotEmpty || _epCounter.negative.isNotEmpty) {
           return _epCounter;
         }
-        return _legacyEp > 0
-            ? PnCounter(positive: {'init': _legacyEp})
+        return _legacyEp != 0
+            ? (_legacyEp > 0
+                ? PnCounter(positive: {'init': _legacyEp})
+                : PnCounter(negative: {'init': _legacyEp.abs()}))
             : const PnCounter.empty();
       case 'gp':
         if (_gpCounter.positive.isNotEmpty || _gpCounter.negative.isNotEmpty) {
           return _gpCounter;
         }
-        return _legacyGp > 0
-            ? PnCounter(positive: {'init': _legacyGp})
+        return _legacyGp != 0
+            ? (_legacyGp > 0
+                ? PnCounter(positive: {'init': _legacyGp})
+                : PnCounter(negative: {'init': _legacyGp.abs()}))
             : const PnCounter.empty();
       case 'pp':
         if (_ppCounter.positive.isNotEmpty || _ppCounter.negative.isNotEmpty) {
           return _ppCounter;
         }
-        return _legacyPp > 0
-            ? PnCounter(positive: {'init': _legacyPp})
+        return _legacyPp != 0
+            ? (_legacyPp > 0
+                ? PnCounter(positive: {'init': _legacyPp})
+                : PnCounter(negative: {'init': _legacyPp.abs()}))
             : const PnCounter.empty();
       default:
         return const PnCounter.empty();
@@ -124,35 +135,37 @@ class PartyPurse {
   }
 
   /// Retrieves balance for any denomination key (e.g. 'gp', 'sp', 'credits', 'eb').
+  /// Clamped at zero (>= 0) for presentation/currency semantics.
   int getBalance(String denominationId) {
     final clean = denominationId.trim().toLowerCase();
     final direct = denominationCounters[clean];
-    if (direct != null) return direct.value;
+    if (direct != null) return math.max(0, direct.value);
     switch (clean) {
       case 'cp':
-        return _legacyCp != 0 ? _legacyCp : _cpCounter.value;
+        return math.max(0, _legacyCp != 0 ? _legacyCp : _cpCounter.value);
       case 'sp':
-        return _legacySp != 0 ? _legacySp : _spCounter.value;
+        return math.max(0, _legacySp != 0 ? _legacySp : _spCounter.value);
       case 'ep':
-        return _legacyEp != 0 ? _legacyEp : _epCounter.value;
+        return math.max(0, _legacyEp != 0 ? _legacyEp : _epCounter.value);
       case 'gp':
-        return _legacyGp != 0 ? _legacyGp : _gpCounter.value;
+        return math.max(0, _legacyGp != 0 ? _legacyGp : _gpCounter.value);
       case 'pp':
-        return _legacyPp != 0 ? _legacyPp : _ppCounter.value;
+        return math.max(0, _legacyPp != 0 ? _legacyPp : _ppCounter.value);
       default:
         return 0;
     }
   }
 
   /// Map of all denomination balances across all tracked currencies.
+  /// Currency values are guaranteed non-negative (>= 0).
   Map<String, int> get balances {
     final map = <String, int>{};
-    denominationCounters.forEach((k, v) => map[k] = v.value);
-    final cpBal = _legacyCp != 0 ? _legacyCp : _cpCounter.value;
-    final spBal = _legacySp != 0 ? _legacySp : _spCounter.value;
-    final epBal = _legacyEp != 0 ? _legacyEp : _epCounter.value;
-    final gpBal = _legacyGp != 0 ? _legacyGp : _gpCounter.value;
-    final ppBal = _legacyPp != 0 ? _legacyPp : _ppCounter.value;
+    denominationCounters.forEach((k, v) => map[k] = math.max(0, v.value));
+    final cpBal = math.max(0, _legacyCp != 0 ? _legacyCp : _cpCounter.value);
+    final spBal = math.max(0, _legacySp != 0 ? _legacySp : _spCounter.value);
+    final epBal = math.max(0, _legacyEp != 0 ? _legacyEp : _epCounter.value);
+    final gpBal = math.max(0, _legacyGp != 0 ? _legacyGp : _gpCounter.value);
+    final ppBal = math.max(0, _legacyPp != 0 ? _legacyPp : _ppCounter.value);
     if (cpBal > 0 && !map.containsKey('cp')) map['cp'] = cpBal;
     if (spBal > 0 && !map.containsKey('sp')) map['sp'] = spBal;
     if (epBal > 0 && !map.containsKey('ep')) map['ep'] = epBal;
@@ -196,8 +209,8 @@ class PartyPurse {
   }
 
   /// Sets balance for [denominationId] directly while preserving CvRDT PN-counter convergence.
-  /// Applies differential increments or decrements under [replicaId] so that decreases
-  /// are recorded as negative counts rather than being lost during lattice joins.
+  /// Calculates differential increments or decrements against the counter's underlying
+  /// SIGNED mathematical value so that target is achieved even when hidden negative debt exists.
   PartyPurse setDenomination(String denominationId, int targetVal,
       {required ReplicaId replicaId}) {
     final clean = denominationId.trim().toLowerCase();
@@ -215,7 +228,12 @@ class PartyPurse {
 
   /// Merges another purse using CvRDT lattice join over PN-counters across all denominations.
   PartyPurse merge(PartyPurse other) {
-    final allKeys = balances.keys.toSet().union(other.balances.keys.toSet());
+    final allKeys = {
+      ...allCounters.keys,
+      ...other.allCounters.keys,
+      ...balances.keys,
+      ...other.balances.keys,
+    };
     final merged = <String, PnCounter>{};
     for (final key in allKeys) {
       final a = getCounter(key);
@@ -257,13 +275,17 @@ class PartyPurse {
 
   Map<String, dynamic> toMap() {
     final map = <String, dynamic>{};
-    for (final entry in balances.entries) {
+    for (final entry in allCounters.entries) {
       final key = entry.key;
-      final val = entry.value;
-      map[key] = val;
-      final counter = getCounter(key);
+      final counter = entry.value;
+      map[key] = getBalance(key);
       if (counter.positive.isNotEmpty || counter.negative.isNotEmpty) {
         map['${key}Counter'] = counter.toMap();
+      }
+    }
+    for (final entry in balances.entries) {
+      if (!map.containsKey(entry.key)) {
+        map[entry.key] = entry.value;
       }
     }
     if (allCounters.isNotEmpty) {
@@ -294,6 +316,7 @@ class PartyPurse {
     extractFromNested(map['denominationCounters']);
     extractFromNested(map['customCounters']);
 
+    // Pass 1: Extract all explicit counter maps first so counter state is authoritative
     map.forEach((rawKey, value) {
       final key = rawKey.trim().toLowerCase();
       if (key == 'denominationcounters' || key == 'customcounters') return;
@@ -307,30 +330,33 @@ class PartyPurse {
             );
           } catch (_) {}
         }
-      } else if (value is num) {
+      }
+    });
+
+    // Pass 2: Process scalar fields.
+    // If a counter already exists for this denomination, THE COUNTER IS AUTHORITATIVE.
+    // Redundant scalar values are compatibility/display data and MUST NOT synthesize
+    // new 'cloud' repair writes.
+    // Only if NO counter exists, migrate the legacy scalar into an initial counter.
+    map.forEach((rawKey, value) {
+      final key = rawKey.trim().toLowerCase();
+      if (key == 'denominationcounters' ||
+          key == 'customcounters' ||
+          key.endsWith('counter')) {
+        return;
+      }
+
+      if (value is num) {
         final scalar = value.toInt();
         final existingCounter = parsed[key];
         if (existingCounter == null) {
-          parsed[key] = scalar > 0
-              ? PnCounter(positive: {'init': scalar})
-              : const PnCounter.empty();
-        } else if (scalar != existingCounter.value) {
-          final diff = scalar - existingCounter.value;
-          parsed[key] = diff > 0
-              ? PnCounter(
-                  positive: {
-                    ...existingCounter.positive,
-                    'cloud': (existingCounter.positive['cloud'] ?? 0) + diff,
-                  },
-                  negative: existingCounter.negative,
-                )
-              : PnCounter(
-                  positive: existingCounter.positive,
-                  negative: {
-                    ...existingCounter.negative,
-                    'cloud': (existingCounter.negative['cloud'] ?? 0) + (-diff),
-                  },
-                );
+          if (scalar > 0) {
+            parsed[key] = PnCounter(positive: {'init': scalar});
+          } else if (scalar < 0) {
+            parsed[key] = PnCounter(negative: {'init': scalar.abs()});
+          } else {
+            parsed[key] = const PnCounter.empty();
+          }
         }
       }
     });
@@ -346,7 +372,12 @@ class PartyPurse {
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
     if (other is! PartyPurse) return false;
-    final allKeys = balances.keys.toSet().union(other.balances.keys.toSet());
+    final allKeys = {
+      ...allCounters.keys,
+      ...other.allCounters.keys,
+      ...balances.keys,
+      ...other.balances.keys,
+    };
     for (final key in allKeys) {
       if (getBalance(key) != other.getBalance(key)) return false;
       if (getCounter(key) != other.getCounter(key)) return false;
@@ -357,6 +388,9 @@ class PartyPurse {
   @override
   int get hashCode {
     int hash = 0;
+    for (final entry in allCounters.entries) {
+      hash ^= entry.key.hashCode ^ entry.value.hashCode;
+    }
     for (final entry in balances.entries) {
       hash ^= entry.key.hashCode ^ entry.value.hashCode;
     }

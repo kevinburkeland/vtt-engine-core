@@ -32,7 +32,7 @@ void main() {
       expect(counter.value, 65);
     });
 
-    test('value clamps at zero when decrements exceed increments', () {
+    test('signed mathematics: value is signed (positiveSum - negativeSum) and exposes effectiveNonNegativeValue', () {
       var counter = const PnCounter.empty();
       final nodeA = ReplicaId('node-a');
       counter = counter.increment(20, replicaId: nodeA);
@@ -40,7 +40,9 @@ void main() {
 
       expect(counter.positiveSum, 20);
       expect(counter.negativeSum, 50);
-      expect(counter.value, 0);
+      expect(counter.value, -30);
+      expect(counter.effectiveNonNegativeValue, 0);
+      expect(counter.nonNegativeValue, 0);
     });
 
     test('CvRDT Lattice Merge: Idempotent, Commutative, and Associative', () {

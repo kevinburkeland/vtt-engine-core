@@ -9,7 +9,8 @@ import 'replica_id.dart';
 /// - [negative]: Map of writer component ID -> total negative decrements (withdrawals).
 ///
 /// Merging two counters takes component-wise maximums for both positive and negative vectors.
-/// The net counter value is clamped at zero ($\ge 0$) to model tabletop currency balances.
+/// The net counter value is mathematically signed: [positiveSum] - [negativeSum].
+/// Component totals within [positive] and [negative] must be non-negative (>= 0).
 ///
 /// Invariant: Active mutation APIs require a strongly-typed [ReplicaId] identifying the
 /// active runtime writer. Historical serialized component maps may contain arbitrary string
@@ -24,24 +25,45 @@ class PnCounter {
   PnCounter({
     Map<String, int> positive = const {},
     Map<String, int> negative = const {},
-  })  : positive = Map.unmodifiable(Map<String, int>.from(positive)),
-        negative = Map.unmodifiable(Map<String, int>.from(negative));
+  })  : positive = _validateAndFreeze(positive),
+        negative = _validateAndFreeze(negative);
 
   const PnCounter.empty()
       : positive = const {},
         negative = const {};
 
   /// Factory creating an initial PN-counter with a starting balance on a given replica.
+  /// Represents signed values accurately:
+  /// - initialValue > 0: positive component
+  /// - initialValue < 0: negative component
+  /// - initialValue == 0: empty counter
   factory PnCounter.withInitialValue(int initialValue,
       {required ReplicaId replicaId}) {
-    final clamped = math.max(0, initialValue);
-    if (clamped == 0) {
-      return const PnCounter.empty();
+    if (initialValue > 0) {
+      return PnCounter(
+        positive: {replicaId.value: initialValue},
+        negative: const {},
+      );
+    } else if (initialValue < 0) {
+      return PnCounter(
+        positive: const {},
+        negative: {replicaId.value: initialValue.abs()},
+      );
     }
-    return PnCounter(
-      positive: {replicaId.value: clamped},
-      negative: const {},
-    );
+    return const PnCounter.empty();
+  }
+
+  static Map<String, int> _validateAndFreeze(Map<String, int> source) {
+    for (final entry in source.entries) {
+      if (entry.value < 0) {
+        throw ArgumentError.value(
+          entry.value,
+          entry.key,
+          'PN-counter component totals must be non-negative (>= 0)',
+        );
+      }
+    }
+    return Map.unmodifiable(Map<String, int>.from(source));
   }
 
   /// Total sum of all positive increments across all nodes.
@@ -50,8 +72,14 @@ class PnCounter {
   /// Total sum of all negative decrements across all nodes.
   int get negativeSum => negative.values.fold(0, (sum, val) => sum + val);
 
-  /// Current net value of the counter, guaranteed non-negative ($\ge 0$).
-  int get value => math.max(0, positiveSum - negativeSum);
+  /// Current net mathematical value of the counter (signed: positiveSum - negativeSum).
+  int get value => positiveSum - negativeSum;
+
+  /// Effective non-negative domain interpretation (clamped at 0 for display/currency).
+  int get effectiveNonNegativeValue => math.max(0, value);
+
+  /// Alias for [effectiveNonNegativeValue].
+  int get nonNegativeValue => effectiveNonNegativeValue;
 
   /// Increments the counter by [amount] for [replicaId].
   PnCounter increment(int amount, {required ReplicaId replicaId}) {
@@ -114,6 +142,7 @@ class PnCounter {
   }
 
   /// Reconstitutes a PN-Counter from a map.
+  /// Fails loudly with [FormatException] if any component total is negative (< 0).
   factory PnCounter.fromMap(Map<String, dynamic>? map) {
     if (map == null) return const PnCounter.empty();
 
@@ -121,9 +150,26 @@ class PnCounter {
     final pos = <String, int>{};
     if (rawPos is Map) {
       for (final entry in rawPos.entries) {
-        if (entry.value is num) {
-          pos[entry.key.toString()] = (entry.value as num).toInt();
+        final keyStr = entry.key.toString();
+        final dynamic rawVal = entry.value;
+        final int val;
+        if (rawVal is num) {
+          val = rawVal.toInt();
+        } else if (rawVal != null) {
+          final parsed = int.tryParse(rawVal.toString());
+          if (parsed == null) {
+            throw FormatException('Malformed non-integer component value in PnCounter positive map: $rawVal for key $keyStr');
+          }
+          val = parsed;
+        } else {
+          continue;
         }
+        if (val < 0) {
+          throw FormatException(
+            'Malformed serialized PnCounter: component total must be non-negative (>= 0), got $val for key $keyStr in positive map',
+          );
+        }
+        pos[keyStr] = val;
       }
     }
 
@@ -131,9 +177,26 @@ class PnCounter {
     final neg = <String, int>{};
     if (rawNeg is Map) {
       for (final entry in rawNeg.entries) {
-        if (entry.value is num) {
-          neg[entry.key.toString()] = (entry.value as num).toInt();
+        final keyStr = entry.key.toString();
+        final dynamic rawVal = entry.value;
+        final int val;
+        if (rawVal is num) {
+          val = rawVal.toInt();
+        } else if (rawVal != null) {
+          final parsed = int.tryParse(rawVal.toString());
+          if (parsed == null) {
+            throw FormatException('Malformed non-integer component value in PnCounter negative map: $rawVal for key $keyStr');
+          }
+          val = parsed;
+        } else {
+          continue;
         }
+        if (val < 0) {
+          throw FormatException(
+            'Malformed serialized PnCounter: component total must be non-negative (>= 0), got $val for key $keyStr in negative map',
+          );
+        }
+        neg[keyStr] = val;
       }
     }
 
@@ -165,9 +228,9 @@ class PnCounter {
 
   @override
   int get hashCode => Object.hash(
-        Object.hashAll(
+        Object.hashAllUnordered(
             positive.entries.map((e) => Object.hash(e.key, e.value))),
-        Object.hashAll(
+        Object.hashAllUnordered(
             negative.entries.map((e) => Object.hash(e.key, e.value))),
       );
 
