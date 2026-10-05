@@ -4,10 +4,7 @@ import 'generic_tabletop_primitives.dart';
 import 'core_types.dart';
 import '../utils/deep_immutable.dart';
 
-bool _listEquals<T>(List<T>? a, List<T>? b) =>
-    const ListEquality().equals(a, b);
-bool _mapEquals<K, V>(Map<K, V>? a, Map<K, V>? b) =>
-    const MapEquality().equals(a, b);
+
 
 /// Base contract for all identifiable domain entities.
 abstract class DomainEntity {
@@ -163,6 +160,8 @@ class EntityReference<T extends DomainEntity> {
         customProperties: customProperties,
       );
 
+  static const _deepEquality = DeepCollectionEquality();
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -172,18 +171,18 @@ class EntityReference<T extends DomainEntity> {
           slug == other.slug &&
           rulesetPreferred == other.rulesetPreferred &&
           displayName == other.displayName &&
-          _listEquals(grantedSkills, other.grantedSkills) &&
-          _mapEquals(customProperties, other.customProperties);
+          _deepEquality.equals(grantedSkills, other.grantedSkills) &&
+          _deepEquality.equals(customProperties, other.customProperties);
 
   @override
-  int get hashCode =>
-      refType.hashCode ^
-      slug.hashCode ^
-      rulesetPreferred.hashCode ^
-      displayName.hashCode ^
-      Object.hashAll(grantedSkills) ^
-      Object.hashAll(customProperties.keys) ^
-      Object.hashAll(customProperties.values);
+  int get hashCode => Object.hash(
+        refType,
+        slug,
+        rulesetPreferred,
+        displayName,
+        _deepEquality.hash(grantedSkills),
+        _deepEquality.hash(customProperties),
+      );
 
   @override
   String toString() => 'Ref<$refType>($slug, pref: $rulesetPreferred)';

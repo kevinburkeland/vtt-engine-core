@@ -7,10 +7,7 @@ import '../crdt/crdt_or_set.dart';
 import '../crdt/hybrid_logical_clock.dart';
 import 'loot_models.dart';
 
-bool _listEquals<T>(List<T>? a, List<T>? b) =>
-    const ListEquality().equals(a, b);
-bool _mapEquals<K, V>(Map<K, V>? a, Map<K, V>? b) =>
-    const MapEquality().equals(a, b);
+const _deepEquality = DeepCollectionEquality();
 
 String _resolveMinionId(dynamic m) {
   if (m == null) return '';
@@ -147,10 +144,10 @@ class EntityInstance {
           entityDefinitionId == other.entityDefinitionId &&
           entityType == other.entityType &&
           displayName == other.displayName &&
-          _mapEquals(position, other.position) &&
+          _deepEquality.equals(position, other.position) &&
           isVisible == other.isVisible &&
-          _mapEquals(runtimeData, other.runtimeData) &&
-          _mapEquals(customProperties, other.customProperties);
+          _deepEquality.equals(runtimeData, other.runtimeData) &&
+          _deepEquality.equals(customProperties, other.customProperties);
 
   @override
   int get hashCode => Object.hash(
@@ -158,7 +155,10 @@ class EntityInstance {
         entityDefinitionId,
         entityType,
         displayName,
+        _deepEquality.hash(position),
         isVisible,
+        _deepEquality.hash(runtimeData),
+        _deepEquality.hash(customProperties),
       );
 }
 
@@ -257,9 +257,9 @@ class RoomEntityLink {
           entityId == other.entityId &&
           displayName == other.displayName &&
           notes == other.notes &&
-          _mapEquals(position, other.position) &&
+          _deepEquality.equals(position, other.position) &&
           isIsolatedClone == other.isIsolatedClone &&
-          _mapEquals(cloneRuntimeData, other.cloneRuntimeData);
+          _deepEquality.equals(cloneRuntimeData, other.cloneRuntimeData);
 
   @override
   int get hashCode => Object.hash(
@@ -267,7 +267,9 @@ class RoomEntityLink {
         entityId,
         displayName,
         notes,
+        _deepEquality.hash(position),
         isIsolatedClone,
+        _deepEquality.hash(cloneRuntimeData),
       );
 }
 
@@ -435,21 +437,27 @@ class EncounterParticipant {
           maxHp == other.maxHp &&
           tempHp == other.tempHp &&
           defense == other.defense &&
-          _listEquals(activeConditions, other.activeConditions) &&
+          _deepEquality.equals(activeConditions, other.activeConditions) &&
           isDefeated == other.isDefeated &&
           isDead == other.isDead &&
           isActiveTurn == other.isActiveTurn &&
-          _mapEquals(customProperties, other.customProperties);
+          _deepEquality.equals(customProperties, other.customProperties);
 
   @override
   int get hashCode => Object.hash(
         participantId,
         entityLink,
         initiativeScore,
+        initiativeTieBreaker,
         currentHp,
         maxHp,
+        tempHp,
         defense,
+        _deepEquality.hash(activeConditions),
+        isDefeated,
+        isDead,
         isActiveTurn,
+        _deepEquality.hash(customProperties),
       );
 }
 
@@ -777,12 +785,12 @@ class RoomNodeState {
           roomCode == other.roomCode &&
           title == other.title &&
           description == other.description &&
-          _listEquals(entityLinks, other.entityLinks) &&
-          _listEquals(entityInstances, other.entityInstances) &&
-          _listEquals(containers, other.containers) &&
+          _deepEquality.equals(entityLinks, other.entityLinks) &&
+          _deepEquality.equals(entityInstances, other.entityInstances) &&
+          _deepEquality.equals(containers, other.containers) &&
           activeEncounter == other.activeEncounter &&
           activeMinions == other.activeMinions &&
-          _mapEquals(customProperties, other.customProperties);
+          _deepEquality.equals(customProperties, other.customProperties);
 
   @override
   int get hashCode => Object.hash(
@@ -790,7 +798,11 @@ class RoomNodeState {
         roomCode,
         title,
         description,
+        _deepEquality.hash(entityLinks),
+        _deepEquality.hash(entityInstances),
+        _deepEquality.hash(containers),
         activeEncounter,
         activeMinions,
+        _deepEquality.hash(customProperties),
       );
 }

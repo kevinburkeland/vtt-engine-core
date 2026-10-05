@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import '../utils/deep_immutable.dart';
 import 'package:meta/meta.dart';
 import 'character_models.dart';
@@ -130,4 +131,34 @@ class LootContainer {
           Map<String, dynamic>.from(map['customProperties'] as Map? ?? {}),
     );
   }
+
+  static const _deepEquality = DeepCollectionEquality();
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LootContainer &&
+          runtimeType == other.runtimeType &&
+          containerId == other.containerId &&
+          name == other.name &&
+          type == other.type &&
+          isLocked == other.isLocked &&
+          capacityWeightLbs == other.capacityWeightLbs &&
+          _deepEquality.equals(items, other.items) &&
+          purse == other.purse &&
+          _deepEquality.equals(permissions, other.permissions) &&
+          _deepEquality.equals(customProperties, other.customProperties);
+
+  @override
+  int get hashCode => Object.hash(
+        containerId,
+        name,
+        type,
+        isLocked,
+        capacityWeightLbs,
+        _deepEquality.hash(items),
+        purse,
+        _deepEquality.hash(permissions),
+        _deepEquality.hash(customProperties),
+      );
 }

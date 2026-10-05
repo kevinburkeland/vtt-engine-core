@@ -187,6 +187,8 @@ class InventoryItemInstance {
     );
   }
 
+  static const _deepEquality = DeepCollectionEquality();
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -197,16 +199,17 @@ class InventoryItemInstance {
           quantity == other.quantity &&
           isEquipped == other.isEquipped &&
           equippedSlot == other.equippedSlot &&
-          _mapEquals(customProperties, other.customProperties);
+          _deepEquality.equals(customProperties, other.customProperties);
 
   @override
-  int get hashCode =>
-      itemRef.hashCode ^
-      instanceId.hashCode ^
-      quantity.hashCode ^
-      isEquipped.hashCode ^
-      (equippedSlot?.hashCode ?? 0) ^
-      customProperties.length.hashCode;
+  int get hashCode => Object.hash(
+        itemRef,
+        instanceId,
+        quantity,
+        isEquipped,
+        equippedSlot,
+        _deepEquality.hash(customProperties),
+      );
 }
 
 /// Generic character resource pools.

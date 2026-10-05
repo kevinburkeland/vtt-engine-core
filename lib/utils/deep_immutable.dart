@@ -35,7 +35,14 @@ Map<String, dynamic> deepFreezeMap(Map<dynamic, dynamic>? map) {
   if (map == null || map.isEmpty) return const <String, dynamic>{};
   final copy = <String, dynamic>{};
   for (final entry in map.entries) {
-    copy[entry.key.toString()] = deepFreezeValue(entry.value);
+    final key = entry.key;
+    if (key is! String) {
+      throw ArgumentError(
+        'Replicated JSON-like metadata requires string map keys, but received '
+        'key of type ${key.runtimeType} ($key).',
+      );
+    }
+    copy[key] = deepFreezeValue(entry.value);
   }
   return Map<String, dynamic>.unmodifiable(copy);
 }

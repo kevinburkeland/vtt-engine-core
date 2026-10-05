@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import '../../utils/deep_immutable.dart';
 import 'package:meta/meta.dart';
 import '../value_objects/ruleset_version.dart';
@@ -56,6 +57,8 @@ class HomebrewEntity {
     );
   }
 
+  static const _deepEquality = DeepCollectionEquality();
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -64,10 +67,21 @@ class HomebrewEntity {
           id == other.id &&
           name == other.name &&
           entityType == other.entityType &&
-          ruleset == other.ruleset;
+          ruleset == other.ruleset &&
+          _deepEquality.equals(rawPayload, other.rawPayload) &&
+          _deepEquality.equals(normalizedData, other.normalizedData) &&
+          _deepEquality.equals(unparsedPayload, other.unparsedPayload);
 
   @override
-  int get hashCode => Object.hash(id, name, entityType, ruleset);
+  int get hashCode => Object.hash(
+        id,
+        name,
+        entityType,
+        ruleset,
+        _deepEquality.hash(rawPayload),
+        _deepEquality.hash(normalizedData),
+        _deepEquality.hash(unparsedPayload),
+      );
 
   @override
   String toString() =>
