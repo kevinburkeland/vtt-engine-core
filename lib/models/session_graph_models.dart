@@ -33,9 +33,7 @@ class EntityCategory {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      (other is EntityCategory && key == other.key) ||
-      (other is Enum && key == other.name) ||
-      (other is String && key == other);
+      (other is EntityCategory && key == other.key);
 
   @override
   int get hashCode => key.hashCode;
@@ -214,10 +212,31 @@ class RoomEntityLink {
     );
   }
 
+  /// Canonicalizes supported [refType] representations (EntityCategory, Enum, String)
+  /// into a consistent string key for serialization, equality, and hashing.
+  static String canonicalRefTypeKey(dynamic refType) {
+    if (refType is EntityCategory) {
+      return refType.key;
+    } else if (refType is Enum) {
+      return refType.name;
+    } else if (refType is String) {
+      return refType;
+    } else if (refType == null) {
+      return 'generic';
+    } else {
+      throw ArgumentError.value(
+        refType,
+        'refType',
+        'Unsupported RoomEntityLink refType. Expected EntityCategory, Enum, or String.',
+      );
+    }
+  }
+
+  /// Returns the canonical string identifier of [refType].
+  String get canonicalRefType => canonicalRefTypeKey(refType);
+
   Map<String, dynamic> toMap() => {
-        'refType': refType is Enum
-            ? (refType as Enum).name
-            : (refType is EntityCategory ? (refType as EntityCategory).key : refType.toString()),
+        'refType': canonicalRefTypeKey(refType),
         'entityId': entityId,
         'displayName': displayName,
         'notes': notes,
@@ -253,7 +272,7 @@ class RoomEntityLink {
       identical(this, other) ||
       other is RoomEntityLink &&
           runtimeType == other.runtimeType &&
-          refType == other.refType &&
+          canonicalRefTypeKey(refType) == canonicalRefTypeKey(other.refType) &&
           entityId == other.entityId &&
           displayName == other.displayName &&
           notes == other.notes &&
@@ -263,7 +282,7 @@ class RoomEntityLink {
 
   @override
   int get hashCode => Object.hash(
-        refType,
+        canonicalRefTypeKey(refType),
         entityId,
         displayName,
         notes,

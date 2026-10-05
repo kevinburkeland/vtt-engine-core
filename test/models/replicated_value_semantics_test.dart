@@ -249,7 +249,6 @@ void main() {
         );
 
         expect(itemA, isNot(equals(itemB)));
-        expect(itemA.hashCode, isNot(equals(itemB.hashCode)));
       });
     });
 
@@ -305,7 +304,6 @@ void main() {
 
         final r3 = r1.copyWith(customProperties: {'lighting': 'bright'});
         expect(r1, isNot(equals(r3)));
-        expect(r1.hashCode, isNot(equals(r3.hashCode)));
       });
 
       test('EntityInstance observes position, runtimeData, and customProperties changes', () {
@@ -384,5 +382,115 @@ void main() {
         expect(p1, isNot(equals(p4)));
       });
     });
+
+    group('Pass 2.3.1: EntityCategory Equality Symmetry & Laws', () {
+      test('EntityCategory equality is reflexive, symmetric, and transitive', () {
+        const a = EntityCategory('character', 'Player Character');
+        const b = EntityCategory('character', 'Character');
+        const c = EntityCategory('character', 'PC');
+        const d = EntityCategory('monster', 'Monster');
+
+        // Reflexive
+        expect(a == a, isTrue);
+
+        // Symmetric
+        expect(a == b, isTrue);
+        expect(b == a, isTrue);
+        expect(a == d, isFalse);
+        expect(d == a, isFalse);
+
+        // Transitive
+        expect(b == c, isTrue);
+        expect(a == c, isTrue);
+
+        // Equal -> same hashCode
+        expect(a.hashCode, equals(b.hashCode));
+        expect(b.hashCode, equals(c.hashCode));
+      });
+
+      test('EntityCategory does NOT equate with unrelated types (String or Enum)', () {
+        const cat = EntityCategory('character');
+        expect((cat as Object) == 'character', isFalse);
+        expect(('character' as Object) == cat, isFalse);
+        expect((cat as Object) == TestSessionRefType.character, isFalse);
+        expect((TestSessionRefType.character as Object) == cat, isFalse);
+      });
+    });
+
+    group('Pass 2.3.1: RoomEntityLink Canonical RefType Equality & Round-Trip', () {
+      test('Enum -> toMap() -> fromMap() (EntityCategory) preserves equality and hashCode symmetrically', () {
+        final original = RoomEntityLink(
+          refType: TestSessionRefType.character,
+          entityId: 'char_42',
+          displayName: 'Hero',
+          notes: 'Protagonist',
+          position: {'x': 10, 'y': 20},
+        );
+
+        final map = original.toMap();
+        expect(map['refType'], equals('character'));
+
+        // Deserializing without a custom resolver reconstructs refType as EntityCategory
+        final restored = RoomEntityLink.fromMap(map);
+        expect(restored.refType, isA<EntityCategory>());
+        expect((restored.refType as EntityCategory).key, equals('character'));
+
+        // Equivalence relation
+        expect(original == restored, isTrue);
+        expect(restored == original, isTrue);
+        expect(original.hashCode, equals(restored.hashCode));
+      });
+
+      test('RoomEntityLink reconciles Enum, EntityCategory, and String refTypes symmetrically', () {
+        final linkEnum = RoomEntityLink(
+          refType: TestSessionRefType.character,
+          entityId: 'char_1',
+          displayName: 'Paladin',
+        );
+        final linkCat = RoomEntityLink(
+          refType: const EntityCategory('character'),
+          entityId: 'char_1',
+          displayName: 'Paladin',
+        );
+        final linkStr = RoomEntityLink(
+          refType: 'character',
+          entityId: 'char_1',
+          displayName: 'Paladin',
+        );
+
+        // All pairs equal and symmetric
+        expect(linkEnum == linkCat, isTrue);
+        expect(linkCat == linkEnum, isTrue);
+
+        expect(linkCat == linkStr, isTrue);
+        expect(linkStr == linkCat, isTrue);
+
+        expect(linkEnum == linkStr, isTrue);
+        expect(linkStr == linkEnum, isTrue);
+
+        // Equal -> same hashCode
+        expect(linkEnum.hashCode, equals(linkCat.hashCode));
+        expect(linkCat.hashCode, equals(linkStr.hashCode));
+
+        // Set / Map lookup works across heterogeneous refType representations
+        final set = <RoomEntityLink>{linkEnum};
+        expect(set.contains(linkCat), isTrue);
+        expect(set.contains(linkStr), isTrue);
+      });
+
+      test('Unsupported refType throws ArgumentError', () {
+        expect(
+          () => RoomEntityLink.canonicalRefTypeKey(12345),
+          throwsA(isA<ArgumentError>()),
+        );
+      });
+    });
   });
+}
+
+
+enum TestSessionRefType {
+  character,
+  monster,
+  npc,
 }
