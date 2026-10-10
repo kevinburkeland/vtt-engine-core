@@ -4,6 +4,7 @@ import '../crdt/crdt_lww_register.dart';
 import '../crdt/hybrid_logical_clock.dart';
 import '../rules/i_ruleset_module.dart';
 import '../rules/ruleset_edition.dart';
+import '../utils/aggregate_join_utils.dart';
 import 'session_graph_models.dart';
 import 'party_event.dart';
 import 'party_purse.dart';
@@ -219,6 +220,117 @@ class CampaignProfile {
           changeLog != null ? List<PartyEvent>.from(changeLog) : this.changeLog,
     );
   }
+
+
+  /// Pure canonical aggregate join of two [CampaignProfile] instances.
+  ///
+  /// Guarantees idempotence, commutativity, and associativity across all valid states.
+  /// Divergent unversioned or incompatible immutable state fails loudly and symmetrically.
+  static CampaignProfile join(CampaignProfile a, CampaignProfile b) {
+    if (identical(a, b)) return a;
+    if (a == b) return a;
+
+    final mergedId = joinImmutableId(
+      a.id,
+      b.id,
+      fieldName: 'CampaignProfile.id',
+    );
+
+    if (a.rulesetId != b.rulesetId) {
+      throw StateError(
+        'Incompatible ruleset edition: "${a.rulesetId}" vs "${b.rulesetId}".',
+      );
+    }
+
+    final mergedName = joinUnversionedString(
+      a.name,
+      b.name,
+      fieldName: 'CampaignProfile.name',
+    );
+
+    // Derived metadata timestamps: earliest created, latest played
+    final mergedCreatedAt =
+        a.createdAt.isBefore(b.createdAt) ? a.createdAt : b.createdAt;
+    final mergedLastPlayedAt =
+        a.lastPlayedAt.isAfter(b.lastPlayedAt) ? a.lastPlayedAt : b.lastPlayedAt;
+
+    // 1. Notes: pure LWW CRDT register merge
+    final mergedNotes = a.notesRegister.merge(b.notesRegister);
+
+    // 2. Party Purse: pure PN-counter CvRDT lattice join across denominations
+    final mergedPurse = a.partyPurse.merge(b.partyPurse);
+
+    // 3. Pinned Rules: pure set union
+    final mergedPinnedRules = a.pinnedRuleIds.union(b.pinnedRuleIds);
+
+    // 4. Change Log: map by event id, sort by timestamp & id, fail loudly on same-id divergence
+    final eventMapA = <String, PartyEvent>{};
+    for (final ev in a.changeLog) {
+      eventMapA[ev.id] = ev;
+    }
+    final eventMapB = <String, PartyEvent>{};
+    for (final ev in b.changeLog) {
+      eventMapB[ev.id] = ev;
+    }
+    final allEventIds = <String>{...eventMapA.keys, ...eventMapB.keys};
+    final mergedEvents = <PartyEvent>[];
+    for (final id in allEventIds) {
+      final evA = eventMapA[id];
+      final evB = eventMapB[id];
+      if (evA != null && evB != null) {
+        if (evA != evB) {
+          throw StateError(
+            'Divergent PartyEvent under same event id "$id".',
+          );
+        }
+        mergedEvents.add(evA);
+      } else if (evA != null) {
+        mergedEvents.add(evA);
+      } else if (evB != null) {
+        mergedEvents.add(evB);
+      }
+    }
+    mergedEvents.sort((x, y) {
+      final cmp = x.timestamp.compareTo(y.timestamp);
+      if (cmp != 0) return cmp;
+      return x.id.compareTo(y.id);
+    });
+
+    // 5. Party Roster: Set-like membership respecting removal events in merged changelog, deterministically sorted
+    final removed = <String>{};
+    for (final event in mergedEvents) {
+      if (event.type == 'characterRemove' || event.type == 'playerLeave') {
+        if (event.details.trim().isNotEmpty) {
+          removed.add(event.details.trim());
+        }
+      }
+    }
+    final activeRoster = <String>{
+      ...a.partyCharacterIds,
+      ...b.partyCharacterIds,
+    }..removeAll(removed);
+    final mergedPartyCharacterIds = activeRoster.toList()..sort();
+
+    // 6. Nested RoomNodeState: recursive canonical join
+    final mergedRoomState = RoomNodeState.join(a.roomState, b.roomState);
+
+    return CampaignProfile.raw(
+      id: mergedId,
+      name: mergedName,
+      edition: a.edition,
+      createdAt: mergedCreatedAt,
+      lastPlayedAt: mergedLastPlayedAt,
+      roomState: mergedRoomState,
+      partyCharacterIds: mergedPartyCharacterIds,
+      pinnedRuleIds: mergedPinnedRules,
+      notesRegister: mergedNotes,
+      partyPurse: mergedPurse,
+      changeLog: mergedEvents,
+    );
+  }
+
+  /// Convenience instance method delegating to canonical pure [join].
+  CampaignProfile merge(CampaignProfile other) => CampaignProfile.join(this, other);
 
   @override
   bool operator ==(Object other) =>

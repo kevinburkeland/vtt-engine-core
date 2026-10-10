@@ -1,5 +1,6 @@
 import 'package:collection/collection.dart';
 import '../utils/deep_immutable.dart';
+import '../utils/aggregate_join_utils.dart';
 import 'package:meta/meta.dart';
 import 'character_models.dart';
 import 'party_purse.dart';
@@ -131,6 +132,109 @@ class LootContainer {
           Map<String, dynamic>.from(map['customProperties'] as Map? ?? {}),
     );
   }
+
+
+  /// Pure canonical aggregate join of two [LootContainer] instances.
+  ///
+  /// Guarantees idempotence, commutativity, and associativity across all valid states.
+  /// Incompatible immutable properties or divergent unversioned fields fail loudly and symmetrically.
+  static LootContainer join(LootContainer a, LootContainer b) {
+    if (identical(a, b)) return a;
+    if (a == b) return a;
+
+    final mergedId = joinImmutableId(
+      a.containerId,
+      b.containerId,
+      fieldName: 'LootContainer.containerId',
+    );
+
+    if (a.type != b.type) {
+      throw StateError(
+        'LootContainer type mismatch for "${a.containerId}": '
+        '${a.type} vs ${b.type}.',
+      );
+    }
+
+    if (a.isLocked != b.isLocked) {
+      throw StateError(
+        'LootContainer isLocked mismatch for "${a.containerId}": '
+        '${a.isLocked} vs ${b.isLocked}.',
+      );
+    }
+
+    if (a.capacityWeightLbs != b.capacityWeightLbs) {
+      if (a.capacityWeightLbs != null && b.capacityWeightLbs != null) {
+        throw StateError(
+          'LootContainer capacityWeightLbs mismatch for "${a.containerId}": '
+          '${a.capacityWeightLbs} vs ${b.capacityWeightLbs}.',
+        );
+      }
+    }
+    final mergedCapacity = a.capacityWeightLbs ?? b.capacityWeightLbs;
+
+    final mergedName = joinUnversionedString(
+      a.name,
+      b.name,
+      fieldName: 'LootContainer.name',
+    );
+
+    final itemsMapA = <String, InventoryItemInstance>{};
+    for (final i in a.items) {
+      itemsMapA[i.instanceId] = i;
+    }
+    final itemsMapB = <String, InventoryItemInstance>{};
+    for (final i in b.items) {
+      itemsMapB[i.instanceId] = i;
+    }
+
+    final allItemIds = <String>{...itemsMapA.keys, ...itemsMapB.keys}.toList()..sort();
+    final mergedItems = <InventoryItemInstance>[];
+    for (final id in allItemIds) {
+      final itemA = itemsMapA[id];
+      final itemB = itemsMapB[id];
+      if (itemA != null && itemB != null) {
+        if (itemA != itemB) {
+          throw StateError(
+            'Divergent InventoryItemInstance under same instanceId "$id" in container "${a.containerId}".',
+          );
+        }
+        mergedItems.add(itemA);
+      } else if (itemA != null) {
+        mergedItems.add(itemA);
+      } else if (itemB != null) {
+        mergedItems.add(itemB);
+      }
+    }
+
+    final mergedPurse = a.purse.merge(b.purse);
+
+    final mergedPermissions = joinCustomProperties(
+      a.permissions,
+      b.permissions,
+      context: 'LootContainer.permissions',
+    );
+
+    final mergedCustomProperties = joinCustomProperties(
+      a.customProperties,
+      b.customProperties,
+      context: 'LootContainer.customProperties',
+    );
+
+    return LootContainer(
+      containerId: mergedId,
+      name: mergedName,
+      type: a.type,
+      isLocked: a.isLocked,
+      capacityWeightLbs: mergedCapacity,
+      items: mergedItems,
+      purse: mergedPurse,
+      permissions: mergedPermissions,
+      customProperties: mergedCustomProperties,
+    );
+  }
+
+  /// Convenience instance method delegating to canonical pure [join].
+  LootContainer merge(LootContainer other) => LootContainer.join(this, other);
 
   static const _deepEquality = DeepCollectionEquality();
 

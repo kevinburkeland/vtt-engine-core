@@ -1,6 +1,7 @@
 
 
 import '../utils/deep_immutable.dart';
+import '../utils/aggregate_join_utils.dart';
 import 'package:collection/collection.dart';
 import 'package:meta/meta.dart';
 import '../crdt/crdt_or_set.dart';
@@ -132,6 +133,78 @@ class EntityInstance {
           Map<String, dynamic>.from(map['customProperties'] as Map? ?? {}),
     );
   }
+
+
+  /// Pure canonical aggregate join of two [EntityInstance] instances.
+  ///
+  /// Guarantees idempotence, commutativity, and associativity across all valid states.
+  static EntityInstance join(EntityInstance a, EntityInstance b) {
+    if (identical(a, b)) return a;
+    if (a == b) return a;
+
+    final mergedInstanceId = joinImmutableId(
+      a.instanceId,
+      b.instanceId,
+      fieldName: 'EntityInstance.instanceId',
+    );
+
+    final mergedDefId = joinNullableString(
+      a.entityDefinitionId,
+      b.entityDefinitionId,
+      fieldName: 'EntityInstance.entityDefinitionId',
+    );
+
+    final mergedType = joinNullableString(
+      a.entityType,
+      b.entityType,
+      fieldName: 'EntityInstance.entityType',
+    );
+
+    final mergedDisplayName = joinUnversionedString(
+      a.displayName,
+      b.displayName,
+      fieldName: 'EntityInstance.displayName',
+    );
+
+    final mergedPosition = joinNullableMap(
+      a.position,
+      b.position,
+      context: 'EntityInstance.position',
+    );
+
+    if (a.isVisible != b.isVisible) {
+      throw StateError(
+        'EntityInstance isVisible mismatch for "${a.instanceId}": '
+        '${a.isVisible} vs ${b.isVisible}.',
+      );
+    }
+
+    final mergedRuntimeData = joinCustomProperties(
+      a.runtimeData,
+      b.runtimeData,
+      context: 'EntityInstance.runtimeData',
+    );
+
+    final mergedCustomProperties = joinCustomProperties(
+      a.customProperties,
+      b.customProperties,
+      context: 'EntityInstance.customProperties',
+    );
+
+    return EntityInstance(
+      instanceId: mergedInstanceId,
+      entityDefinitionId: mergedDefId,
+      entityType: mergedType,
+      displayName: mergedDisplayName,
+      position: mergedPosition,
+      isVisible: a.isVisible,
+      runtimeData: mergedRuntimeData,
+      customProperties: mergedCustomProperties,
+    );
+  }
+
+  /// Convenience instance method delegating to canonical pure [join].
+  EntityInstance merge(EntityInstance other) => EntityInstance.join(this, other);
 
   @override
   bool operator ==(Object other) =>
@@ -266,6 +339,72 @@ class RoomEntityLink {
           : null,
     );
   }
+
+
+  /// Pure canonical aggregate join of two [RoomEntityLink] instances.
+  ///
+  /// Guarantees idempotence, commutativity, and associativity across all valid states.
+  static RoomEntityLink join(RoomEntityLink a, RoomEntityLink b) {
+    if (identical(a, b)) return a;
+    if (a == b) return a;
+
+    final mergedEntityId = joinImmutableId(
+      a.entityId,
+      b.entityId,
+      fieldName: 'RoomEntityLink.entityId',
+    );
+
+    if (canonicalRefTypeKey(a.refType) != canonicalRefTypeKey(b.refType)) {
+      throw StateError(
+        'RoomEntityLink refType mismatch for "${a.entityId}": '
+        '"${a.canonicalRefType}" vs "${b.canonicalRefType}".',
+      );
+    }
+
+    if (a.isIsolatedClone != b.isIsolatedClone) {
+      throw StateError(
+        'RoomEntityLink isIsolatedClone mismatch for "${a.entityId}": '
+        '${a.isIsolatedClone} vs ${b.isIsolatedClone}.',
+      );
+    }
+
+    final mergedDisplayName = joinUnversionedString(
+      a.displayName,
+      b.displayName,
+      fieldName: 'RoomEntityLink.displayName',
+    );
+
+    final mergedNotes = joinNullableString(
+      a.notes,
+      b.notes,
+      fieldName: 'RoomEntityLink.notes',
+    );
+
+    final mergedPosition = joinNullableMap(
+      a.position,
+      b.position,
+      context: 'RoomEntityLink.position',
+    );
+
+    final mergedCloneRuntimeData = joinNullableMap(
+      a.cloneRuntimeData,
+      b.cloneRuntimeData,
+      context: 'RoomEntityLink.cloneRuntimeData',
+    );
+
+    return RoomEntityLink(
+      refType: a.refType,
+      entityId: mergedEntityId,
+      displayName: mergedDisplayName,
+      notes: mergedNotes,
+      position: mergedPosition,
+      isIsolatedClone: a.isIsolatedClone,
+      cloneRuntimeData: mergedCloneRuntimeData,
+    );
+  }
+
+  /// Convenience instance method delegating to canonical pure [join].
+  RoomEntityLink merge(RoomEntityLink other) => RoomEntityLink.join(this, other);
 
   @override
   bool operator ==(Object other) =>
@@ -776,6 +915,133 @@ class RoomNodeState {
           Map<String, dynamic>.from(map['customProperties'] as Map? ?? {}),
     );
   }
+
+
+  /// Pure canonical aggregate join of two [RoomNodeState] instances.
+  ///
+  /// Guarantees idempotence, commutativity, and associativity across all valid states.
+  /// Divergent unversioned or incompatible immutable state fails loudly and symmetrically.
+  static RoomNodeState join(RoomNodeState a, RoomNodeState b) {
+    if (identical(a, b)) return a;
+    if (a == b) return a;
+
+    final mergedRoomId = joinImmutableId(
+      a.roomId,
+      b.roomId,
+      fieldName: 'RoomNodeState.roomId',
+    );
+    final mergedRoomCode = joinImmutableId(
+      a.roomCode,
+      b.roomCode,
+      fieldName: 'RoomNodeState.roomCode',
+    );
+    final mergedTitle = joinUnversionedString(
+      a.title,
+      b.title,
+      fieldName: 'RoomNodeState.title',
+    );
+    final mergedDescription = joinUnversionedString(
+      a.description,
+      b.description,
+      fieldName: 'RoomNodeState.description',
+    );
+
+    // 1. Nested CRDT sets: pure OR-Set join
+    final mergedMinions = a.activeMinions.merge(b.activeMinions);
+    final mergedEncounter = a.activeEncounter.merge(b.activeEncounter);
+
+    // 2. Custom properties: deterministic per-key ownership merge
+    final mergedCustomProperties = joinCustomProperties(
+      a.customProperties,
+      b.customProperties,
+      context: 'RoomNodeState.customProperties',
+    );
+
+    // 3. Entity Links: map by entityId, recursively join, sort deterministically
+    final linksMapA = <String, RoomEntityLink>{};
+    for (final l in a.entityLinks) {
+      linksMapA[l.entityId] = l;
+    }
+    final linksMapB = <String, RoomEntityLink>{};
+    for (final l in b.entityLinks) {
+      linksMapB[l.entityId] = l;
+    }
+    final allLinkIds = <String>{...linksMapA.keys, ...linksMapB.keys}.toList()..sort();
+    final mergedLinks = <RoomEntityLink>[];
+    for (final id in allLinkIds) {
+      final linkA = linksMapA[id];
+      final linkB = linksMapB[id];
+      if (linkA != null && linkB != null) {
+        mergedLinks.add(RoomEntityLink.join(linkA, linkB));
+      } else if (linkA != null) {
+        mergedLinks.add(linkA);
+      } else if (linkB != null) {
+        mergedLinks.add(linkB);
+      }
+    }
+
+    // 4. Entity Instances: map by instanceId, recursively join, sort deterministically
+    final instancesMapA = <String, EntityInstance>{};
+    for (final i in a.entityInstances) {
+      instancesMapA[i.instanceId] = i;
+    }
+    final instancesMapB = <String, EntityInstance>{};
+    for (final i in b.entityInstances) {
+      instancesMapB[i.instanceId] = i;
+    }
+    final allInstanceIds = <String>{...instancesMapA.keys, ...instancesMapB.keys}.toList()..sort();
+    final mergedInstances = <EntityInstance>[];
+    for (final id in allInstanceIds) {
+      final instA = instancesMapA[id];
+      final instB = instancesMapB[id];
+      if (instA != null && instB != null) {
+        mergedInstances.add(EntityInstance.join(instA, instB));
+      } else if (instA != null) {
+        mergedInstances.add(instA);
+      } else if (instB != null) {
+        mergedInstances.add(instB);
+      }
+    }
+
+    // 5. Containers: map by containerId, recursively join, sort deterministically
+    final containerMapA = <String, LootContainer>{};
+    for (final c in a.containers) {
+      containerMapA[c.containerId] = c;
+    }
+    final containerMapB = <String, LootContainer>{};
+    for (final c in b.containers) {
+      containerMapB[c.containerId] = c;
+    }
+    final allContainerIds = <String>{...containerMapA.keys, ...containerMapB.keys}.toList()..sort();
+    final mergedContainers = <LootContainer>[];
+    for (final id in allContainerIds) {
+      final cA = containerMapA[id];
+      final cB = containerMapB[id];
+      if (cA != null && cB != null) {
+        mergedContainers.add(LootContainer.join(cA, cB));
+      } else if (cA != null) {
+        mergedContainers.add(cA);
+      } else if (cB != null) {
+        mergedContainers.add(cB);
+      }
+    }
+
+    return RoomNodeState(
+      roomId: mergedRoomId,
+      roomCode: mergedRoomCode,
+      title: mergedTitle,
+      description: mergedDescription,
+      entityLinks: mergedLinks,
+      entityInstances: mergedInstances,
+      containers: mergedContainers,
+      activeEncounter: mergedEncounter,
+      activeMinions: mergedMinions,
+      customProperties: mergedCustomProperties,
+    );
+  }
+
+  /// Convenience instance method delegating to canonical pure [join].
+  RoomNodeState merge(RoomNodeState other) => RoomNodeState.join(this, other);
 
   @override
   bool operator ==(Object other) =>
