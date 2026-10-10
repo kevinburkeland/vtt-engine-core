@@ -23,6 +23,7 @@ export 'homebrew/value_objects/github_repo_source.dart';
 export 'homebrew/value_objects/ruleset_version.dart';
 
 // Domain Models & Value Objects
+export 'models/aggregate_hlc_extractor.dart';
 export 'models/campaign_profile.dart';
 export 'models/character_models.dart';
 export 'models/core_types.dart';

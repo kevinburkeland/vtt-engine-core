@@ -70,15 +70,13 @@ class StatefulHlcClock {
     return _latest;
   }
 
-  /// Observes a remote timestamp from another node and reconciles local clock causality.
+  /// Validates a remote timestamp against the future drift policy without mutating [_latest].
   ///
   /// Throws [HlcFutureDriftException] if [remote.physicalTime] strictly exceeds
   /// `localPhysicalTime + maxFutureDrift`.
   /// Timestamps at exactly the drift bound (`remote.physicalTime == localPhysicalTime + maxFutureDrift`)
   /// are accepted within tolerance.
-  ///
-  /// A rejected remote observation does NOT mutate [_latest].
-  void observeRemote(HybridLogicalClock remote, {int offsetMs = 0}) {
+  void validateRemote(HybridLogicalClock remote, {int offsetMs = 0}) {
     final localPhysicalTime = _timeProvider() + offsetMs;
     final maxAllowedPhysicalTime =
         localPhysicalTime + maxFutureDrift.inMilliseconds;
@@ -90,12 +88,54 @@ class StatefulHlcClock {
         remoteNodeId: remote.nodeId,
       );
     }
+  }
+
+  /// Atomically validates an iterable of remote timestamps against the future drift policy
+  /// without mutating [_latest].
+  ///
+  /// If any timestamp strictly exceeds allowed drift, throws [HlcFutureDriftException] immediately.
+  /// No clock mutation occurs.
+  void validateAllRemote(Iterable<HybridLogicalClock> remotes, {int offsetMs = 0}) {
+    for (final remote in remotes) {
+      validateRemote(remote, offsetMs: offsetMs);
+    }
+  }
+
+  /// Observes a remote timestamp from another node and reconciles local clock causality.
+  ///
+  /// Validates the remote timestamp against future drift policy via [validateRemote].
+  /// Throws [HlcFutureDriftException] if drift is exceeded. A rejected remote observation does NOT mutate [_latest].
+  void observeRemote(HybridLogicalClock remote, {int offsetMs = 0}) {
+    validateRemote(remote, offsetMs: offsetMs);
 
     _latest = _latest.merge(
       remote,
       offsetMs: offsetMs,
       timeProvider: _timeProvider,
     );
+    if (_latest.nodeId != replicaId.value) {
+      _latest = HybridLogicalClock(
+        physicalTime: _latest.physicalTime,
+        logicalCounter: _latest.logicalCounter,
+        nodeId: replicaId.value,
+      );
+    }
+  }
+
+  /// Atomically validates all [remotes] against the future drift policy before observing any of them.
+  ///
+  /// If ANY timestamp fails validation, throws [HlcFutureDriftException] and mutates NO clock state.
+  /// If all succeed, monotonically observes causality for all timestamps into [_latest].
+  void observeAllRemote(Iterable<HybridLogicalClock> remotes, {int offsetMs = 0}) {
+    validateAllRemote(remotes, offsetMs: offsetMs);
+
+    for (final remote in remotes) {
+      _latest = _latest.merge(
+        remote,
+        offsetMs: offsetMs,
+        timeProvider: _timeProvider,
+      );
+    }
     if (_latest.nodeId != replicaId.value) {
       _latest = HybridLogicalClock(
         physicalTime: _latest.physicalTime,

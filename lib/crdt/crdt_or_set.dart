@@ -69,6 +69,23 @@ class CrdtOrSet<T> {
   List<T> get activeValues =>
       List.unmodifiable(items.values.map((r) => r.value));
 
+  /// Extracts all non-zero physical time [HybridLogicalClock] timestamps present in this set,
+  /// including both active item registers and tombstones.
+  List<HybridLogicalClock> extractTimestamps() {
+    final result = <HybridLogicalClock>[];
+    for (final reg in items.values) {
+      if (reg.timestamp.physicalTime > 0) {
+        result.add(reg.timestamp);
+      }
+    }
+    for (final ts in tombstones.values) {
+      if (ts.physicalTime > 0) {
+        result.add(ts);
+      }
+    }
+    return result;
+  }
+
   /// Returns the count of active values.
   int get length => items.length;
 
