@@ -269,7 +269,7 @@ void main() {
       const t2 = HybridLogicalClock(physicalTime: 2000, logicalCounter: 0, nodeId: 'n1');
 
       test('Item newer than tombstone -> item survives upon canonical construction/fromMap', () {
-        final rawItems = {'m1': CrdtLwwRegister(value: 'Minion', timestamp: t2)};
+        final rawItems = {'m1': const CrdtLwwRegister(value: 'Minion', timestamp: t2)};
         final rawTombs = {'m1': t1};
 
         final set = CrdtOrSet(items: rawItems, tombstones: rawTombs);
@@ -279,7 +279,7 @@ void main() {
       });
 
       test('Tombstone newer than item -> tombstone survives upon canonical construction/fromMap', () {
-        final rawItems = {'m1': CrdtLwwRegister(value: 'Minion', timestamp: t1)};
+        final rawItems = {'m1': const CrdtLwwRegister(value: 'Minion', timestamp: t1)};
         final rawTombs = {'m1': t2};
 
         final set = CrdtOrSet(items: rawItems, tombstones: rawTombs);
@@ -289,7 +289,7 @@ void main() {
       });
 
       test('Exact timestamp tie between item and tombstone -> ADD WINS', () {
-        final rawItems = {'m1': CrdtLwwRegister(value: 'Minion', timestamp: t1)};
+        final rawItems = {'m1': const CrdtLwwRegister(value: 'Minion', timestamp: t1)};
         final rawTombs = {'m1': t1};
 
         final set = CrdtOrSet(items: rawItems, tombstones: rawTombs);
