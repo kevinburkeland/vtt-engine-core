@@ -310,8 +310,8 @@ class CrdtOrSet<T> {
     final newItems = <String, CrdtLwwRegister<T>>{};
     final newTombstones = <String, HybridLogicalClock>{};
 
-    final rawItems = map['items'];
-    if (rawItems != null) {
+    if (map.containsKey('items')) {
+      final rawItems = map['items'];
       if (rawItems is! Map) {
         throw const FormatException('CrdtOrSet.fromMap: "items" field must be a Map.');
       }
@@ -336,8 +336,8 @@ class CrdtOrSet<T> {
       });
     }
 
-    final rawTombstones = map['tombstones'];
-    if (rawTombstones != null) {
+    if (map.containsKey('tombstones')) {
+      final rawTombstones = map['tombstones'];
       if (rawTombstones is! Map) {
         throw const FormatException('CrdtOrSet.fromMap: "tombstones" field must be a Map.');
       }

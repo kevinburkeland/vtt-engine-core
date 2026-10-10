@@ -605,6 +605,27 @@ void main() {
     });
 
     group('I. CrdtOrSet Strict Deserialization & Null Payload Policy', () {
+      test('empty map {} deserializes as empty CrdtOrSet', () {
+        final s = CrdtOrSet<String>.fromMap({}, (v) => v.toString());
+        expect(s.isEmpty, isTrue);
+        expect(s.items, isEmpty);
+        expect(s.tombstones, isEmpty);
+      });
+
+      test('items: null throws FormatException', () {
+        expect(
+          () => CrdtOrSet<String>.fromMap({'items': null}, (v) => v.toString()),
+          throwsA(isA<FormatException>()),
+        );
+      });
+
+      test('tombstones: null throws FormatException', () {
+        expect(
+          () => CrdtOrSet<String>.fromMap({'tombstones': null}, (v) => v.toString()),
+          throwsA(isA<FormatException>()),
+        );
+      });
+
       test('items is not a Map (e.g. List) throws FormatException', () {
         expect(
           () => CrdtOrSet<String>.fromMap({'items': []}, (v) => v.toString()),
@@ -772,6 +793,41 @@ void main() {
             },
             'activeMinions': [
               {'id': 'm1', 'name': 'Valid Skeleton'},
+            ],
+          }),
+          throwsA(isA<FormatException>()),
+        );
+      });
+
+      test('5a. activeMinions_crdt: null with valid legacy list throws FormatException', () {
+        expect(
+          () => RoomNodeState.fromMap({
+            'roomId': 'r1',
+            'roomCode': 'RC1',
+            'title': 'Test Room',
+            'activeMinions_crdt': null,
+            'activeMinions': [
+              {'id': 'm1', 'name': 'Valid Skeleton'},
+            ],
+          }),
+          throwsA(isA<FormatException>()),
+        );
+      });
+
+      test('5b. activeEncounter_crdt: null with valid legacy list throws FormatException', () {
+        expect(
+          () => RoomNodeState.fromMap({
+            'roomId': 'r1',
+            'roomCode': 'RC1',
+            'title': 'Test Room',
+            'activeEncounter_crdt': null,
+            'activeEncounter': [
+              {
+                'participantId': 'p1',
+                'entityLink': {'entityId': 'e1', 'displayName': 'Hero'},
+                'currentHp': 20,
+                'maxHp': 20,
+              },
             ],
           }),
           throwsA(isA<FormatException>()),

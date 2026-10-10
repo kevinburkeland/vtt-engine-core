@@ -637,7 +637,7 @@ class RoomNodeState {
     final parser = minionParser ?? defaultMinionParser ?? (m) => deepFreezeMap(m);
 
     CrdtOrSet<dynamic> minionsSet = const CrdtOrSet<dynamic>.empty();
-    if (map.containsKey('activeMinions_crdt') && map['activeMinions_crdt'] != null) {
+    if (map.containsKey('activeMinions_crdt')) {
       final rawCrdt = map['activeMinions_crdt'];
       if (rawCrdt is! Map) {
         throw const FormatException('RoomNodeState.fromMap: "activeMinions_crdt" must be a Map.');
@@ -652,7 +652,7 @@ class RoomNodeState {
           return deepFreezeValue(parsed);
         },
       );
-    } else if (map.containsKey('activeMinions') && map['activeMinions'] != null) {
+    } else if (map.containsKey('activeMinions')) {
       final rawMinions = map['activeMinions'];
       if (rawMinions is Map) {
         minionsSet = CrdtOrSet<dynamic>.fromMap(
@@ -693,7 +693,7 @@ class RoomNodeState {
 
     CrdtOrSet<EncounterParticipant> encounterSet =
         const CrdtOrSet<EncounterParticipant>.empty();
-    if (map.containsKey('activeEncounter_crdt') && map['activeEncounter_crdt'] != null) {
+    if (map.containsKey('activeEncounter_crdt')) {
       final rawCrdt = map['activeEncounter_crdt'];
       if (rawCrdt is! Map) {
         throw const FormatException('RoomNodeState.fromMap: "activeEncounter_crdt" must be a Map.');
@@ -708,7 +708,7 @@ class RoomNodeState {
               Map<String, dynamic>.from(raw));
         },
       );
-    } else if (map.containsKey('activeEncounter') && map['activeEncounter'] != null) {
+    } else if (map.containsKey('activeEncounter')) {
       final rawEnc = map['activeEncounter'];
       if (rawEnc is Map) {
         encounterSet = CrdtOrSet<EncounterParticipant>.fromMap(
