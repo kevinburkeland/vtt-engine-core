@@ -184,7 +184,7 @@ void main() {
 
       final minionsSet = CrdtOrSet<dynamic>(
         items: {
-          'm1': CrdtLwwRegister<dynamic>(
+          'm1': const CrdtLwwRegister<dynamic>(
             value: {'name': 'Wolf'},
             timestamp: tsMinionItem,
           ),
@@ -223,7 +223,7 @@ void main() {
         createdAt: DateTime.now().toUtc(),
         lastPlayedAt: DateTime.now().toUtc(),
         roomState: roomState,
-        notesRegister: CrdtLwwRegister<String>(
+        notesRegister: const CrdtLwwRegister<String>(
           value: 'Hello',
           timestamp: tsNotes,
         ),
