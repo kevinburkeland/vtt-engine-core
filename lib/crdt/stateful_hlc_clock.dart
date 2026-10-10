@@ -144,4 +144,45 @@ class StatefulHlcClock {
       );
     }
   }
+/// Monotonically observes causality from trusted local persisted history without
+  /// applying remote future drift rejection.
+  ///
+  /// Preserves the current runtime [replicaId] as local writer authority.
+  /// Does NOT mutate historical timestamp objects and does NOT consult future drift policy.
+  void observeTrustedHistory(HybridLogicalClock historical, {int offsetMs = 0}) {
+    _latest = _latest.merge(
+      historical,
+      offsetMs: offsetMs,
+      timeProvider: _timeProvider,
+    );
+    if (_latest.nodeId != replicaId.value) {
+      _latest = HybridLogicalClock(
+        physicalTime: _latest.physicalTime,
+        logicalCounter: _latest.logicalCounter,
+        nodeId: replicaId.value,
+      );
+    }
+  }
+
+  /// Monotonically observes causality from an iterable of trusted local persisted
+  /// timestamps without applying remote future drift rejection.
+  ///
+  /// Preserves the current runtime [replicaId] as local writer authority.
+  /// Does NOT mutate historical timestamp objects and does NOT consult future drift policy.
+  void observeAllTrustedHistory(Iterable<HybridLogicalClock> historical, {int offsetMs = 0}) {
+    for (final h in historical) {
+      _latest = _latest.merge(
+        h,
+        offsetMs: offsetMs,
+        timeProvider: _timeProvider,
+      );
+    }
+    if (_latest.nodeId != replicaId.value) {
+      _latest = HybridLogicalClock(
+        physicalTime: _latest.physicalTime,
+        logicalCounter: _latest.logicalCounter,
+        nodeId: replicaId.value,
+      );
+    }
+  }
 }
