@@ -22,24 +22,15 @@ class CrdtOrSet<T> {
   /// Maps item ID to the HLC timestamp of when it was removed.
   final Map<String, HybridLogicalClock> tombstones;
 
-  const CrdtOrSet._raw({
-    required this.items,
-    required this.tombstones,
-  });
-
-  factory CrdtOrSet({
+  CrdtOrSet({
     Map<String, CrdtLwwRegister<T>> items = const {},
     Map<String, HybridLogicalClock> tombstones = const {},
-  }) {
-    if (items.isEmpty && tombstones.isEmpty) {
-      return const CrdtOrSet.empty();
-    }
-    final canon = _canonicalize(items, tombstones);
-    return CrdtOrSet._raw(
-      items: Map.unmodifiable(canon.items),
-      tombstones: Map.unmodifiable(canon.tombstones),
-    );
-  }
+  })  : items = items.isEmpty && tombstones.isEmpty
+            ? const {}
+            : Map.unmodifiable(_canonicalize(items, tombstones).items),
+        tombstones = items.isEmpty && tombstones.isEmpty
+            ? const {}
+            : Map.unmodifiable(_canonicalize(items, tombstones).tombstones);
 
   const CrdtOrSet.empty()
       : items = const {},
@@ -157,9 +148,9 @@ class CrdtOrSet<T> {
       }
     }
 
-    return CrdtOrSet._raw(
-      items: Map.unmodifiable(newItems),
-      tombstones: Map.unmodifiable(newTombstones),
+    return CrdtOrSet(
+      items: newItems,
+      tombstones: newTombstones,
     );
   }
 
@@ -190,9 +181,9 @@ class CrdtOrSet<T> {
       newTombstones[id] = timestamp;
     }
 
-    return CrdtOrSet._raw(
-      items: Map.unmodifiable(newItems),
-      tombstones: Map.unmodifiable(newTombstones),
+    return CrdtOrSet(
+      items: newItems,
+      tombstones: newTombstones,
     );
   }
 
@@ -267,9 +258,9 @@ class CrdtOrSet<T> {
       }
     }
 
-    return CrdtOrSet._raw(
-      items: Map.unmodifiable(mergedItems),
-      tombstones: Map.unmodifiable(mergedTombstones),
+    return CrdtOrSet(
+      items: mergedItems,
+      tombstones: mergedTombstones,
     );
   }
 
@@ -278,9 +269,9 @@ class CrdtOrSet<T> {
     final prunedTombstones = Map<String, HybridLogicalClock>.from(tombstones)
       ..removeWhere((_, ts) => ts.isBefore(threshold));
 
-    return CrdtOrSet._raw(
-      items: Map.unmodifiable(items),
-      tombstones: Map.unmodifiable(prunedTombstones),
+    return CrdtOrSet(
+      items: items,
+      tombstones: prunedTombstones,
     );
   }
 
