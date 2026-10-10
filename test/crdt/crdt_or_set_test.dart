@@ -273,32 +273,37 @@ void main() {
       });
 
       test(
-          'Explicit type validation skips items with missing ts or null value without throwing',
+          'Strict validation throws FormatException on items with missing ts or corrupted entries',
           () {
-        final map = {
+        final missingTs = {
           'items': {
-            'valid': {
-              'v': 'Cleric',
-              'ts': {'pt': 1000, 'lc': 0, 'node': 'nodeA'},
-            },
-            'no_ts': {
-              'v': 'Bard',
-            },
-            'null_val': {
-              'v': null,
-              'ts': {'pt': 1000, 'lc': 0, 'node': 'nodeA'},
-            },
-            'non_map': 'corrupted_string',
-          },
-          'tombstones': {
-            'non_map_tomb': 'corrupted_string',
+            'no_ts': {'v': 'Bard'},
           },
         };
+        expect(
+          () => CrdtOrSet<String>.fromMap(missingTs, (raw) => raw.toString()),
+          throwsA(isA<FormatException>()),
+        );
 
-        final orSet = CrdtOrSet<String>.fromMap(map, (raw) => raw.toString());
-        expect(orSet.activeValues, equals(['Cleric']));
-        expect(orSet.items.length, equals(1));
-        expect(orSet.tombstones, isEmpty);
+        final nonMapItem = {
+          'items': {
+            'non_map': 'corrupted_string',
+          },
+        };
+        expect(
+          () => CrdtOrSet<String>.fromMap(nonMapItem, (raw) => raw.toString()),
+          throwsA(isA<FormatException>()),
+        );
+
+        final nonMapTomb = {
+          'tombstones': {
+            'bad': 'corrupted_string',
+          },
+        };
+        expect(
+          () => CrdtOrSet<String>.fromMap(nonMapTomb, (raw) => raw.toString()),
+          throwsA(isA<FormatException>()),
+        );
       });
 
       test(

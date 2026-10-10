@@ -360,9 +360,9 @@ void main() {
     });
 
     group('L. Deterministic Randomized CRDT Lattice Law Tests', () {
-      final rng = Random(seed);
-
       test('PnCounter lattice laws (idempotence, commutativity, associativity) over $iterations iterations', () {
+        const effectiveSeed = seed ^ 1;
+        final rng = Random(effectiveSeed);
         for (var i = 0; i < iterations; i++) {
           PnCounter randomCounter() {
             final pos = <String, int>{};
@@ -379,19 +379,21 @@ void main() {
           final c = randomCounter();
 
           // Idempotence: a ⊔ a == a
-          expect(a.merge(a), equals(a), reason: 'Iteration $i: PnCounter idempotence failed for $a');
+          expect(a.merge(a), equals(a), reason: 'seed: $effectiveSeed, iter: $i, a: $a');
 
           // Commutativity: a ⊔ b == b ⊔ a
-          expect(a.merge(b), equals(b.merge(a)), reason: 'Iteration $i: PnCounter commutativity failed for $a, $b');
+          expect(a.merge(b), equals(b.merge(a)), reason: 'seed: $effectiveSeed, iter: $i, a: $a, b: $b');
 
           // Associativity: (a ⊔ b) ⊔ c == a ⊔ (b ⊔ c)
           final left = (a.merge(b)).merge(c);
           final right = a.merge(b.merge(c));
-          expect(left, equals(right), reason: 'Iteration $i: PnCounter associativity failed for $a, $b, $c');
+          expect(left, equals(right), reason: 'seed: $effectiveSeed, iter: $i, a: $a, b: $b, c: $c');
         }
       });
 
       test('CrdtLwwRegister lattice laws over $iterations iterations for valid distinct writes', () {
+        const effectiveSeed = seed ^ 2;
+        final rng = Random(effectiveSeed);
         for (var i = 0; i < iterations; i++) {
           final pt1 = 1000 + rng.nextInt(1000);
           final pt2 = 1000 + rng.nextInt(1000);
@@ -410,15 +412,17 @@ void main() {
           final r2 = CrdtLwwRegister<String>(value: val2, timestamp: ts2);
 
           // Idempotence
-          expect(r1.merge(r1), equals(r1));
+          expect(r1.merge(r1), equals(r1), reason: 'seed: $effectiveSeed, iter: $i, r1: $r1');
 
           // Commutativity
           expect(r1.merge(r2), equals(r2.merge(r1)),
-              reason: 'Iteration $i: LWW commutativity failed for $r1, $r2');
+              reason: 'seed: $effectiveSeed, iter: $i, r1: $r1, r2: $r2');
         }
       });
 
       test('CrdtOrSet lattice laws (idempotence, commutativity, associativity) over $iterations iterations', () {
+        const effectiveSeed = seed ^ 3;
+        final rng = Random(effectiveSeed);
         for (var i = 0; i < iterations; i++) {
           CrdtOrSet<String> randomSet() {
             var s = const CrdtOrSet<String>.empty();
@@ -440,19 +444,21 @@ void main() {
           final c = randomSet();
 
           // Idempotence
-          expect(a.merge(a), equals(a), reason: 'Iteration $i: OR-Set idempotence failed for $a');
+          expect(a.merge(a), equals(a), reason: 'seed: $effectiveSeed, iter: $i, a: $a');
 
           // Commutativity
-          expect(a.merge(b), equals(b.merge(a)), reason: 'Iteration $i: OR-Set commutativity failed for $a, $b');
+          expect(a.merge(b), equals(b.merge(a)), reason: 'seed: $effectiveSeed, iter: $i, a: $a, b: $b');
 
           // Associativity
           final left = (a.merge(b)).merge(c);
           final right = a.merge(b.merge(c));
-          expect(left, equals(right), reason: 'Iteration $i: OR-Set associativity failed for $a, $b, $c');
+          expect(left, equals(right), reason: 'seed: $effectiveSeed, iter: $i, a: $a, b: $b, c: $c');
         }
       });
 
       test('PartyPurse lattice laws (idempotence, commutativity, associativity) over $iterations iterations', () {
+        const effectiveSeed = seed ^ 4;
+        final rng = Random(effectiveSeed);
         for (var i = 0; i < iterations; i++) {
           PartyPurse randomPurse() {
             final counters = <String, PnCounter>{};
@@ -473,15 +479,15 @@ void main() {
           final c = randomPurse();
 
           // Idempotence
-          expect(a.merge(a), equals(a), reason: 'Iteration $i: PartyPurse idempotence failed');
+          expect(a.merge(a), equals(a), reason: 'seed: $effectiveSeed, iter: $i, a: $a');
 
           // Commutativity
-          expect(a.merge(b), equals(b.merge(a)), reason: 'Iteration $i: PartyPurse commutativity failed');
+          expect(a.merge(b), equals(b.merge(a)), reason: 'seed: $effectiveSeed, iter: $i, a: $a, b: $b');
 
           // Associativity
           final left = (a.merge(b)).merge(c);
           final right = a.merge(b.merge(c));
-          expect(left, equals(right), reason: 'Iteration $i: PartyPurse associativity failed');
+          expect(left, equals(right), reason: 'seed: $effectiveSeed, iter: $i, a: $a, b: $b, c: $c');
         }
       });
     });

@@ -446,11 +446,12 @@ void main() {
       });
     });
 
-    group('H. Complete CRDT Law Test Bar with Fresh PRNG Seeds', () {
+    group('H. Complete CRDT Law Test Bar with Fresh PRNG Seeds and Reproducible Diagnostics', () {
       const iterations = 50;
 
       test('PnCounter lattice laws (idempotence, commutativity, associativity)', () {
-        final rng = Random(defaultSeed ^ 1);
+        const effectiveSeed = defaultSeed ^ 1;
+        final rng = Random(effectiveSeed);
         for (var i = 0; i < iterations; i++) {
           PnCounter genCounter() {
             final p = <String, int>{};
@@ -467,23 +468,24 @@ void main() {
           final c = genCounter();
 
           // Idempotence: a ⊔ a == a
-          expect(a.merge(a), equals(a), reason: 'seed: $defaultSeed, iter: $i, state: $a');
-          expect(a.merge(a).hashCode, equals(a.hashCode), reason: 'seed: $defaultSeed, iter: $i');
+          expect(a.merge(a), equals(a), reason: 'seed: $effectiveSeed, iter: $i, a: $a');
+          expect(a.merge(a).hashCode, equals(a.hashCode), reason: 'seed: $effectiveSeed, iter: $i, a: $a');
 
           // Commutativity: a ⊔ b == b ⊔ a
-          expect(a.merge(b), equals(b.merge(a)), reason: 'seed: $defaultSeed, iter: $i, a: $a, b: $b');
+          expect(a.merge(b), equals(b.merge(a)), reason: 'seed: $effectiveSeed, iter: $i, a: $a, b: $b');
           expect(a.merge(b).hashCode, equals(b.merge(a).hashCode));
 
           // Associativity: (a ⊔ b) ⊔ c == a ⊔ (b ⊔ c)
           final left = (a.merge(b)).merge(c);
           final right = a.merge(b.merge(c));
-          expect(left, equals(right), reason: 'seed: $defaultSeed, iter: $i, a: $a, b: $b, c: $c');
+          expect(left, equals(right), reason: 'seed: $effectiveSeed, iter: $i, a: $a, b: $b, c: $c');
           expect(left.hashCode, equals(right.hashCode));
         }
       });
 
       test('CrdtLwwRegister lattice laws (idempotence, commutativity, associativity)', () {
-        final rng = Random(defaultSeed ^ 2);
+        const effectiveSeed = defaultSeed ^ 2;
+        final rng = Random(effectiveSeed);
         for (var i = 0; i < iterations; i++) {
           final pt1 = 1000 + rng.nextInt(500);
           final pt2 = 1000 + rng.nextInt(500);
@@ -506,23 +508,24 @@ void main() {
           final r3 = CrdtLwwRegister<Map<String, dynamic>>(value: val3, timestamp: ts3);
 
           // Idempotence
-          expect(r1.merge(r1), equals(r1), reason: 'seed: $defaultSeed, iter: $i');
+          expect(r1.merge(r1), equals(r1), reason: 'seed: $effectiveSeed, iter: $i, r1: $r1');
           expect(r1.merge(r1).hashCode, equals(r1.hashCode));
 
           // Commutativity
-          expect(r1.merge(r2), equals(r2.merge(r1)), reason: 'seed: $defaultSeed, iter: $i, r1: $r1, r2: $r2');
+          expect(r1.merge(r2), equals(r2.merge(r1)), reason: 'seed: $effectiveSeed, iter: $i, r1: $r1, r2: $r2');
           expect(r1.merge(r2).hashCode, equals(r2.merge(r1).hashCode));
 
           // Associativity
           final left = (r1.merge(r2)).merge(r3);
           final right = r1.merge(r2.merge(r3));
-          expect(left, equals(right), reason: 'seed: $defaultSeed, iter: $i');
+          expect(left, equals(right), reason: 'seed: $effectiveSeed, iter: $i, r1: $r1, r2: $r2, r3: $r3');
           expect(left.hashCode, equals(right.hashCode));
         }
       });
 
       test('CrdtOrSet lattice laws (idempotence, commutativity, associativity, add-wins)', () {
-        final rng = Random(defaultSeed ^ 3);
+        const effectiveSeed = defaultSeed ^ 3;
+        final rng = Random(effectiveSeed);
         for (var i = 0; i < iterations; i++) {
           CrdtOrSet<Map<String, dynamic>> genSet() {
             var s = const CrdtOrSet<Map<String, dynamic>>.empty();
@@ -545,23 +548,24 @@ void main() {
           final c = genSet();
 
           // Idempotence
-          expect(a.merge(a), equals(a), reason: 'seed: $defaultSeed, iter: $i');
+          expect(a.merge(a), equals(a), reason: 'seed: $effectiveSeed, iter: $i, a: $a');
           expect(a.merge(a).hashCode, equals(a.hashCode));
 
           // Commutativity
-          expect(a.merge(b), equals(b.merge(a)), reason: 'seed: $defaultSeed, iter: $i');
+          expect(a.merge(b), equals(b.merge(a)), reason: 'seed: $effectiveSeed, iter: $i, a: $a, b: $b');
           expect(a.merge(b).hashCode, equals(b.merge(a).hashCode));
 
           // Associativity
           final left = (a.merge(b)).merge(c);
           final right = a.merge(b.merge(c));
-          expect(left, equals(right), reason: 'seed: $defaultSeed, iter: $i');
+          expect(left, equals(right), reason: 'seed: $effectiveSeed, iter: $i, a: $a, b: $b, c: $c');
           expect(left.hashCode, equals(right.hashCode));
         }
       });
 
       test('PartyPurse merge lattice laws (idempotence, commutativity, associativity) across multiple denominations', () {
-        final rng = Random(defaultSeed ^ 4);
+        const effectiveSeed = defaultSeed ^ 4;
+        final rng = Random(effectiveSeed);
         for (var i = 0; i < iterations; i++) {
           PartyPurse genPurse() {
             final counters = <String, PnCounter>{};
@@ -584,19 +588,323 @@ void main() {
           final c = genPurse();
 
           // Idempotence
-          expect(a.merge(a), equals(a), reason: 'seed: $defaultSeed, iter: $i');
+          expect(a.merge(a), equals(a), reason: 'seed: $effectiveSeed, iter: $i, a: $a');
           expect(a.merge(a).hashCode, equals(a.hashCode));
 
           // Commutativity
-          expect(a.merge(b), equals(b.merge(a)), reason: 'seed: $defaultSeed, iter: $i');
+          expect(a.merge(b), equals(b.merge(a)), reason: 'seed: $effectiveSeed, iter: $i, a: $a, b: $b');
           expect(a.merge(b).hashCode, equals(b.merge(a).hashCode));
 
           // Associativity
           final left = (a.merge(b)).merge(c);
           final right = a.merge(b.merge(c));
-          expect(left, equals(right), reason: 'seed: $defaultSeed, iter: $i');
+          expect(left, equals(right), reason: 'seed: $effectiveSeed, iter: $i, a: $a, b: $b, c: $c');
           expect(left.hashCode, equals(right.hashCode));
         }
+      });
+    });
+
+    group('I. CrdtOrSet Strict Deserialization & Null Payload Policy', () {
+      test('items is not a Map (e.g. List) throws FormatException', () {
+        expect(
+          () => CrdtOrSet<String>.fromMap({'items': []}, (v) => v.toString()),
+          throwsA(isA<FormatException>()),
+        );
+      });
+
+      test('tombstones is not a Map (e.g. List) throws FormatException', () {
+        expect(
+          () => CrdtOrSet<String>.fromMap({'tombstones': []}, (v) => v.toString()),
+          throwsA(isA<FormatException>()),
+        );
+      });
+
+      test('item value is primitive instead of Map throws FormatException', () {
+        expect(
+          () => CrdtOrSet<String>.fromMap({
+            'items': {'id1': 'raw_string_value'},
+          }, (v) => v.toString()),
+          throwsA(isA<FormatException>()),
+        );
+      });
+
+      test('item missing ts throws FormatException', () {
+        expect(
+          () => CrdtOrSet<String>.fromMap({
+            'items': {'id1': {'v': 'payload'}},
+          }, (v) => v.toString()),
+          throwsA(isA<FormatException>()),
+        );
+      });
+
+      test('item ts is not a Map throws FormatException', () {
+        expect(
+          () => CrdtOrSet<String>.fromMap({
+            'items': {'id1': {'v': 'payload', 'ts': 'bad_ts'}},
+          }, (v) => v.toString()),
+          throwsA(isA<FormatException>()),
+        );
+      });
+
+      test('item missing v throws FormatException', () {
+        expect(
+          () => CrdtOrSet<String>.fromMap({
+            'items': {'id1': {'ts': {'pt': 100, 'lc': 0, 'node': 'n1'}}},
+          }, (v) => v.toString()),
+          throwsA(isA<FormatException>()),
+        );
+      });
+
+      test('tombstone value is primitive instead of HLC Map throws FormatException', () {
+        expect(
+          () => CrdtOrSet<String>.fromMap({
+            'tombstones': {'id1': 'not_a_map'},
+          }, (v) => v.toString()),
+          throwsA(isA<FormatException>()),
+        );
+      });
+
+      test('tombstone HLC is malformed (e.g. fractional pt) throws FormatException', () {
+        expect(
+          () => CrdtOrSet<String>.fromMap({
+            'tombstones': {'id1': {'pt': 100.5, 'lc': 0, 'node': 'n1'}},
+          }, (v) => v.toString()),
+          throwsA(isA<FormatException>()),
+        );
+      });
+
+      test('null payload values are valid for nullable generic types CrdtOrSet<String?>', () {
+        final parsed = CrdtOrSet<String?>.fromMap({
+          'items': {
+            'id1': {
+              'v': null,
+              'ts': {'pt': 100, 'lc': 0, 'node': 'n1'},
+            },
+          },
+        }, (v) => v as String?);
+
+        expect(parsed.items.length, equals(1));
+        expect(parsed.items['id1']!.value, isNull);
+        expect(parsed.items['id1']!.timestamp.nodeId, equals('n1'));
+      });
+    });
+
+    group('J. RoomNodeState Strict Replicated Deserialization & Legacy Migration', () {
+      test('1. malformed activeMinions_crdt throws FormatException', () {
+        expect(
+          () => RoomNodeState.fromMap({
+            'roomId': 'r1',
+            'roomCode': 'RC1',
+            'title': 'Test Room',
+            'activeMinions_crdt': {
+              'items': {
+                'm1': {
+                  'v': {'name': 'Skeleton'},
+                  'ts': {'pt': 3.5, 'lc': 0, 'node': 'n1'},
+                },
+              },
+            },
+          }),
+          throwsA(isA<FormatException>()),
+        );
+      });
+
+      test('2. malformed activeEncounter_crdt throws FormatException', () {
+        expect(
+          () => RoomNodeState.fromMap({
+            'roomId': 'r1',
+            'roomCode': 'RC1',
+            'title': 'Test Room',
+            'activeEncounter_crdt': {
+              'items': {
+                'p1': {
+                  'v': {'participantId': 'p1'},
+                  'ts': {'pt': 100, 'lc': 2.5, 'node': 'n1'},
+                },
+              },
+            },
+          }),
+          throwsA(isA<FormatException>()),
+        );
+      });
+
+      test('3. malformed map-shaped activeMinions CRDT throws FormatException', () {
+        expect(
+          () => RoomNodeState.fromMap({
+            'roomId': 'r1',
+            'roomCode': 'RC1',
+            'title': 'Test Room',
+            'activeMinions': {
+              'items': 'not_a_map',
+            },
+          }),
+          throwsA(isA<FormatException>()),
+        );
+      });
+
+      test('4. malformed map-shaped activeEncounter CRDT throws FormatException', () {
+        expect(
+          () => RoomNodeState.fromMap({
+            'roomId': 'r1',
+            'roomCode': 'RC1',
+            'title': 'Test Room',
+            'activeEncounter': {
+              'items': 'not_a_map',
+            },
+          }),
+          throwsA(isA<FormatException>()),
+        );
+      });
+
+      test('5. CRDT field present but malformed does NOT fall back to legacy list', () {
+        expect(
+          () => RoomNodeState.fromMap({
+            'roomId': 'r1',
+            'roomCode': 'RC1',
+            'title': 'Test Room',
+            'activeMinions_crdt': {
+              'items': {
+                'm1': {
+                  'v': {'name': 'Skeleton'},
+                  'ts': {'pt': 3.5, 'lc': 0, 'node': 'n1'},
+                },
+              },
+            },
+            'activeMinions': [
+              {'id': 'm1', 'name': 'Valid Skeleton'},
+            ],
+          }),
+          throwsA(isA<FormatException>()),
+        );
+      });
+
+      test('6. legacy list still migrates correctly when no CRDT field exists', () {
+        final state = RoomNodeState.fromMap({
+          'roomId': 'r1',
+          'roomCode': 'RC1',
+          'title': 'Test Room',
+          'activeMinions': [
+            {'id': 'm1', 'name': 'Valid Skeleton'},
+          ],
+        });
+
+        expect(state.activeMinions.items.length, equals(1));
+        final reg = state.activeMinions.items['m1']!;
+        expect(reg.timestamp.physicalTime, equals(0));
+        expect(reg.timestamp.logicalCounter, equals(0));
+        expect(reg.timestamp.nodeId, equals('genesis'));
+      });
+
+      test('7. deterministic 0/0/genesis behavior produces identical state and hash across runs', () {
+        final map = {
+          'roomId': 'r1',
+          'roomCode': 'RC1',
+          'title': 'Test Room',
+          'activeMinions': [
+            {'id': 'm1', 'name': 'Valid Skeleton'},
+          ],
+          'activeEncounter': [
+            {
+              'participantId': 'p1',
+              'entityLink': {'entityId': 'e1', 'displayName': 'Hero'},
+              'currentHp': 20,
+              'maxHp': 20,
+            },
+          ],
+        };
+
+        final a = RoomNodeState.fromMap(map);
+        final b = RoomNodeState.fromMap(map);
+        expect(a, equals(b));
+        expect(a.hashCode, equals(b.hashCode));
+      });
+    });
+
+    group('K. Authoritative PartyPurse Counter Representations & Precedence', () {
+      test('1. valid nested counter + malformed gpCounter throws FormatException', () {
+        expect(
+          () => PartyPurse.fromMap({
+            'denominationCounters': {
+              'gp': {
+                'positive': {'n1': 50},
+                'negative': {'n1': 10},
+              },
+            },
+            'gpCounter': {
+              'positive': {'n1': 3.5}, // malformed fractional
+            },
+          }),
+          throwsA(isA<FormatException>()),
+        );
+      });
+
+      test('2. malformed nested counter + valid gpCounter throws FormatException', () {
+        expect(
+          () => PartyPurse.fromMap({
+            'denominationCounters': {
+              'gp': {
+                'positive': {'n1': -5}, // malformed negative component
+              },
+            },
+            'gpCounter': {
+              'positive': {'n1': 50},
+            },
+          }),
+          throwsA(isA<FormatException>()),
+        );
+      });
+
+      test('3. valid nested counter + valid gpCounter with different values -> nested wins', () {
+        final purse = PartyPurse.fromMap({
+          'denominationCounters': {
+            'gp': {
+              'positive': {'n1': 100},
+            },
+          },
+          'gpCounter': {
+            'positive': {'n1': 50},
+          },
+        });
+
+        expect(purse.getBalance('gp'), equals(100));
+        expect(purse.getCounter('gp').positive['n1'], equals(100));
+      });
+
+      test('4. valid counter(s) + mismatching scalar -> counter winner unchanged', () {
+        final purse = PartyPurse.fromMap({
+          'denominationCounters': {
+            'gp': {
+              'positive': {'n1': 100},
+            },
+          },
+          'gp': 25, // legacy scalar mismatch
+        });
+
+        expect(purse.getBalance('gp'), equals(100));
+        expect(purse.getCounter('gp').positive['n1'], equals(100));
+      });
+
+      test('5. scalar only -> deterministic init migration', () {
+        final purse = PartyPurse.fromMap({
+          'gp': 50,
+          'sp': -10,
+        });
+
+        expect(purse.getBalance('gp'), equals(50));
+        expect(purse.getCounter('gp').positive['init'], equals(50));
+        expect(purse.getCounter('sp').negative['init'], equals(10));
+        expect(purse.getBalance('sp'), equals(0)); // clamped >= 0 for presentation
+      });
+
+      test('6. malformed customCounters entry throws FormatException', () {
+        expect(
+          () => PartyPurse.fromMap({
+            'customCounters': {
+              'credits': 'not_a_map',
+            },
+          }),
+          throwsA(isA<FormatException>()),
+        );
       });
     });
   });

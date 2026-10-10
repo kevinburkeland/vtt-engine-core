@@ -637,33 +637,41 @@ class RoomNodeState {
     final parser = minionParser ?? defaultMinionParser ?? (m) => deepFreezeMap(m);
 
     CrdtOrSet<dynamic> minionsSet = const CrdtOrSet<dynamic>.empty();
-    if (map['activeMinions_crdt'] is Map) {
-      try {
+    if (map.containsKey('activeMinions_crdt') && map['activeMinions_crdt'] != null) {
+      final rawCrdt = map['activeMinions_crdt'];
+      if (rawCrdt is! Map) {
+        throw const FormatException('RoomNodeState.fromMap: "activeMinions_crdt" must be a Map.');
+      }
+      minionsSet = CrdtOrSet<dynamic>.fromMap(
+        Map<dynamic, dynamic>.from(rawCrdt),
+        (raw) {
+          if (raw is! Map) {
+            throw const FormatException('RoomNodeState.fromMap: raw minion must be a Map.');
+          }
+          final parsed = parser(Map<String, dynamic>.from(raw));
+          return deepFreezeValue(parsed);
+        },
+      );
+    } else if (map.containsKey('activeMinions') && map['activeMinions'] != null) {
+      final rawMinions = map['activeMinions'];
+      if (rawMinions is Map) {
         minionsSet = CrdtOrSet<dynamic>.fromMap(
-          Map<dynamic, dynamic>.from(map['activeMinions_crdt'] as Map),
+          Map<dynamic, dynamic>.from(rawMinions),
           (raw) {
-            final parsed = parser(Map<String, dynamic>.from(raw as Map));
+            if (raw is! Map) {
+              throw const FormatException('RoomNodeState.fromMap: raw minion must be a Map.');
+            }
+            final parsed = parser(Map<String, dynamic>.from(raw));
             return deepFreezeValue(parsed);
           },
         );
-      } catch (_) {}
-    } else if (map['activeMinions'] is Map &&
-        (map['activeMinions'] as Map).containsKey('items')) {
-      try {
-        minionsSet = CrdtOrSet<dynamic>.fromMap(
-          Map<dynamic, dynamic>.from(map['activeMinions'] as Map),
-          (raw) {
-            final parsed = parser(Map<String, dynamic>.from(raw as Map));
-            return deepFreezeValue(parsed);
-          },
-        );
-      } catch (_) {}
-    } else if (map['activeMinions'] is List) {
-      final rawMinions = map['activeMinions'] as List;
-      final entries =
-          <({String id, dynamic item, HybridLogicalClock timestamp})>[];
-      for (final raw in rawMinions) {
-        if (raw is Map) {
+      } else if (rawMinions is List) {
+        final entries =
+            <({String id, dynamic item, HybridLogicalClock timestamp})>[];
+        for (final raw in rawMinions) {
+          if (raw is! Map) {
+            throw const FormatException('RoomNodeState.fromMap: legacy minion must be a Map.');
+          }
           final parsed = parser(Map<String, dynamic>.from(raw));
           final m = deepFreezeValue(parsed);
           final id = (raw['id'] ?? _resolveMinionId(m)).toString();
@@ -677,35 +685,49 @@ class RoomNodeState {
             ),
           ));
         }
+        minionsSet = minionsSet.addBatch(entries);
+      } else {
+        throw const FormatException('RoomNodeState.fromMap: "activeMinions" must be a Map or List.');
       }
-      minionsSet = minionsSet.addBatch(entries);
     }
 
     CrdtOrSet<EncounterParticipant> encounterSet =
         const CrdtOrSet<EncounterParticipant>.empty();
-    if (map['activeEncounter_crdt'] is Map) {
-      try {
+    if (map.containsKey('activeEncounter_crdt') && map['activeEncounter_crdt'] != null) {
+      final rawCrdt = map['activeEncounter_crdt'];
+      if (rawCrdt is! Map) {
+        throw const FormatException('RoomNodeState.fromMap: "activeEncounter_crdt" must be a Map.');
+      }
+      encounterSet = CrdtOrSet<EncounterParticipant>.fromMap(
+        Map<dynamic, dynamic>.from(rawCrdt),
+        (raw) {
+          if (raw is! Map) {
+            throw const FormatException('RoomNodeState.fromMap: raw encounter participant must be a Map.');
+          }
+          return EncounterParticipant.fromMap(
+              Map<String, dynamic>.from(raw));
+        },
+      );
+    } else if (map.containsKey('activeEncounter') && map['activeEncounter'] != null) {
+      final rawEnc = map['activeEncounter'];
+      if (rawEnc is Map) {
         encounterSet = CrdtOrSet<EncounterParticipant>.fromMap(
-          Map<dynamic, dynamic>.from(map['activeEncounter_crdt'] as Map),
-          (raw) => EncounterParticipant.fromMap(
-              Map<String, dynamic>.from(raw as Map)),
+          Map<dynamic, dynamic>.from(rawEnc),
+          (raw) {
+            if (raw is! Map) {
+              throw const FormatException('RoomNodeState.fromMap: raw encounter participant must be a Map.');
+            }
+            return EncounterParticipant.fromMap(
+                Map<String, dynamic>.from(raw));
+          },
         );
-      } catch (_) {}
-    } else if (map['activeEncounter'] is Map &&
-        (map['activeEncounter'] as Map).containsKey('items')) {
-      try {
-        encounterSet = CrdtOrSet<EncounterParticipant>.fromMap(
-          Map<dynamic, dynamic>.from(map['activeEncounter'] as Map),
-          (raw) => EncounterParticipant.fromMap(
-              Map<String, dynamic>.from(raw as Map)),
-        );
-      } catch (_) {}
-    } else if (map['activeEncounter'] is List) {
-      final rawEnc = map['activeEncounter'] as List;
-      final entries =
-          <({String id, EncounterParticipant item, HybridLogicalClock timestamp})>[];
-      for (final raw in rawEnc) {
-        if (raw is Map) {
+      } else if (rawEnc is List) {
+        final entries =
+            <({String id, EncounterParticipant item, HybridLogicalClock timestamp})>[];
+        for (final raw in rawEnc) {
+          if (raw is! Map) {
+            throw const FormatException('RoomNodeState.fromMap: legacy encounter participant must be a Map.');
+          }
           final p =
               EncounterParticipant.fromMap(Map<String, dynamic>.from(raw));
           entries.add((
@@ -718,8 +740,10 @@ class RoomNodeState {
             ),
           ));
         }
+        encounterSet = encounterSet.addBatch(entries);
+      } else {
+        throw const FormatException('RoomNodeState.fromMap: "activeEncounter" must be a Map or List.');
       }
-      encounterSet = encounterSet.addBatch(entries);
     }
 
     final entityInstances = <EntityInstance>[];

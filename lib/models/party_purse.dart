@@ -296,7 +296,10 @@ class PartyPurse {
   }
 
   factory PartyPurse.fromMap(Map<String, dynamic> map) {
-    final parsed = <String, PnCounter>{};
+    // Phase 1: Validate and extract ALL present counter representations.
+    // Every present counter representation must be structurally validated;
+    // malformed counter fields fail loudly with FormatException even if another representation exists.
+    final nestedCounters = <String, PnCounter>{};
 
     void extractFromNested(dynamic nested, String fieldName) {
       if (nested == null) return;
@@ -312,7 +315,7 @@ class PartyPurse {
             'Malformed counter map in $fieldName for key "$k": expected Map, got ${counterVal.runtimeType}',
           );
         }
-        parsed[k] = PnCounter.fromMap(
+        nestedCounters[k] = PnCounter.fromMap(
           (counterVal).map((k, v) => MapEntry(k.toString(), v)),
         );
       }
@@ -321,7 +324,7 @@ class PartyPurse {
     extractFromNested(map['denominationCounters'], 'denominationCounters');
     extractFromNested(map['customCounters'], 'customCounters');
 
-    // Pass 1: Extract all explicit counter maps first so counter state is authoritative
+    final legacyFieldCounters = <String, PnCounter>{};
     map.forEach((rawKey, value) {
       final key = rawKey.trim().toLowerCase();
       if (key == 'denominationcounters' || key == 'customcounters') return;
@@ -333,15 +336,20 @@ class PartyPurse {
             'Malformed counter field "$rawKey" in PartyPurse: expected Map, got ${value.runtimeType}',
           );
         }
-        if (!parsed.containsKey(denomKey)) {
-          parsed[denomKey] = PnCounter.fromMap(
-            value.map((k, v) => MapEntry(k.toString(), v)),
-          );
-        }
+        // Always parse and structurally validate every present legacy counter field.
+        legacyFieldCounters[denomKey] = PnCounter.fromMap(
+          value.map((k, v) => MapEntry(k.toString(), v)),
+        );
       }
     });
 
-    // Pass 2: Process scalar fields.
+    // Phase 2: Apply precedence: nested denominationCounters / customCounters
+    // take precedence over legacy denomination-specific *Counter fields.
+    final parsed = <String, PnCounter>{};
+    parsed.addAll(legacyFieldCounters);
+    parsed.addAll(nestedCounters);
+
+    // Pass 3: Process scalar fields.
     // If a counter already exists for this denomination, THE COUNTER IS AUTHORITATIVE.
     // Redundant scalar values are compatibility/display data and MUST NOT synthesize
     // new 'cloud' repair writes.

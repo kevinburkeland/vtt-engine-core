@@ -300,7 +300,9 @@ class CrdtOrSet<T> {
     };
   }
 
-  /// Deserializes a [CrdtOrSet] from a map representation with explicit type validation.
+  /// Deserializes a [CrdtOrSet] from a map representation with strict structural validation.
+  /// Throws [FormatException] if present fields or entries are structurally malformed.
+  /// Null payload values are supported when [T] is nullable, validated via key presence ('v').
   factory CrdtOrSet.fromMap(
     Map<dynamic, dynamic> map,
     T Function(dynamic raw) valueDecoder,
@@ -309,23 +311,41 @@ class CrdtOrSet<T> {
     final newTombstones = <String, HybridLogicalClock>{};
 
     final rawItems = map['items'];
-    if (rawItems is Map) {
+    if (rawItems != null) {
+      if (rawItems is! Map) {
+        throw const FormatException('CrdtOrSet.fromMap: "items" field must be a Map.');
+      }
       rawItems.forEach((key, val) {
-        if (val is Map && val['ts'] is Map && val['v'] != null) {
-          final ts = HybridLogicalClock.fromMap(val['ts'] as Map);
-          final decodedVal = valueDecoder(val['v']);
-          newItems[key.toString()] =
-              CrdtLwwRegister<T>(value: decodedVal, timestamp: ts);
+        if (val is! Map) {
+          throw FormatException('CrdtOrSet.fromMap: item "$key" must be a Map.');
         }
+        if (!val.containsKey('v')) {
+          throw FormatException('CrdtOrSet.fromMap: item "$key" missing "v" field.');
+        }
+        if (!val.containsKey('ts')) {
+          throw FormatException('CrdtOrSet.fromMap: item "$key" missing "ts" field.');
+        }
+        final rawTs = val['ts'];
+        if (rawTs is! Map) {
+          throw FormatException('CrdtOrSet.fromMap: item "$key" "ts" field must be a Map.');
+        }
+        final ts = HybridLogicalClock.fromMap(rawTs);
+        final decodedVal = valueDecoder(val['v']);
+        newItems[key.toString()] =
+            CrdtLwwRegister<T>(value: decodedVal, timestamp: ts);
       });
     }
 
     final rawTombstones = map['tombstones'];
-    if (rawTombstones is Map) {
+    if (rawTombstones != null) {
+      if (rawTombstones is! Map) {
+        throw const FormatException('CrdtOrSet.fromMap: "tombstones" field must be a Map.');
+      }
       rawTombstones.forEach((key, val) {
-        if (val is Map) {
-          newTombstones[key.toString()] = HybridLogicalClock.fromMap(val);
+        if (val is! Map) {
+          throw FormatException('CrdtOrSet.fromMap: tombstone "$key" must be a Map.');
         }
+        newTombstones[key.toString()] = HybridLogicalClock.fromMap(val);
       });
     }
 
