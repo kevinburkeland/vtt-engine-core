@@ -182,23 +182,23 @@ class CampaignProfile {
     PartyPurse? partyPurse,
     List<PartyEvent>? changeLog,
     HybridLogicalClock? notesTimestamp,
-    String? nodeId,
   }) {
-    // Causality Invariant: Strictly resolve nodeId from caller injection or existing
-    // CRDT register timestamp. Never fall back to campaign ID (id ?? this.id).
-    final effectiveNodeId = nodeId ?? this.notesRegister.timestamp.nodeId;
-    final resolvedNotesRegister = notesRegister ??
-        (notesMarkdown != null
-            ? CrdtLwwRegister<String>(
-                value: notesMarkdown,
-                timestamp: notesTimestamp ??
-                    HybridLogicalClock(
-                      physicalTime: DateTime.now().millisecondsSinceEpoch,
-                      logicalCounter: 0,
-                      nodeId: effectiveNodeId,
-                    ),
-              )
-            : this.notesRegister);
+    final CrdtLwwRegister<String> resolvedNotesRegister;
+    if (notesRegister != null) {
+      resolvedNotesRegister = notesRegister;
+    } else if (notesMarkdown != null) {
+      if (notesTimestamp == null) {
+        throw ArgumentError(
+          'Updating notesMarkdown via copyWith requires an authoritative notesTimestamp stamped by StatefulHlcClock.',
+        );
+      }
+      resolvedNotesRegister = CrdtLwwRegister<String>(
+        value: notesMarkdown,
+        timestamp: notesTimestamp,
+      );
+    } else {
+      resolvedNotesRegister = this.notesRegister;
+    }
 
     return CampaignProfile.raw(
       id: id ?? this.id,

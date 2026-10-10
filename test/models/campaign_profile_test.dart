@@ -1,3 +1,4 @@
+import 'package:vtt_engine_core/crdt/hybrid_logical_clock.dart';
 import 'package:vtt_engine_core/crdt/replica_id.dart';
 import 'package:test/test.dart';
 import 'package:vtt_engine_core/models/campaign_profile.dart';
@@ -81,8 +82,22 @@ void main() {
     });
 
     test('detects differences in notesMarkdown despite same id', () {
-      final modified = profileA.copyWith(notesMarkdown: 'Updated notes');
+      final modified = profileA.copyWith(
+        notesMarkdown: 'Updated notes',
+        notesTimestamp: const HybridLogicalClock(
+          physicalTime: 10,
+          logicalCounter: 0,
+          nodeId: 'test-node',
+        ),
+      );
       expect(profileA == modified, isFalse);
+    });
+
+    test('updating notesMarkdown without notesTimestamp throws ArgumentError', () {
+      expect(
+        () => profileA.copyWith(notesMarkdown: 'Updated notes'),
+        throwsArgumentError,
+      );
     });
 
     test('detects differences in partyPurse despite same id', () {
