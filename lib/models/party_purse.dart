@@ -298,23 +298,28 @@ class PartyPurse {
   factory PartyPurse.fromMap(Map<String, dynamic> map) {
     final parsed = <String, PnCounter>{};
 
-    void extractFromNested(dynamic nested) {
-      if (nested is Map) {
-        for (final entry in nested.entries) {
-          final k = entry.key.toString().trim().toLowerCase();
-          if (entry.value is Map) {
-            try {
-              parsed[k] = PnCounter.fromMap(
-                (entry.value as Map).map((k, v) => MapEntry(k.toString(), v)),
-              );
-            } catch (_) {}
-          }
+    void extractFromNested(dynamic nested, String fieldName) {
+      if (nested == null) return;
+      if (nested is! Map) {
+        throw FormatException(
+            'Malformed $fieldName in PartyPurse: expected Map, got ${nested.runtimeType}');
+      }
+      for (final entry in nested.entries) {
+        final k = entry.key.toString().trim().toLowerCase();
+        final dynamic counterVal = entry.value;
+        if (counterVal is! Map) {
+          throw FormatException(
+            'Malformed counter map in $fieldName for key "$k": expected Map, got ${counterVal.runtimeType}',
+          );
         }
+        parsed[k] = PnCounter.fromMap(
+          (counterVal).map((k, v) => MapEntry(k.toString(), v)),
+        );
       }
     }
 
-    extractFromNested(map['denominationCounters']);
-    extractFromNested(map['customCounters']);
+    extractFromNested(map['denominationCounters'], 'denominationCounters');
+    extractFromNested(map['customCounters'], 'customCounters');
 
     // Pass 1: Extract all explicit counter maps first so counter state is authoritative
     map.forEach((rawKey, value) {
@@ -323,12 +328,15 @@ class PartyPurse {
 
       if (key.endsWith('counter')) {
         final denomKey = key.substring(0, key.length - 'counter'.length);
-        if (value is Map && !parsed.containsKey(denomKey)) {
-          try {
-            parsed[denomKey] = PnCounter.fromMap(
-              value.map((k, v) => MapEntry(k.toString(), v)),
-            );
-          } catch (_) {}
+        if (value is! Map) {
+          throw FormatException(
+            'Malformed counter field "$rawKey" in PartyPurse: expected Map, got ${value.runtimeType}',
+          );
+        }
+        if (!parsed.containsKey(denomKey)) {
+          parsed[denomKey] = PnCounter.fromMap(
+            value.map((k, v) => MapEntry(k.toString(), v)),
+          );
         }
       }
     });

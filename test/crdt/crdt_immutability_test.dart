@@ -737,12 +737,16 @@ void main() {
         expect(minionFromLists['tags'], ['flying']);
         expect(() => (minionFromLists['tags'] as List).add('x'), throwsUnsupportedError);
 
+        final minionSet = const CrdtOrSet<dynamic>.empty().add(
+          'm1',
+          deepFreezeValue(mutableMinion),
+          const HybridLogicalClock(physicalTime: 1, logicalCounter: 0, nodeId: 'node-test-1'),
+        );
         final copyWithRoom = const RoomNodeState.empty().copyWith(
           roomId: 'r2',
           roomCode: 'R102',
           title: 'Room 2',
-          nodeId: 'node-test-1',
-          activeMinions: [mutableMinion],
+          activeMinions: minionSet,
         );
 
         (mutableMinion['tags'] as List).clear();

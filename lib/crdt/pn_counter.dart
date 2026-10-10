@@ -141,62 +141,76 @@ class PnCounter {
     };
   }
 
+  static int _parseStrictNonNegativeInt(dynamic val, String fieldDesc) {
+    if (val == null) {
+      throw FormatException('Missing required integer in $fieldDesc');
+    }
+    final int result;
+    if (val is int) {
+      result = val;
+    } else if (val is double) {
+      if (!val.isFinite || val.truncateToDouble() != val) {
+        throw FormatException('Malformed fractional value in $fieldDesc: $val');
+      }
+      result = val.toInt();
+    } else if (val is String) {
+      final parsedInt = int.tryParse(val);
+      if (parsedInt != null) {
+        result = parsedInt;
+      } else {
+        final parsedDouble = double.tryParse(val);
+        if (parsedDouble != null &&
+            parsedDouble.isFinite &&
+            parsedDouble.truncateToDouble() == parsedDouble) {
+          result = parsedDouble.toInt();
+        } else {
+          throw FormatException('Malformed non-integer value in $fieldDesc: $val');
+        }
+      }
+    } else {
+      throw FormatException('Malformed non-integer value in $fieldDesc: $val');
+    }
+    if (result < 0) {
+      throw FormatException(
+        'Malformed serialized PnCounter: component total must be non-negative (>= 0), got $result in $fieldDesc',
+      );
+    }
+    return result;
+  }
+
   /// Reconstitutes a PN-Counter from a map.
-  /// Fails loudly with [FormatException] if any component total is negative (< 0).
+  /// Fails loudly with [FormatException] if any component is negative (< 0), fractional,
+  /// or if component maps are malformed.
   factory PnCounter.fromMap(Map<String, dynamic>? map) {
     if (map == null) return const PnCounter.empty();
 
     final rawPos = map['positive'];
     final pos = <String, int>{};
-    if (rawPos is Map) {
+    if (rawPos != null) {
+      if (rawPos is! Map) {
+        throw FormatException(
+          'Malformed positive component map in PnCounter: expected Map, got ${rawPos.runtimeType}',
+        );
+      }
       for (final entry in rawPos.entries) {
         final keyStr = entry.key.toString();
-        final dynamic rawVal = entry.value;
-        final int val;
-        if (rawVal is num) {
-          val = rawVal.toInt();
-        } else if (rawVal != null) {
-          final parsed = int.tryParse(rawVal.toString());
-          if (parsed == null) {
-            throw FormatException('Malformed non-integer component value in PnCounter positive map: $rawVal for key $keyStr');
-          }
-          val = parsed;
-        } else {
-          continue;
-        }
-        if (val < 0) {
-          throw FormatException(
-            'Malformed serialized PnCounter: component total must be non-negative (>= 0), got $val for key $keyStr in positive map',
-          );
-        }
-        pos[keyStr] = val;
+        pos[keyStr] = _parseStrictNonNegativeInt(
+            entry.value, 'PnCounter positive["$keyStr"]');
       }
     }
 
     final rawNeg = map['negative'];
     final neg = <String, int>{};
-    if (rawNeg is Map) {
+    if (rawNeg != null) {
+      if (rawNeg is! Map) {
+        throw FormatException(
+          'Malformed negative component map in PnCounter: expected Map, got ${rawNeg.runtimeType}',
+        );
+      }
       for (final entry in rawNeg.entries) {
         final keyStr = entry.key.toString();
-        final dynamic rawVal = entry.value;
-        final int val;
-        if (rawVal is num) {
-          val = rawVal.toInt();
-        } else if (rawVal != null) {
-          final parsed = int.tryParse(rawVal.toString());
-          if (parsed == null) {
-            throw FormatException('Malformed non-integer component value in PnCounter negative map: $rawVal for key $keyStr');
-          }
-          val = parsed;
-        } else {
-          continue;
-        }
-        if (val < 0) {
-          throw FormatException(
-            'Malformed serialized PnCounter: component total must be non-negative (>= 0), got $val for key $keyStr in negative map',
-          );
-        }
-        neg[keyStr] = val;
+        neg[keyStr] = _parseStrictNonNegativeInt(
+            entry.value, 'PnCounter negative["$keyStr"]');
       }
     }
 

@@ -86,32 +86,26 @@ void main() {
   });
 
   group('RoomNodeState copyWith Replica Identity Hardening', () {
-    test('rejects raw Iterable activeEncounter with "local" or null nodeId', () {
+    test('RoomNodeState.copyWith accepts already-formed CrdtOrSet without inventing causal history', () {
       final room = RoomNodeState(roomId: 'r1', roomCode: 'ROOM1', title: 'Test Room');
-      final participants = [
-        EncounterParticipant(
-          participantId: 'p1',
-          entityLink: RoomEntityLink(
-            entityId: 'e1',
-            displayName: 'Hero',
-          ),
-          currentHp: 20,
-          maxHp: 20,
+      final participant = EncounterParticipant(
+        participantId: 'p1',
+        entityLink: RoomEntityLink(
+          entityId: 'e1',
+          displayName: 'Hero',
         ),
-      ];
-
-      expect(
-        () => room.copyWith(activeEncounter: participants, nodeId: 'local'),
-        throwsArgumentError,
+        currentHp: 20,
+        maxHp: 20,
       );
-      expect(
-        () => room.copyWith(activeEncounter: participants),
-        throwsArgumentError,
+      final clock = StatefulHlcClock(replicaId: ReplicaId('replica-dm'));
+      final encounterSet = const CrdtOrSet<EncounterParticipant>.empty().add(
+        participant.participantId,
+        participant,
+        clock.nextTimestamp(),
       );
 
       final valid = room.copyWith(
-        activeEncounter: participants,
-        nodeId: 'replica-dm',
+        activeEncounter: encounterSet,
       );
       expect(valid.activeEncounterList.length, equals(1));
       expect(

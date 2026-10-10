@@ -1,4 +1,5 @@
 import 'package:meta/meta.dart';
+import 'crdt_equality.dart';
 import 'crdt_lww_register.dart';
 import 'hybrid_logical_clock.dart';
 
@@ -21,15 +22,57 @@ class CrdtOrSet<T> {
   /// Maps item ID to the HLC timestamp of when it was removed.
   final Map<String, HybridLogicalClock> tombstones;
 
-  CrdtOrSet({
+  const CrdtOrSet._raw({
+    required this.items,
+    required this.tombstones,
+  });
+
+  factory CrdtOrSet({
     Map<String, CrdtLwwRegister<T>> items = const {},
     Map<String, HybridLogicalClock> tombstones = const {},
-  })  : items = Map.unmodifiable(Map<String, CrdtLwwRegister<T>>.from(items)),
-        tombstones = Map.unmodifiable(Map<String, HybridLogicalClock>.from(tombstones));
+  }) {
+    if (items.isEmpty && tombstones.isEmpty) {
+      return const CrdtOrSet.empty();
+    }
+    final canon = _canonicalize(items, tombstones);
+    return CrdtOrSet._raw(
+      items: Map.unmodifiable(canon.items),
+      tombstones: Map.unmodifiable(canon.tombstones),
+    );
+  }
 
   const CrdtOrSet.empty()
       : items = const {},
         tombstones = const {};
+
+  /// Canonicalizes contradictory state where an ID exists in both items and tombstones
+  /// under explicit ADD-WINS semantics.
+  static ({
+    Map<String, CrdtLwwRegister<T>> items,
+    Map<String, HybridLogicalClock> tombstones
+  }) _canonicalize<T>(
+    Map<String, CrdtLwwRegister<T>> rawItems,
+    Map<String, HybridLogicalClock> rawTombstones,
+  ) {
+    final cleanItems = Map<String, CrdtLwwRegister<T>>.from(rawItems);
+    final cleanTombstones = Map<String, HybridLogicalClock>.from(rawTombstones);
+
+    for (final id in rawItems.keys) {
+      final tombTs = cleanTombstones[id];
+      if (tombTs != null) {
+        final itemReg = cleanItems[id]!;
+        if (!tombTs.isAfter(itemReg.timestamp)) {
+          // item timestamp >= tombstone -> ADD WINS
+          cleanTombstones.remove(id);
+        } else {
+          // tombstone > item timestamp -> TOMBSTONE WINS
+          cleanItems.remove(id);
+        }
+      }
+    }
+
+    return (items: cleanItems, tombstones: cleanTombstones);
+  }
 
   /// Returns the current list of active (non-tombstoned) values.
   List<T> get activeValues =>
@@ -80,6 +123,7 @@ class CrdtOrSet<T> {
   /// - If item timestamp >= existing tombstone timestamp: addition wins and clears tombstone.
   /// - If item timestamp < existing tombstone timestamp: addition is defeated by tombstone.
   /// - If identical timestamp already exists in items with divergent value: fails loudly.
+  /// - Stale additions older than the existing item timestamp do not overwrite newer items.
   CrdtOrSet<T> addBatch(
       Iterable<({String id, T item, HybridLogicalClock timestamp})> entries) {
     if (entries.isEmpty) return this;
@@ -99,7 +143,7 @@ class CrdtOrSet<T> {
 
       final existingItem = newItems[id];
       if (existingItem != null && existingItem.timestamp == ts) {
-        if (existingItem.value != entry.item) {
+        if (!crdtPayloadEquals(existingItem.value, entry.item)) {
           throw StateError(
             'CRDT Collision: CrdtOrSet detected identical timestamp $ts with '
             'divergent item values for ID "$id": "${existingItem.value}" vs "${entry.item}".',
@@ -113,7 +157,7 @@ class CrdtOrSet<T> {
       }
     }
 
-    return CrdtOrSet(
+    return CrdtOrSet._raw(
       items: Map.unmodifiable(newItems),
       tombstones: Map.unmodifiable(newTombstones),
     );
@@ -146,7 +190,7 @@ class CrdtOrSet<T> {
       newTombstones[id] = timestamp;
     }
 
-    return CrdtOrSet(
+    return CrdtOrSet._raw(
       items: Map.unmodifiable(newItems),
       tombstones: Map.unmodifiable(newTombstones),
     );
@@ -178,7 +222,7 @@ class CrdtOrSet<T> {
       CrdtLwwRegister<T>? candidateItem;
       if (localItem != null && remoteItem != null) {
         if (localItem.timestamp == remoteItem.timestamp) {
-          if (localItem.value != remoteItem.value) {
+          if (!crdtPayloadEquals(localItem.value, remoteItem.value)) {
             throw StateError(
               'CRDT Collision: CrdtOrSet merge detected identical timestamp '
               '${localItem.timestamp} with divergent item values for ID "$id": '
@@ -223,7 +267,7 @@ class CrdtOrSet<T> {
       }
     }
 
-    return CrdtOrSet(
+    return CrdtOrSet._raw(
       items: Map.unmodifiable(mergedItems),
       tombstones: Map.unmodifiable(mergedTombstones),
     );
@@ -234,7 +278,7 @@ class CrdtOrSet<T> {
     final prunedTombstones = Map<String, HybridLogicalClock>.from(tombstones)
       ..removeWhere((_, ts) => ts.isBefore(threshold));
 
-    return CrdtOrSet(
+    return CrdtOrSet._raw(
       items: Map.unmodifiable(items),
       tombstones: Map.unmodifiable(prunedTombstones),
     );

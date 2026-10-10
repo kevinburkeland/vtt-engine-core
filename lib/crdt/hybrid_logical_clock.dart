@@ -130,28 +130,67 @@ class HybridLogicalClock implements Comparable<HybridLogicalClock> {
     }
 
     final int pt;
-    if (rawPt is num) {
+    if (rawPt is int) {
+      pt = rawPt;
+    } else if (rawPt is double) {
+      if (!rawPt.isFinite || rawPt.truncateToDouble() != rawPt) {
+        throw FormatException('Malformed fractional physicalTime in HLC payload: $rawPt');
+      }
       pt = rawPt.toInt();
     } else if (rawPt is String) {
-      final parsed = int.tryParse(rawPt);
-      if (parsed == null) {
-        throw FormatException('Malformed physicalTime in HLC payload: $rawPt');
+      final parsedInt = int.tryParse(rawPt);
+      if (parsedInt != null) {
+        pt = parsedInt;
+      } else {
+        final parsedDouble = double.tryParse(rawPt);
+        if (parsedDouble != null &&
+            parsedDouble.isFinite &&
+            parsedDouble.truncateToDouble() == parsedDouble) {
+          pt = parsedDouble.toInt();
+        } else {
+          throw FormatException('Malformed physicalTime in HLC payload: $rawPt');
+        }
       }
-      pt = parsed;
     } else {
       throw FormatException('Malformed physicalTime in HLC payload: $rawPt');
     }
 
-    int parseLc(dynamic val) {
-      if (val == null) return 0;
-      if (val is num) return val.toInt();
-      if (val is String) return int.tryParse(val) ?? 0;
-      return 0;
+    final rawLc = map['lc'] ?? map['logicalCounter'];
+    final int lc;
+    if (rawLc == null) {
+      lc = 0;
+    } else if (rawLc is int) {
+      lc = rawLc;
+    } else if (rawLc is double) {
+      if (!rawLc.isFinite || rawLc.truncateToDouble() != rawLc) {
+        throw FormatException('Malformed fractional logicalCounter in HLC payload: $rawLc');
+      }
+      lc = rawLc.toInt();
+    } else if (rawLc is String) {
+      final parsedInt = int.tryParse(rawLc);
+      if (parsedInt != null) {
+        lc = parsedInt;
+      } else {
+        final parsedDouble = double.tryParse(rawLc);
+        if (parsedDouble != null &&
+            parsedDouble.isFinite &&
+            parsedDouble.truncateToDouble() == parsedDouble) {
+          lc = parsedDouble.toInt();
+        } else {
+          throw FormatException('Malformed logicalCounter in HLC payload: $rawLc');
+        }
+      }
+    } else {
+      throw FormatException('Malformed logicalCounter in HLC payload: $rawLc');
+    }
+
+    if (lc < 0) {
+      throw FormatException('logicalCounter must be non-negative (>= 0), got $lc');
     }
 
     return HybridLogicalClock(
       physicalTime: pt,
-      logicalCounter: parseLc(map['lc'] ?? map['logicalCounter']),
+      logicalCounter: lc,
       nodeId: rawNodeId.toString(),
     );
   }

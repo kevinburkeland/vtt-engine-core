@@ -592,60 +592,10 @@ class RoomNodeState {
     List<RoomEntityLink>? entityLinks,
     List<EntityInstance>? entityInstances,
     List<LootContainer>? containers,
-    dynamic activeEncounter,
-    dynamic activeMinions,
+    CrdtOrSet<EncounterParticipant>? activeEncounter,
+    CrdtOrSet<dynamic>? activeMinions,
     Map<String, dynamic>? customProperties,
-    String? nodeId,
   }) {
-    CrdtOrSet<EncounterParticipant>? resolvedEncounter;
-    if (activeEncounter is CrdtOrSet<EncounterParticipant>) {
-      resolvedEncounter = activeEncounter;
-    } else if (activeEncounter is Iterable<EncounterParticipant>) {
-      if (nodeId == null || nodeId.trim().isEmpty) {
-        throw ArgumentError.value(
-            nodeId, 'nodeId', 'Valid nodeId required when converting activeEncounter Iterable to CrdtOrSet.');
-      }
-      if (nodeId.trim().toLowerCase() == 'local') {
-        throw ArgumentError.value(
-            nodeId, 'nodeId', 'CRDT mutations cannot use "local" as replica identity.');
-      }
-      final now = DateTime.now().millisecondsSinceEpoch;
-      var set = const CrdtOrSet<EncounterParticipant>.empty();
-      for (final p in activeEncounter) {
-        set = set.add(
-            p.participantId,
-            p,
-            HybridLogicalClock(
-                physicalTime: now, logicalCounter: 0, nodeId: nodeId));
-      }
-      resolvedEncounter = set;
-    }
-
-    CrdtOrSet<dynamic>? resolvedMinions;
-    if (activeMinions is CrdtOrSet<dynamic>) {
-      resolvedMinions = activeMinions;
-    } else if (activeMinions is Iterable<dynamic>) {
-      if (nodeId == null || nodeId.trim().isEmpty) {
-        throw ArgumentError.value(
-            nodeId, 'nodeId', 'Valid nodeId required when converting activeMinions Iterable to CrdtOrSet.');
-      }
-      if (nodeId.trim().toLowerCase() == 'local') {
-        throw ArgumentError.value(
-            nodeId, 'nodeId', 'CRDT mutations cannot use "local" as replica identity.');
-      }
-      final now = DateTime.now().millisecondsSinceEpoch;
-      var set = const CrdtOrSet<dynamic>.empty();
-      for (final m in activeMinions) {
-        final id = _resolveMinionId(m);
-        set = set.add(
-            id,
-            deepFreezeValue(m),
-            HybridLogicalClock(
-                physicalTime: now, logicalCounter: 0, nodeId: nodeId));
-      }
-      resolvedMinions = set;
-    }
-
     return RoomNodeState(
       roomId: roomId ?? this.roomId,
       roomCode: roomCode ?? this.roomCode,
@@ -654,8 +604,8 @@ class RoomNodeState {
       entityLinks: entityLinks ?? this.entityLinks,
       entityInstances: entityInstances ?? this.entityInstances,
       containers: containers ?? this.containers,
-      activeEncounter: resolvedEncounter ?? this.activeEncounter,
-      activeMinions: resolvedMinions ?? this.activeMinions,
+      activeEncounter: activeEncounter ?? this.activeEncounter,
+      activeMinions: activeMinions ?? this.activeMinions,
       customProperties: customProperties ?? this.customProperties,
     );
   }
@@ -710,21 +660,25 @@ class RoomNodeState {
       } catch (_) {}
     } else if (map['activeMinions'] is List) {
       final rawMinions = map['activeMinions'] as List;
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final entries =
+          <({String id, dynamic item, HybridLogicalClock timestamp})>[];
       for (final raw in rawMinions) {
         if (raw is Map) {
-          try {
-            final parsed = parser(Map<String, dynamic>.from(raw));
-            final m = deepFreezeValue(parsed);
-            final id = (raw['id'] ?? _resolveMinionId(m)).toString();
-            minionsSet = minionsSet.add(
-                id,
-                m,
-                HybridLogicalClock(
-                    physicalTime: now, logicalCounter: 0, nodeId: 'genesis'));
-          } catch (_) {}
+          final parsed = parser(Map<String, dynamic>.from(raw));
+          final m = deepFreezeValue(parsed);
+          final id = (raw['id'] ?? _resolveMinionId(m)).toString();
+          entries.add((
+            id: id,
+            item: m,
+            timestamp: const HybridLogicalClock(
+              physicalTime: 0,
+              logicalCounter: 0,
+              nodeId: 'genesis',
+            ),
+          ));
         }
       }
+      minionsSet = minionsSet.addBatch(entries);
     }
 
     CrdtOrSet<EncounterParticipant> encounterSet =
@@ -748,20 +702,24 @@ class RoomNodeState {
       } catch (_) {}
     } else if (map['activeEncounter'] is List) {
       final rawEnc = map['activeEncounter'] as List;
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final entries =
+          <({String id, EncounterParticipant item, HybridLogicalClock timestamp})>[];
       for (final raw in rawEnc) {
         if (raw is Map) {
-          try {
-            final p =
-                EncounterParticipant.fromMap(Map<String, dynamic>.from(raw));
-            encounterSet = encounterSet.add(
-                p.participantId,
-                p,
-                HybridLogicalClock(
-                    physicalTime: now, logicalCounter: 0, nodeId: 'genesis'));
-          } catch (_) {}
+          final p =
+              EncounterParticipant.fromMap(Map<String, dynamic>.from(raw));
+          entries.add((
+            id: p.participantId,
+            item: p,
+            timestamp: const HybridLogicalClock(
+              physicalTime: 0,
+              logicalCounter: 0,
+              nodeId: 'genesis',
+            ),
+          ));
         }
       }
+      encounterSet = encounterSet.addBatch(entries);
     }
 
     final entityInstances = <EntityInstance>[];

@@ -5,11 +5,13 @@
 library vtt_engine_core;
 
 // CRDT primitives
+export 'crdt/crdt_equality.dart';
 export 'crdt/crdt_lww_register.dart';
 export 'crdt/crdt_or_set.dart';
 export 'crdt/hybrid_logical_clock.dart';
 export 'crdt/pn_counter.dart';
 export 'crdt/replica_id.dart';
+export 'crdt/stateful_hlc_clock.dart';
 
 // Currency
 export 'currency/i_currency_system.dart';
