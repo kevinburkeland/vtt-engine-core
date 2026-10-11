@@ -939,6 +939,8 @@ class EncounterParticipant {
 /// Root Node Representation of a dynamic Dungeon Room or Session Graph State.
 @immutable
 class RoomNodeState {
+  static const Object _sentinel = Object();
+
   final String roomId;
   final String roomCode;
   final CrdtLwwRegister<String> titleRegister;
@@ -971,7 +973,7 @@ class RoomNodeState {
     CrdtLwwRegister<String>? descriptionRegister,
     HybridLogicalClock? descriptionTimestamp,
     List<RoomEntityLink>? entityLinks,
-    dynamic entityLinksCrdt,
+    Object? entityLinksCrdt = _sentinel,
     List<EntityInstance> entityInstances = const [],
     List<LootContainer> containers = const [],
     this.activeEncounter = const CrdtOrSet<EncounterParticipant>.empty(),
@@ -1005,13 +1007,20 @@ class RoomNodeState {
                       nodeId: 'genesis',
                     ),
                   )),
-        entityLinksCrdt = entityLinksCrdt is EntityLinkCrdtSet
-            ? entityLinksCrdt
-            : (entityLinksCrdt is CrdtOrSet<RoomEntityLink>
-                ? EntityLinkCrdtSet.fromCrdtOrSet(entityLinksCrdt)
-                : (entityLinks != null && entityLinks.isNotEmpty
-                    ? _buildInitialLinksCrdt(entityLinks)
-                    : const EntityLinkCrdtSet.empty())),
+        entityLinksCrdt = identical(entityLinksCrdt, _sentinel)
+            ? (entityLinks != null && entityLinks.isNotEmpty
+                ? _buildInitialLinksCrdt(entityLinks)
+                : const EntityLinkCrdtSet.empty())
+            : (entityLinksCrdt == null
+                ? throw ArgumentError('RoomNodeState: entityLinksCrdt cannot be null.')
+                : (entityLinksCrdt is EntityLinkCrdtSet
+                    ? entityLinksCrdt
+                    : (entityLinksCrdt is CrdtOrSet<RoomEntityLink>
+                        ? EntityLinkCrdtSet.fromCrdtOrSet(entityLinksCrdt)
+                        : throw ArgumentError(
+                            'RoomNodeState: invalid entityLinksCrdt type "'
+                            '${entityLinksCrdt.runtimeType}". Expected EntityLinkCrdtSet or CrdtOrSet<RoomEntityLink>.',
+                          )))),
         entityInstances = List.unmodifiable(entityInstances),
         containers = List.unmodifiable(containers),
         customProperties = deepFreezeMap(customProperties);
@@ -1044,20 +1053,18 @@ class RoomNodeState {
 
   static EntityLinkCrdtSet _buildInitialLinksCrdt(
       List<RoomEntityLink> links) {
-    final entries =
-        <({String id, RoomEntityLink item, HybridLogicalClock timestamp})>[];
+    EntityLinkCrdtSet current = const EntityLinkCrdtSet.empty();
     for (final l in links) {
-      entries.add((
-        id: l.entityId,
-        item: l,
-        timestamp: const HybridLogicalClock(
-          physicalTime: 0,
-          logicalCounter: 0,
-          nodeId: 'genesis',
-        ),
-      ));
+      final ts = l.incarnationTimestamp.physicalTime > 0
+          ? l.incarnationTimestamp
+          : const HybridLogicalClock(
+              physicalTime: 0,
+              logicalCounter: 0,
+              nodeId: 'genesis',
+            );
+      current = current.createOrReadd(l.entityId, l, ts);
     }
-    return const EntityLinkCrdtSet.empty().addBatch(entries);
+    return current;
   }
 
   factory RoomNodeState.fromLists({
@@ -1068,7 +1075,7 @@ class RoomNodeState {
     String? description,
     CrdtLwwRegister<String>? descriptionRegister,
     List<RoomEntityLink> entityLinks = const [],
-    dynamic entityLinksCrdt,
+    Object? entityLinksCrdt = _sentinel,
     List<EntityInstance> entityInstances = const [],
     List<LootContainer> containers = const [],
     Iterable<EncounterParticipant>? activeEncounter,
@@ -1131,7 +1138,7 @@ class RoomNodeState {
     CrdtLwwRegister<String>? descriptionRegister,
     HybridLogicalClock? descriptionTimestamp,
     List<RoomEntityLink>? entityLinks,
-    dynamic entityLinksCrdt,
+    Object? entityLinksCrdt = _sentinel,
     List<EntityInstance>? entityInstances,
     List<LootContainer>? containers,
     CrdtOrSet<EncounterParticipant>? activeEncounter,
@@ -1172,13 +1179,23 @@ class RoomNodeState {
       resolvedDescRegister = this.descriptionRegister;
     }
 
-    final effectiveLinks = entityLinksCrdt is EntityLinkCrdtSet
-        ? entityLinksCrdt
-        : (entityLinksCrdt is CrdtOrSet<RoomEntityLink>
-            ? EntityLinkCrdtSet.fromCrdtOrSet(entityLinksCrdt)
-            : (entityLinks != null
-                ? _buildInitialLinksCrdt(entityLinks)
-                : this.entityLinksCrdt));
+    final EntityLinkCrdtSet effectiveLinks;
+    if (identical(entityLinksCrdt, _sentinel)) {
+      effectiveLinks = entityLinks != null
+          ? _buildInitialLinksCrdt(entityLinks)
+          : this.entityLinksCrdt;
+    } else if (entityLinksCrdt == null) {
+      throw ArgumentError('RoomNodeState.copyWith: entityLinksCrdt cannot be null.');
+    } else if (entityLinksCrdt is EntityLinkCrdtSet) {
+      effectiveLinks = entityLinksCrdt;
+    } else if (entityLinksCrdt is CrdtOrSet<RoomEntityLink>) {
+      effectiveLinks = EntityLinkCrdtSet.fromCrdtOrSet(entityLinksCrdt);
+    } else {
+      throw ArgumentError(
+        'RoomNodeState.copyWith: invalid entityLinksCrdt type "'
+        '${entityLinksCrdt.runtimeType}". Expected EntityLinkCrdtSet or CrdtOrSet<RoomEntityLink>.',
+      );
+    }
 
     return RoomNodeState(
       roomId: roomId ?? this.roomId,

@@ -160,7 +160,7 @@ void main() {
       // Concurrent re-add with newer HLC than tombstone: ADD WINS
       const readdHlc = HybridLogicalClock(physicalTime: 1200, logicalCounter: 1, nodeId: 'nodeB');
       final roomBReadd = baseRoom.copyWith(
-        entityLinksCrdt: baseRoom.entityLinksCrdt.add('goblin-1', link1, readdHlc),
+        entityLinksCrdt: baseRoom.entityLinksCrdt.createOrReadd('goblin-1', link1, readdHlc),
       );
       final joinReadd = RoomNodeState.join(roomA, roomBReadd);
       expect(joinReadd.entityLinks.map((l) => l.entityId), contains('goblin-1'));

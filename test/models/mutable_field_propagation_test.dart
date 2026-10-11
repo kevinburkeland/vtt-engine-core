@@ -1539,5 +1539,216 @@ void main() {
         }
       });
     });
+
+    group('12. Pass 4.2.5 Inflationary Mutations, Explicit Re-Add & Typed CRDT Construction', () {
+      test('M & N. Local mutation monotonicity & explicit re-add laws', () {
+        const ts10 = HybridLogicalClock(physicalTime: 10, logicalCounter: 0, nodeId: "n1");
+        const ts20 = HybridLogicalClock(physicalTime: 20, logicalCounter: 0, nodeId: "n2");
+        const ts30 = HybridLogicalClock(physicalTime: 30, logicalCounter: 0, nodeId: "n3");
+        const ts40 = HybridLogicalClock(physicalTime: 40, logicalCounter: 0, nodeId: "n1");
+        const ts50 = HybridLogicalClock(physicalTime: 50, logicalCounter: 0, nodeId: "n2");
+        const ts60 = HybridLogicalClock(physicalTime: 60, logicalCounter: 0, nodeId: "n3");
+
+        final g1 = RoomEntityLink(
+          entityId: "link-mut",
+          displayName: "G1 Name",
+          displayNameTimestamp: ts10,
+          notes: "G1 Notes",
+          notesTimestamp: ts10,
+          incarnationTimestamp: ts10,
+        );
+
+        final g2 = RoomEntityLink(
+          entityId: "link-mut",
+          displayName: "G2 Name",
+          displayNameTimestamp: ts30,
+          notes: null,
+          incarnationTimestamp: ts30,
+        );
+
+        // 1. Initial creation
+        var set = const EntityLinkCrdtSet.empty().createOrReadd("link-mut", g1, ts10);
+        expect(set.items["link-mut"]!.value.displayName, equals("G1 Name"));
+        expect(set.items["link-mut"]!.value.incarnationTimestamp, equals(ts10));
+
+        // 2. Removal targets active G1
+        set = set.remove("link-mut", ts20);
+        expect(set.isRemoved("link-mut"), isTrue);
+        expect(set.tombstones["link-mut"]!.targetGeneration, equals(ts10));
+        expect(set.tombstones["link-mut"]!.timestamp, equals(ts20));
+
+        // 3. Stale G1 update on removed state -> remains removed!
+        final staleG1 = g1.copyWith(displayName: "Stale G1 Offline", displayNameTimestamp: ts40);
+        final afterStaleUpdate = set.update("link-mut", staleG1, ts40);
+        expect(afterStaleUpdate, equals(set));
+        expect(afterStaleUpdate.isRemoved("link-mut"), isTrue);
+
+        // Compatibility add() also cannot resurrect removed state
+        final afterStaleAdd = set.add("link-mut", staleG1, ts40);
+        expect(afterStaleAdd, equals(set));
+        expect(afterStaleAdd.isRemoved("link-mut"), isTrue);
+
+        // 4. Explicit re-add creates G2 from supplied authoritative timestamp
+        set = set.createOrReadd("link-mut", g2, ts30);
+        expect(set.items.containsKey("link-mut"), isTrue);
+        expect(set.isRemoved("link-mut"), isFalse);
+        final itemG2 = set.items["link-mut"]!.value;
+        expect(itemG2.displayName, equals("G2 Name"));
+        expect(itemG2.notes, isNull); // old G1 notes wiped on re-add baseline
+        expect(itemG2.incarnationTimestamp, equals(ts30));
+
+        // 5. Active G2 then stale G1 update -> G2 unchanged
+        final afterOldUpdate = set.update("link-mut", staleG1, ts40);
+        expect(afterOldUpdate, equals(set));
+        expect(afterOldUpdate.items["link-mut"]!.value.displayName, equals("G2 Name"));
+
+        // 6. Active G2 @50 then same-G2 snapshot @40 -> newer state retained
+        final g2Edit50 = itemG2.copyWith(displayName: "G2 Name @50", displayNameTimestamp: ts50);
+        set = set.update("link-mut", g2Edit50, ts50);
+        expect(set.items["link-mut"]!.value.displayName, equals("G2 Name @50"));
+
+        final g2Snapshot40 = itemG2.copyWith(displayName: "G2 Snapshot @40", displayNameTimestamp: ts40);
+        final afterOlderSnapshot = set.update("link-mut", g2Snapshot40, ts40);
+        expect(afterOlderSnapshot.items["link-mut"]!.value.displayName, equals("G2 Name @50"));
+
+        // 7. Active G2 then ordinary update carrying G3 -> does NOT silently create G3
+        final g3Candidate = RoomEntityLink(
+          entityId: "link-mut",
+          displayName: "G3 Candidate",
+          displayNameTimestamp: ts60,
+          incarnationTimestamp: ts60,
+        );
+        final afterG3Update = set.update("link-mut", g3Candidate, ts60);
+        expect(afterG3Update, equals(set));
+        expect(afterG3Update.items["link-mut"]!.value.incarnationTimestamp, equals(ts30));
+
+        // 8. Repeated same mutation -> idempotent
+        final repeatUpdate = set.update("link-mut", g2Edit50, ts50);
+        expect(repeatUpdate, equals(set));
+      });
+
+      test('X. RoomNodeState constructor & copyWith strict invalid input type rejection', () {
+        // Constructor rejects invalid non-null entityLinksCrdt
+        expect(
+          () => RoomNodeState(
+            roomId: "r1",
+            roomCode: "RC",
+            entityLinksCrdt: "invalid_string",
+          ),
+          throwsArgumentError,
+        );
+        expect(
+          () => RoomNodeState(
+            roomId: "r1",
+            roomCode: "RC",
+            entityLinksCrdt: 42,
+          ),
+          throwsArgumentError,
+        );
+
+        // Constructor accepts valid EntityLinkCrdtSet
+        final validSet = const EntityLinkCrdtSet.empty();
+        final room = RoomNodeState(
+          roomId: "r1",
+          roomCode: "RC",
+          entityLinksCrdt: validSet,
+        );
+        expect(room.entityLinksCrdt, equals(validSet));
+
+        // Constructor accepts valid CrdtOrSet via explicit legacy migration boundary
+        final legacyOrSet = const CrdtOrSet<RoomEntityLink>.empty();
+        final roomFromLegacy = RoomNodeState(
+          roomId: "r1",
+          roomCode: "RC",
+          entityLinksCrdt: legacyOrSet,
+        );
+        expect(roomFromLegacy.entityLinksCrdt, isA<EntityLinkCrdtSet>());
+
+        // copyWith rejects invalid non-null entityLinksCrdt
+        expect(
+          () => room.copyWith(entityLinksCrdt: "invalid_string"),
+          throwsArgumentError,
+        );
+        expect(
+          () => room.copyWith(entityLinksCrdt: null),
+          throwsArgumentError,
+        );
+
+        // copyWith preserves current state when omitted
+        final copied = room.copyWith(title: "New Title", titleTimestamp: const HybridLogicalClock(physicalTime: 10, logicalCounter: 0, nodeId: "n1"));
+        expect(copied.entityLinksCrdt, equals(validSet));
+
+        // Explicit converter
+        final converted = EntityLinkCrdtSet.fromCrdtOrSet(legacyOrSet);
+        expect(converted, isA<EntityLinkCrdtSet>());
+      });
+
+      test('P. Mutation sequence property tests with merge consistency over 100 transitions', () {
+        for (int i = 0; i < 100; i++) {
+          final t1 = (i * 10) + 1;
+          final t2 = t1 + 2;
+          final t3 = t2 + 2;
+          final t4 = t3 + 2;
+          final t5 = t4 + 2;
+
+          final hlc1 = HybridLogicalClock(physicalTime: t1, logicalCounter: 0, nodeId: "n1");
+          final hlc2 = HybridLogicalClock(physicalTime: t2, logicalCounter: 0, nodeId: "n2");
+          final hlc3 = HybridLogicalClock(physicalTime: t3, logicalCounter: 0, nodeId: "n3");
+          final hlc4 = HybridLogicalClock(physicalTime: t4, logicalCounter: 0, nodeId: "n4");
+          final hlc5 = HybridLogicalClock(physicalTime: t5, logicalCounter: 0, nodeId: "n5");
+
+          final l1 = RoomEntityLink(
+            entityId: "link-prop",
+            displayName: "Initial $t1",
+            displayNameTimestamp: hlc1,
+            incarnationTimestamp: hlc1,
+          );
+
+          // Replica A: create G1 -> edit G1
+          var repA = const EntityLinkCrdtSet.empty().createOrReadd("link-prop", l1, hlc1);
+          repA = repA.update("link-prop", l1.copyWith(displayName: "Edit A $t2", displayNameTimestamp: hlc2), hlc2);
+
+          // Replica B: create G1 -> remove G1
+          var repB = const EntityLinkCrdtSet.empty().createOrReadd("link-prop", l1, hlc1);
+          repB = repB.remove("link-prop", hlc3);
+
+          // Replica C: create G1 -> remove G1 -> readd G2
+          var repC = const EntityLinkCrdtSet.empty().createOrReadd("link-prop", l1, hlc1);
+          repC = repC.remove("link-prop", hlc3);
+          final l2 = RoomEntityLink(
+            entityId: "link-prop",
+            displayName: "Readded G2 $t4",
+            displayNameTimestamp: hlc4,
+            incarnationTimestamp: hlc4,
+          );
+          repC = repC.createOrReadd("link-prop", l2, hlc4);
+          if (i % 2 == 0) {
+            repC = repC.update("link-prop", l2.copyWith(notes: "Notes G2 $t5", notesTimestamp: hlc5), hlc5);
+          }
+
+          // Merge consistency: Idempotence, Commutativity, Associativity
+          expect(repA.merge(repA), equals(repA));
+          expect(repB.merge(repB), equals(repB));
+          expect(repC.merge(repC), equals(repC));
+
+          expect(repA.merge(repB), equals(repB.merge(repA)));
+          expect(repB.merge(repC), equals(repC.merge(repB)));
+          expect(repA.merge(repC), equals(repC.merge(repA)));
+
+          final abThenC = (repA.merge(repB)).merge(repC);
+          final aThenBc = repA.merge(repB.merge(repC));
+          final cbThenA = (repC.merge(repB)).merge(repA);
+          final cThenBa = repC.merge(repB.merge(repA));
+
+          expect(abThenC, equals(aThenBc));
+          expect(abThenC, equals(cbThenA));
+          expect(abThenC, equals(cThenBa));
+
+          // In this history, G2 is the latest active incarnation
+          expect(abThenC.items.containsKey("link-prop"), isTrue);
+          expect(abThenC.items["link-prop"]!.value.incarnationTimestamp, equals(hlc4));
+        }
+      });
+    });
   });
 }

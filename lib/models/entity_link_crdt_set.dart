@@ -139,31 +139,71 @@ class EntityLinkCrdtSet {
   bool isRemoved(String id) =>
       tombstones.containsKey(id) && !items.containsKey(id);
 
-  EntityLinkCrdtSet add(
+  /// Explicitly authors a new incarnation/generation for [id].
+  ///
+  /// Establishes [timestamp] as the authoritative generation identity
+  /// (`incarnationTimestamp`) and initializes a fresh payload baseline.
+  /// Pre-existing notes from older incarnations are cleared unless explicitly
+  /// stamped at or after [timestamp].
+  EntityLinkCrdtSet createOrReadd(
     String id,
     RoomEntityLink link,
     HybridLogicalClock timestamp,
   ) {
-    RoomEntityLink resolvedLink = link;
-    if (resolvedLink.incarnationTimestamp.physicalTime == 0) {
-      resolvedLink =
-          resolvedLink.copyWith(incarnationTimestamp: timestamp);
+    final currentItem = items[id];
+    if (currentItem != null) {
+      if (!timestamp.isAfter(currentItem.value.incarnationTimestamp)) {
+        // Cannot re-add with a timestamp that is not strictly after current active generation.
+        return this;
+      }
     }
 
     final existingTombstone = tombstones[id];
-    if (existingTombstone != null &&
-        !resolvedLink.incarnationTimestamp
-            .isAfter(existingTombstone.targetGeneration)) {
-      resolvedLink = resolvedLink.copyWith(
-        incarnationTimestamp: timestamp,
+    if (existingTombstone != null) {
+      if (!timestamp.isAfter(existingTombstone.targetGeneration) ||
+          !timestamp.isAfter(existingTombstone.timestamp)) {
+        // Cannot resurrect with a timestamp that is not strictly after the removal state.
+        return this;
+      }
+    }
+
+    final bool isReadd = existingTombstone != null || currentItem != null;
+    final HybridLogicalClock resolvedGen =
+        (isReadd || link.incarnationTimestamp.physicalTime == 0)
+            ? timestamp
+            : link.incarnationTimestamp;
+
+    final bool hasNewOrUnstampedNotes = link.notes != null &&
+        (!isReadd ||
+            link.notesRegister.timestamp.physicalTime == 0 ||
+            !link.notesRegister.timestamp.isBefore(timestamp));
+
+    final RoomEntityLink freshLink;
+    if (hasNewOrUnstampedNotes) {
+      freshLink = link.copyWith(
+        entityId: id,
+        incarnationTimestamp: resolvedGen,
+        displayNameTimestamp: link.displayNameRegister.timestamp.physicalTime > 0
+            ? (isReadd ? timestamp : link.displayNameRegister.timestamp)
+            : timestamp,
+        notes: link.notes,
+        notesTimestamp: link.notesRegister.timestamp.physicalTime > 0
+            ? (isReadd ? timestamp : link.notesRegister.timestamp)
+            : timestamp,
+      );
+    } else {
+      freshLink = link.copyWith(
+        entityId: id,
+        incarnationTimestamp: resolvedGen,
         displayNameTimestamp: timestamp,
+        clearNotes: true,
+        notesTimestamp: timestamp,
       );
     }
 
-    final newItems =
-        Map<String, CrdtLwwRegister<RoomEntityLink>>.from(items);
+    final newItems = Map<String, CrdtLwwRegister<RoomEntityLink>>.from(items);
     newItems[id] = CrdtLwwRegister<RoomEntityLink>(
-      value: resolvedLink,
+      value: freshLink,
       timestamp: timestamp,
     );
 
@@ -176,26 +216,68 @@ class EntityLinkCrdtSet {
     );
   }
 
-  EntityLinkCrdtSet addBatch(
-    Iterable<({String id, RoomEntityLink item, HybridLogicalClock timestamp})>
-        entries,
+  /// Monotonically updates an existing active generation for [id].
+  ///
+  /// Preserves the current incarnation/generation. Stale older-generation
+  /// payloads are ignored, and generation advancement is rejected (use [createOrReadd]).
+  /// If the entity is currently removed or does not exist, returns `this` without modifying state.
+  /// Within the same generation, nested registers merge causally via [RoomEntityLink.join].
+  EntityLinkCrdtSet update(
+    String id,
+    RoomEntityLink link,
+    HybridLogicalClock timestamp,
   ) {
-    EntityLinkCrdtSet current = this;
-    for (final e in entries) {
-      current = current.add(e.id, e.item, e.timestamp);
+    final currentItem = items[id];
+    if (currentItem == null) {
+      // Entity is currently removed or non-existent.
+      // An ordinary update can NEVER create a generation or resurrect a removed entity.
+      return this;
     }
-    return current;
+
+    final currentGen = currentItem.value.incarnationTimestamp;
+    final incomingGen = link.incarnationTimestamp;
+    if (incomingGen.physicalTime > 0 && incomingGen != currentGen) {
+      // Incoming payload belongs to a different generation:
+      // - Older generation (stale): ignored to prevent regression.
+      // - Newer generation: ordinary update cannot advance generation.
+      return this;
+    }
+
+    // Same generation: join nested CRDT registers causally
+    final linkToJoin = incomingGen.physicalTime == 0
+        ? link.copyWith(incarnationTimestamp: currentGen)
+        : link;
+    final mergedLink = RoomEntityLink.join(currentItem.value, linkToJoin);
+    final winningTs = currentItem.timestamp.isAfter(timestamp)
+        ? currentItem.timestamp
+        : timestamp;
+
+    final newItems = Map<String, CrdtLwwRegister<RoomEntityLink>>.from(items);
+    newItems[id] = CrdtLwwRegister<RoomEntityLink>(
+      value: mergedLink,
+      timestamp: winningTs,
+    );
+
+    return EntityLinkCrdtSet(
+      items: newItems,
+      tombstones: tombstones,
+    );
   }
 
+  /// Monotonically removes [id], targeting the currently active generation.
   EntityLinkCrdtSet remove(
     String id,
     HybridLogicalClock timestamp, {
     HybridLogicalClock? targetGeneration,
   }) {
-    final HybridLogicalClock resolvedTargetGen = targetGeneration ??
-        items[id]?.value.incarnationTimestamp ??
-        tombstones[id]?.targetGeneration ??
-        timestamp;
+    final HybridLogicalClock resolvedTargetGen;
+    if (items.containsKey(id)) {
+      resolvedTargetGen = items[id]!.value.incarnationTimestamp;
+    } else if (tombstones.containsKey(id)) {
+      resolvedTargetGen = tombstones[id]!.targetGeneration;
+    } else {
+      resolvedTargetGen = targetGeneration ?? timestamp;
+    }
 
     HybridLogicalClock resolvedTs = timestamp;
     final existingTombstone = tombstones[id];
@@ -220,6 +302,47 @@ class EntityLinkCrdtSet {
       items: newItems,
       tombstones: newTombstones,
     );
+  }
+
+  /// Monotonic compatibility helper for initialization and existing call sites.
+  ///
+  /// - If the entity is currently active, delegates to [update].
+  /// - If the entity does not exist and is not removed, delegates to [createOrReadd].
+  /// - If the entity is currently removed, returns `this` without resurrecting.
+  EntityLinkCrdtSet add(
+    String id,
+    RoomEntityLink link,
+    HybridLogicalClock timestamp,
+  ) {
+    if (items.containsKey(id)) {
+      if (link.incarnationTimestamp.physicalTime > 0 &&
+          link.incarnationTimestamp
+              .isAfter(items[id]!.value.incarnationTimestamp)) {
+        return createOrReadd(id, link, timestamp);
+      }
+      return update(id, link, timestamp);
+    } else if (tombstones.containsKey(id)) {
+      if (link.incarnationTimestamp.physicalTime > 0 &&
+          link.incarnationTimestamp
+              .isAfter(tombstones[id]!.targetGeneration)) {
+        return createOrReadd(id, link, timestamp);
+      }
+      // Currently removed: add() cannot resurrect removed state.
+      return this;
+    } else {
+      return createOrReadd(id, link, timestamp);
+    }
+  }
+
+  EntityLinkCrdtSet addBatch(
+    Iterable<({String id, RoomEntityLink item, HybridLogicalClock timestamp})>
+        entries,
+  ) {
+    EntityLinkCrdtSet current = this;
+    for (final e in entries) {
+      current = current.add(e.id, e.item, e.timestamp);
+    }
+    return current;
   }
 
   EntityLinkCrdtSet merge(EntityLinkCrdtSet other) {
