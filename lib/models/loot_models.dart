@@ -1,4 +1,6 @@
 import 'package:collection/collection.dart';
+import '../crdt/crdt_lww_register.dart';
+import '../crdt/hybrid_logical_clock.dart';
 import '../utils/deep_immutable.dart';
 import '../utils/aggregate_join_utils.dart';
 import 'package:meta/meta.dart';
@@ -26,7 +28,7 @@ enum LootContainerType {
 @immutable
 class LootContainer {
   final String containerId;
-  final String name;
+  final CrdtLwwRegister<String> nameRegister;
   final LootContainerType type;
   final bool isLocked;
   final double? capacityWeightLbs;
@@ -35,9 +37,13 @@ class LootContainer {
   final Map<String, dynamic> permissions;
   final Map<String, dynamic> customProperties;
 
+  String get name => nameRegister.value;
+
   LootContainer({
     required this.containerId,
-    required this.name,
+    String? name,
+    CrdtLwwRegister<String>? nameRegister,
+    HybridLogicalClock? nameTimestamp,
     this.type = LootContainerType.chest,
     this.isLocked = false,
     this.capacityWeightLbs,
@@ -45,13 +51,34 @@ class LootContainer {
     this.purse = const PartyPurse.empty(),
     Map<String, dynamic> permissions = const {},
     Map<String, dynamic> customProperties = const {},
-  })  : items = List<InventoryItemInstance>.unmodifiable(items),
+  })  : nameRegister = nameRegister ??
+            (nameTimestamp != null
+                ? CrdtLwwRegister<String>(
+                    value: name ?? 'Chest',
+                    timestamp: nameTimestamp,
+                  )
+                : CrdtLwwRegister<String>(
+                    value: name ?? 'Chest',
+                    timestamp: const HybridLogicalClock(
+                      physicalTime: 0,
+                      logicalCounter: 0,
+                      nodeId: 'genesis',
+                    ),
+                  )),
+        items = List<InventoryItemInstance>.unmodifiable(items),
         permissions = deepFreezeMap(permissions),
         customProperties = deepFreezeMap(customProperties);
 
   const LootContainer.empty()
       : containerId = '',
-        name = '',
+        nameRegister = const CrdtLwwRegister<String>(
+          value: '',
+          timestamp: HybridLogicalClock(
+            physicalTime: 0,
+            logicalCounter: 0,
+            nodeId: 'genesis',
+          ),
+        ),
         type = LootContainerType.chest,
         isLocked = false,
         capacityWeightLbs = null,
@@ -67,6 +94,8 @@ class LootContainer {
   LootContainer copyWith({
     String? containerId,
     String? name,
+    CrdtLwwRegister<String>? nameRegister,
+    HybridLogicalClock? nameTimestamp,
     LootContainerType? type,
     bool? isLocked,
     double? capacityWeightLbs,
@@ -75,9 +104,26 @@ class LootContainer {
     Map<String, dynamic>? permissions,
     Map<String, dynamic>? customProperties,
   }) {
+    final CrdtLwwRegister<String> resolvedNameRegister;
+    if (nameRegister != null) {
+      resolvedNameRegister = nameRegister;
+    } else if (name != null) {
+      if (nameTimestamp == null) {
+        throw ArgumentError(
+          'Updating name via copyWith requires an authoritative nameTimestamp stamped by StatefulHlcClock.',
+        );
+      }
+      resolvedNameRegister = CrdtLwwRegister<String>(
+        value: name,
+        timestamp: nameTimestamp,
+      );
+    } else {
+      resolvedNameRegister = this.nameRegister;
+    }
+
     return LootContainer(
       containerId: containerId ?? this.containerId,
-      name: name ?? this.name,
+      nameRegister: resolvedNameRegister,
       type: type ?? this.type,
       isLocked: isLocked ?? this.isLocked,
       capacityWeightLbs: capacityWeightLbs ?? this.capacityWeightLbs,
@@ -96,6 +142,10 @@ class LootContainer {
   Map<String, dynamic> toMap() => {
         'containerId': containerId,
         'name': name,
+        'nameRegister': {
+          'value': nameRegister.value,
+          'timestamp': nameRegister.timestamp.toMap(),
+        },
         'type': type.name,
         'isLocked': isLocked,
         'capacityWeightLbs': capacityWeightLbs,
@@ -112,9 +162,27 @@ class LootContainer {
       orElse: () => LootContainerType.chest,
     );
 
+    final CrdtLwwRegister<String> nameReg;
+    if (map.containsKey('nameRegister') && map['nameRegister'] is Map) {
+      final rawReg = map['nameRegister'] as Map;
+      nameReg = CrdtLwwRegister<String>(
+        value: rawReg['value']?.toString() ?? 'Chest',
+        timestamp: HybridLogicalClock.fromMap(rawReg['timestamp'] as Map),
+      );
+    } else {
+      nameReg = CrdtLwwRegister<String>(
+        value: map['name']?.toString() ?? 'Chest',
+        timestamp: const HybridLogicalClock(
+          physicalTime: 0,
+          logicalCounter: 0,
+          nodeId: 'genesis',
+        ),
+      );
+    }
+
     return LootContainer(
       containerId: map['containerId']?.toString() ?? '',
-      name: map['name']?.toString() ?? 'Chest',
+      nameRegister: nameReg,
       type: type,
       isLocked: map['isLocked'] == true,
       capacityWeightLbs: (map['capacityWeightLbs'] as num?)?.toDouble(),
@@ -132,7 +200,6 @@ class LootContainer {
           Map<String, dynamic>.from(map['customProperties'] as Map? ?? {}),
     );
   }
-
 
   /// Pure canonical aggregate join of two [LootContainer] instances.
   ///
@@ -172,11 +239,7 @@ class LootContainer {
     }
     final mergedCapacity = a.capacityWeightLbs ?? b.capacityWeightLbs;
 
-    final mergedName = joinUnversionedString(
-      a.name,
-      b.name,
-      fieldName: 'LootContainer.name',
-    );
+    final mergedName = a.nameRegister.merge(b.nameRegister);
 
     final itemsMapA = <String, InventoryItemInstance>{};
     for (final i in a.items) {
@@ -222,7 +285,7 @@ class LootContainer {
 
     return LootContainer(
       containerId: mergedId,
-      name: mergedName,
+      nameRegister: mergedName,
       type: a.type,
       isLocked: a.isLocked,
       capacityWeightLbs: mergedCapacity,
@@ -244,7 +307,7 @@ class LootContainer {
       other is LootContainer &&
           runtimeType == other.runtimeType &&
           containerId == other.containerId &&
-          name == other.name &&
+          nameRegister == other.nameRegister &&
           type == other.type &&
           isLocked == other.isLocked &&
           capacityWeightLbs == other.capacityWeightLbs &&
@@ -256,7 +319,7 @@ class LootContainer {
   @override
   int get hashCode => Object.hash(
         containerId,
-        name,
+        nameRegister,
         type,
         isLocked,
         capacityWeightLbs,

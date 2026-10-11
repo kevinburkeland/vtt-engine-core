@@ -15,7 +15,7 @@ import 'party_purse.dart';
 @immutable
 class CampaignProfile {
   final String id;
-  final String name;
+  final CrdtLwwRegister<String> nameRegister;
   final dynamic edition;
   final DateTime createdAt;
   final DateTime lastPlayedAt;
@@ -37,6 +37,7 @@ class CampaignProfile {
   /// Legacy alias for compatibility.
   dynamic get rulesEdition => edition;
 
+  String get name => nameRegister.value;
   String get notesMarkdown => notesRegister.value;
 
   /// Derived view of currently active pinned rule identifiers.
@@ -50,7 +51,9 @@ class CampaignProfile {
 
   CampaignProfile.raw({
     required this.id,
-    required this.name,
+    CrdtLwwRegister<String>? nameRegister,
+    String? name,
+    HybridLogicalClock? nameTimestamp,
     this.edition = const RulesetIdentifier('generic_tabletop'),
     required this.createdAt,
     required this.lastPlayedAt,
@@ -62,7 +65,21 @@ class CampaignProfile {
     required this.notesRegister,
     this.partyPurse = const PartyPurse.empty(),
     List<PartyEvent> changeLog = const [],
-  })  : partyRoster = partyRoster ??
+  })  : nameRegister = nameRegister ??
+            (nameTimestamp != null
+                ? CrdtLwwRegister<String>(
+                    value: name ?? '',
+                    timestamp: nameTimestamp,
+                  )
+                : CrdtLwwRegister<String>(
+                    value: name ?? '',
+                    timestamp: const HybridLogicalClock(
+                      physicalTime: 0,
+                      logicalCounter: 0,
+                      nodeId: 'genesis',
+                    ),
+                  )),
+        partyRoster = partyRoster ??
             (partyCharacterIds != null && partyCharacterIds.isNotEmpty
                 ? _buildInitialPartyRoster(partyCharacterIds)
                 : const CrdtOrSet<String>.empty()),
@@ -108,7 +125,8 @@ class CampaignProfile {
 
   factory CampaignProfile({
     required String id,
-    required String name,
+    String? name,
+    CrdtLwwRegister<String>? nameRegister,
     dynamic edition = const RulesetIdentifier('generic_tabletop'),
     String? rulesetId,
     required DateTime createdAt,
@@ -126,6 +144,24 @@ class CampaignProfile {
   }) {
     final effectiveEdition =
         rulesetId ?? edition ?? const RulesetIdentifier('generic_tabletop');
+    final effectiveNameRegister = nameRegister ??
+        (name != null
+            ? CrdtLwwRegister<String>(
+                value: name,
+                timestamp: HybridLogicalClock(
+                  physicalTime: 0,
+                  logicalCounter: 0,
+                  nodeId: nodeId,
+                ),
+              )
+            : CrdtLwwRegister<String>(
+                value: '',
+                timestamp: HybridLogicalClock(
+                  physicalTime: 0,
+                  logicalCounter: 0,
+                  nodeId: nodeId,
+                ),
+              ));
     final effectiveNotesRegister = notesRegister ??
         (notesMarkdown != null
             ? CrdtLwwRegister<String>(
@@ -147,7 +183,7 @@ class CampaignProfile {
 
     return CampaignProfile.raw(
       id: id,
-      name: name,
+      nameRegister: effectiveNameRegister,
       edition: effectiveEdition,
       createdAt: createdAt,
       lastPlayedAt: lastPlayedAt,
@@ -166,6 +202,7 @@ class CampaignProfile {
   factory CampaignProfile.initial({
     required String id,
     required String name,
+    CrdtLwwRegister<String>? nameRegister,
     dynamic edition,
     String? rulesetId,
     required String nodeId,
@@ -175,6 +212,7 @@ class CampaignProfile {
     return CampaignProfile(
       id: id,
       name: name,
+      nameRegister: nameRegister,
       edition: rulesetId ??
           edition ??
           const RulesetIdentifier('generic_tabletop'),
@@ -197,6 +235,7 @@ class CampaignProfile {
   factory CampaignProfile.defaultProfile({
     String? id,
     String? name,
+    CrdtLwwRegister<String>? nameRegister,
     dynamic edition,
     String? rulesetId,
     Set<String> defaultPinnedRules = const {},
@@ -215,6 +254,7 @@ class CampaignProfile {
     return CampaignProfile.initial(
       id: profileId,
       name: campaignName,
+      nameRegister: nameRegister,
       edition: effectiveEdition,
       nodeId: nodeId,
       now: now,
@@ -224,6 +264,8 @@ class CampaignProfile {
   CampaignProfile copyWith({
     String? id,
     String? name,
+    CrdtLwwRegister<String>? nameRegister,
+    HybridLogicalClock? nameTimestamp,
     dynamic edition,
     String? rulesetId,
     DateTime? createdAt,
@@ -239,6 +281,23 @@ class CampaignProfile {
     List<PartyEvent>? changeLog,
     HybridLogicalClock? notesTimestamp,
   }) {
+    final CrdtLwwRegister<String> resolvedNameRegister;
+    if (nameRegister != null) {
+      resolvedNameRegister = nameRegister;
+    } else if (name != null) {
+      if (nameTimestamp == null) {
+        throw ArgumentError(
+          'Updating name via copyWith requires an authoritative nameTimestamp stamped by StatefulHlcClock.',
+        );
+      }
+      resolvedNameRegister = CrdtLwwRegister<String>(
+        value: name,
+        timestamp: nameTimestamp,
+      );
+    } else {
+      resolvedNameRegister = this.nameRegister;
+    }
+
     final CrdtLwwRegister<String> resolvedNotesRegister;
     if (notesRegister != null) {
       resolvedNotesRegister = notesRegister;
@@ -268,7 +327,7 @@ class CampaignProfile {
 
     return CampaignProfile.raw(
       id: id ?? this.id,
-      name: name ?? this.name,
+      nameRegister: resolvedNameRegister,
       edition: edition ?? rulesetId ?? this.edition,
       createdAt: createdAt ?? this.createdAt,
       lastPlayedAt: lastPlayedAt ?? this.lastPlayedAt,
@@ -306,11 +365,8 @@ class CampaignProfile {
         ? a.edition
         : RulesetIdentifier(a.rulesetId);
 
-    final mergedName = joinUnversionedString(
-      a.name,
-      b.name,
-      fieldName: 'CampaignProfile.name',
-    );
+    // Name: pure LWW CRDT register merge
+    final mergedNameRegister = a.nameRegister.merge(b.nameRegister);
 
     // Derived metadata timestamps: earliest created, latest played
     final mergedCreatedAt =
@@ -338,7 +394,7 @@ class CampaignProfile {
 
     return CampaignProfile.raw(
       id: mergedId,
-      name: mergedName,
+      nameRegister: mergedNameRegister,
       edition: canonicalEdition,
       createdAt: mergedCreatedAt,
       lastPlayedAt: mergedLastPlayedAt,
@@ -360,7 +416,7 @@ class CampaignProfile {
       other is CampaignProfile &&
           runtimeType == other.runtimeType &&
           id == other.id &&
-          name == other.name &&
+          nameRegister == other.nameRegister &&
           rulesetId == other.rulesetId &&
           createdAt.isAtSameMomentAs(other.createdAt) &&
           lastPlayedAt.isAtSameMomentAs(other.lastPlayedAt) &&
@@ -374,7 +430,7 @@ class CampaignProfile {
   @override
   int get hashCode => Object.hash(
         id,
-        name,
+        nameRegister,
         rulesetId,
         createdAt.toUtc().millisecondsSinceEpoch,
         lastPlayedAt.toUtc().millisecondsSinceEpoch,

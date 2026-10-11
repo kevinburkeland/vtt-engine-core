@@ -746,6 +746,7 @@ void main() {
           roomId: 'r2',
           roomCode: 'R102',
           title: 'Room 2',
+          titleTimestamp: const HybridLogicalClock(physicalTime: 1, logicalCounter: 0, nodeId: 'node-test-1'),
           activeMinions: minionSet,
         );
 

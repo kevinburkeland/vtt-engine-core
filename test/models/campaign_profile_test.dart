@@ -85,7 +85,14 @@ void main() {
     });
 
     test('detects differences in name despite same id', () {
-      final modified = profileA.copyWith(name: 'Dragon Hunt (Renamed)');
+      final modified = profileA.copyWith(
+        name: 'Dragon Hunt (Renamed)',
+        nameTimestamp: const HybridLogicalClock(
+          physicalTime: 10,
+          logicalCounter: 0,
+          nodeId: 'test-node',
+        ),
+      );
       expect(profileA == modified, isFalse);
     });
 
@@ -137,7 +144,14 @@ void main() {
         title: 'Room 1',
         description: 'Original description',
       );
-      final room2 = room1.copyWith(description: 'Modified description');
+      final room2 = room1.copyWith(
+        description: 'Modified description',
+        descriptionTimestamp: const HybridLogicalClock(
+          physicalTime: 10,
+          logicalCounter: 0,
+          nodeId: 'test-node',
+        ),
+      );
       expect(room1 == room2, isFalse);
 
       final room3 = room1.copyWith(
@@ -151,6 +165,29 @@ void main() {
         ],
       );
       expect(room1 == room3, isFalse);
+    });
+
+    test('updating name without nameTimestamp throws ArgumentError', () {
+      expect(
+        () => profileA.copyWith(name: 'Renamed Campaign'),
+        throwsArgumentError,
+      );
+    });
+
+    test('updating title without titleTimestamp throws ArgumentError', () {
+      final room = RoomNodeState(roomId: 'r1', roomCode: 'C1', title: 'R1');
+      expect(
+        () => room.copyWith(title: 'Renamed Room'),
+        throwsArgumentError,
+      );
+    });
+
+    test('updating description without descriptionTimestamp throws ArgumentError', () {
+      final room = RoomNodeState(roomId: 'r1', roomCode: 'C1', title: 'R1');
+      expect(
+        () => room.copyWith(description: 'Renamed Description'),
+        throwsArgumentError,
+      );
     });
   });
 }

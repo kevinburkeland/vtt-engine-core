@@ -4,6 +4,7 @@ import '../utils/deep_immutable.dart';
 import '../utils/aggregate_join_utils.dart';
 import 'package:collection/collection.dart';
 import 'package:meta/meta.dart';
+import '../crdt/crdt_lww_register.dart';
 import '../crdt/crdt_or_set.dart';
 import '../crdt/hybrid_logical_clock.dart';
 import 'loot_models.dart';
@@ -50,22 +51,40 @@ class EntityInstance {
   final String instanceId;
   final String? entityDefinitionId;
   final String? entityType;
-  final String displayName;
+  final CrdtLwwRegister<String> displayNameRegister;
   final Map<String, dynamic>? position;
   final bool isVisible;
   final Map<String, dynamic> runtimeData;
   final Map<String, dynamic> customProperties;
 
+  String get displayName => displayNameRegister.value;
+
   EntityInstance({
     required this.instanceId,
     this.entityDefinitionId,
     this.entityType,
-    required this.displayName,
+    String? displayName,
+    CrdtLwwRegister<String>? displayNameRegister,
+    HybridLogicalClock? displayNameTimestamp,
     Map<String, dynamic>? position,
     this.isVisible = true,
     Map<String, dynamic> runtimeData = const {},
     Map<String, dynamic> customProperties = const {},
-  })  : position = position != null ? deepFreezeMap(position) : null,
+  })  : displayNameRegister = displayNameRegister ??
+            (displayNameTimestamp != null
+                ? CrdtLwwRegister<String>(
+                    value: displayName ?? '',
+                    timestamp: displayNameTimestamp,
+                  )
+                : CrdtLwwRegister<String>(
+                    value: displayName ?? '',
+                    timestamp: const HybridLogicalClock(
+                      physicalTime: 0,
+                      logicalCounter: 0,
+                      nodeId: 'genesis',
+                    ),
+                  )),
+        position = position != null ? deepFreezeMap(position) : null,
         runtimeData = deepFreezeMap(runtimeData),
         customProperties = deepFreezeMap(customProperties);
 
@@ -73,7 +92,14 @@ class EntityInstance {
       : instanceId = '',
         entityDefinitionId = null,
         entityType = null,
-        displayName = '',
+        displayNameRegister = const CrdtLwwRegister<String>(
+          value: '',
+          timestamp: HybridLogicalClock(
+            physicalTime: 0,
+            logicalCounter: 0,
+            nodeId: 'genesis',
+          ),
+        ),
         position = null,
         isVisible = true,
         runtimeData = const {},
@@ -84,16 +110,35 @@ class EntityInstance {
     String? entityDefinitionId,
     String? entityType,
     String? displayName,
+    CrdtLwwRegister<String>? displayNameRegister,
+    HybridLogicalClock? displayNameTimestamp,
     Map<String, dynamic>? position,
     bool? isVisible,
     Map<String, dynamic>? runtimeData,
     Map<String, dynamic>? customProperties,
   }) {
+    final CrdtLwwRegister<String> resolvedDisplayNameRegister;
+    if (displayNameRegister != null) {
+      resolvedDisplayNameRegister = displayNameRegister;
+    } else if (displayName != null) {
+      if (displayNameTimestamp == null) {
+        throw ArgumentError(
+          'Updating displayName via copyWith requires an authoritative displayNameTimestamp stamped by StatefulHlcClock.',
+        );
+      }
+      resolvedDisplayNameRegister = CrdtLwwRegister<String>(
+        value: displayName,
+        timestamp: displayNameTimestamp,
+      );
+    } else {
+      resolvedDisplayNameRegister = this.displayNameRegister;
+    }
+
     return EntityInstance(
       instanceId: instanceId ?? this.instanceId,
       entityDefinitionId: entityDefinitionId ?? this.entityDefinitionId,
       entityType: entityType ?? this.entityType,
-      displayName: displayName ?? this.displayName,
+      displayNameRegister: resolvedDisplayNameRegister,
       position: position ?? this.position,
       isVisible: isVisible ?? this.isVisible,
       runtimeData: runtimeData != null
@@ -111,6 +156,10 @@ class EntityInstance {
           'entityDefinitionId': entityDefinitionId,
         if (entityType != null) 'entityType': entityType,
         'displayName': displayName,
+        'displayNameRegister': {
+          'value': displayNameRegister.value,
+          'timestamp': displayNameRegister.timestamp.toMap(),
+        },
         if (position != null) 'position': position,
         'isVisible': isVisible,
         if (runtimeData.isNotEmpty) 'runtimeData': runtimeData,
@@ -119,11 +168,29 @@ class EntityInstance {
       };
 
   factory EntityInstance.fromMap(Map<String, dynamic> map) {
+    final CrdtLwwRegister<String> displayNameReg;
+    if (map.containsKey('displayNameRegister') && map['displayNameRegister'] is Map) {
+      final rawReg = map['displayNameRegister'] as Map;
+      displayNameReg = CrdtLwwRegister<String>(
+        value: rawReg['value']?.toString() ?? '',
+        timestamp: HybridLogicalClock.fromMap(rawReg['timestamp'] as Map),
+      );
+    } else {
+      displayNameReg = CrdtLwwRegister<String>(
+        value: map['displayName']?.toString() ?? '',
+        timestamp: const HybridLogicalClock(
+          physicalTime: 0,
+          logicalCounter: 0,
+          nodeId: 'genesis',
+        ),
+      );
+    }
+
     return EntityInstance(
       instanceId: map['instanceId']?.toString() ?? '',
       entityDefinitionId: map['entityDefinitionId']?.toString(),
       entityType: map['entityType']?.toString(),
-      displayName: map['displayName']?.toString() ?? '',
+      displayNameRegister: displayNameReg,
       position: map['position'] != null
           ? Map<String, dynamic>.from(map['position'] as Map)
           : null,
@@ -133,7 +200,6 @@ class EntityInstance {
           Map<String, dynamic>.from(map['customProperties'] as Map? ?? {}),
     );
   }
-
 
   /// Pure canonical aggregate join of two [EntityInstance] instances.
   ///
@@ -160,11 +226,7 @@ class EntityInstance {
       fieldName: 'EntityInstance.entityType',
     );
 
-    final mergedDisplayName = joinUnversionedString(
-      a.displayName,
-      b.displayName,
-      fieldName: 'EntityInstance.displayName',
-    );
+    final mergedDisplayName = a.displayNameRegister.merge(b.displayNameRegister);
 
     final mergedPosition = joinNullableMap(
       a.position,
@@ -195,7 +257,7 @@ class EntityInstance {
       instanceId: mergedInstanceId,
       entityDefinitionId: mergedDefId,
       entityType: mergedType,
-      displayName: mergedDisplayName,
+      displayNameRegister: mergedDisplayName,
       position: mergedPosition,
       isVisible: a.isVisible,
       runtimeData: mergedRuntimeData,
@@ -214,7 +276,7 @@ class EntityInstance {
           instanceId == other.instanceId &&
           entityDefinitionId == other.entityDefinitionId &&
           entityType == other.entityType &&
-          displayName == other.displayName &&
+          displayNameRegister == other.displayNameRegister &&
           _deepEquality.equals(position, other.position) &&
           isVisible == other.isVisible &&
           _deepEquality.equals(runtimeData, other.runtimeData) &&
@@ -225,7 +287,7 @@ class EntityInstance {
         instanceId,
         entityDefinitionId,
         entityType,
-        displayName,
+        displayNameRegister,
         _deepEquality.hash(position),
         isVisible,
         _deepEquality.hash(runtimeData),
@@ -239,20 +301,38 @@ class RoomEntityLink {
   final dynamic refType;
   final String entityId;
   final String displayName;
-  final String? notes;
+  final CrdtLwwRegister<String?> notesRegister;
   final Map<String, dynamic>? position; // e.g. {"x": 2, "y": 5}
   final bool isIsolatedClone; // If true, runtime modifications don't mutate parent template
   final Map<String, dynamic>? cloneRuntimeData;
+
+  String? get notes => notesRegister.value;
 
   RoomEntityLink({
     this.refType = const EntityCategory('generic', 'Generic'),
     required this.entityId,
     required this.displayName,
-    this.notes,
+    String? notes,
+    CrdtLwwRegister<String?>? notesRegister,
+    HybridLogicalClock? notesTimestamp,
     Map<String, dynamic>? position,
     this.isIsolatedClone = false,
     Map<String, dynamic>? cloneRuntimeData,
-  })  : position = position != null ? deepFreezeMap(position) : null,
+  })  : notesRegister = notesRegister ??
+            (notesTimestamp != null
+                ? CrdtLwwRegister<String?>(
+                    value: notes,
+                    timestamp: notesTimestamp,
+                  )
+                : CrdtLwwRegister<String?>(
+                    value: notes,
+                    timestamp: const HybridLogicalClock(
+                      physicalTime: 0,
+                      logicalCounter: 0,
+                      nodeId: 'genesis',
+                    ),
+                  )),
+        position = position != null ? deepFreezeMap(position) : null,
         cloneRuntimeData =
             cloneRuntimeData != null ? deepFreezeMap(cloneRuntimeData) : null;
 
@@ -260,7 +340,14 @@ class RoomEntityLink {
       : refType = const EntityCategory('generic', 'Generic'),
         entityId = '',
         displayName = '',
-        notes = null,
+        notesRegister = const CrdtLwwRegister<String?>(
+          value: null,
+          timestamp: HybridLogicalClock(
+            physicalTime: 0,
+            logicalCounter: 0,
+            nodeId: 'genesis',
+          ),
+        ),
         position = null,
         isIsolatedClone = false,
         cloneRuntimeData = null;
@@ -270,15 +357,34 @@ class RoomEntityLink {
     String? entityId,
     String? displayName,
     String? notes,
+    CrdtLwwRegister<String?>? notesRegister,
+    HybridLogicalClock? notesTimestamp,
     Map<String, dynamic>? position,
     bool? isIsolatedClone,
     Map<String, dynamic>? cloneRuntimeData,
   }) {
+    final CrdtLwwRegister<String?> resolvedNotesRegister;
+    if (notesRegister != null) {
+      resolvedNotesRegister = notesRegister;
+    } else if (notes != null) {
+      if (notesTimestamp == null) {
+        throw ArgumentError(
+          'Updating notes via copyWith requires an authoritative notesTimestamp stamped by StatefulHlcClock.',
+        );
+      }
+      resolvedNotesRegister = CrdtLwwRegister<String?>(
+        value: notes,
+        timestamp: notesTimestamp,
+      );
+    } else {
+      resolvedNotesRegister = this.notesRegister;
+    }
+
     return RoomEntityLink(
       refType: refType ?? this.refType,
       entityId: entityId ?? this.entityId,
       displayName: displayName ?? this.displayName,
-      notes: notes ?? this.notes,
+      notesRegister: resolvedNotesRegister,
       position: position ?? this.position,
       isIsolatedClone: isIsolatedClone ?? this.isIsolatedClone,
       cloneRuntimeData: cloneRuntimeData ?? this.cloneRuntimeData,
@@ -313,6 +419,10 @@ class RoomEntityLink {
         'entityId': entityId,
         'displayName': displayName,
         'notes': notes,
+        'notesRegister': {
+          'value': notesRegister.value,
+          'timestamp': notesRegister.timestamp.toMap(),
+        },
         'position': position,
         'isIsolatedClone': isIsolatedClone,
         'cloneRuntimeData': cloneRuntimeData,
@@ -325,11 +435,29 @@ class RoomEntityLink {
         ? refTypeResolver(typeStr)
         : EntityCategory(typeStr, typeStr);
 
+    final CrdtLwwRegister<String?> notesReg;
+    if (map.containsKey('notesRegister') && map['notesRegister'] is Map) {
+      final rawReg = map['notesRegister'] as Map;
+      notesReg = CrdtLwwRegister<String?>(
+        value: rawReg['value']?.toString(),
+        timestamp: HybridLogicalClock.fromMap(rawReg['timestamp'] as Map),
+      );
+    } else {
+      notesReg = CrdtLwwRegister<String?>(
+        value: map['notes']?.toString(),
+        timestamp: const HybridLogicalClock(
+          physicalTime: 0,
+          logicalCounter: 0,
+          nodeId: 'genesis',
+        ),
+      );
+    }
+
     return RoomEntityLink(
       refType: resolvedRefType,
       entityId: map['entityId']?.toString() ?? '',
       displayName: map['displayName']?.toString() ?? '',
-      notes: map['notes']?.toString(),
+      notesRegister: notesReg,
       position: map['position'] != null
           ? Map<String, dynamic>.from(map['position'] as Map)
           : null,
@@ -339,7 +467,6 @@ class RoomEntityLink {
           : null,
     );
   }
-
 
   /// Pure canonical aggregate join of two [RoomEntityLink] instances.
   ///
@@ -374,11 +501,7 @@ class RoomEntityLink {
       fieldName: 'RoomEntityLink.displayName',
     );
 
-    final mergedNotes = joinNullableString(
-      a.notes,
-      b.notes,
-      fieldName: 'RoomEntityLink.notes',
-    );
+    final mergedNotes = a.notesRegister.merge(b.notesRegister);
 
     final mergedPosition = joinNullableMap(
       a.position,
@@ -396,7 +519,7 @@ class RoomEntityLink {
       refType: a.refType,
       entityId: mergedEntityId,
       displayName: mergedDisplayName,
-      notes: mergedNotes,
+      notesRegister: mergedNotes,
       position: mergedPosition,
       isIsolatedClone: a.isIsolatedClone,
       cloneRuntimeData: mergedCloneRuntimeData,
@@ -414,7 +537,7 @@ class RoomEntityLink {
           canonicalRefTypeKey(refType) == canonicalRefTypeKey(other.refType) &&
           entityId == other.entityId &&
           displayName == other.displayName &&
-          notes == other.notes &&
+          notesRegister == other.notesRegister &&
           _deepEquality.equals(position, other.position) &&
           isIsolatedClone == other.isIsolatedClone &&
           _deepEquality.equals(cloneRuntimeData, other.cloneRuntimeData);
@@ -424,7 +547,7 @@ class RoomEntityLink {
         canonicalRefTypeKey(refType),
         entityId,
         displayName,
-        notes,
+        notesRegister,
         _deepEquality.hash(position),
         isIsolatedClone,
         _deepEquality.hash(cloneRuntimeData),
@@ -624,8 +747,8 @@ class EncounterParticipant {
 class RoomNodeState {
   final String roomId;
   final String roomCode;
-  final String title;
-  final String description;
+  final CrdtLwwRegister<String> titleRegister;
+  final CrdtLwwRegister<String> descriptionRegister;
   final CrdtOrSet<RoomEntityLink> entityLinksCrdt;
   final List<EntityInstance> entityInstances;
   final List<LootContainer> containers;
@@ -636,6 +759,9 @@ class RoomNodeState {
   /// Hook for modules to provide custom deserializer for active minions / summons.
   static dynamic Function(Map<String, dynamic>)? defaultMinionParser;
 
+  String get title => titleRegister.value;
+  String get description => descriptionRegister.value;
+
   List<RoomEntityLink> get entityLinks => entityLinksCrdt.activeValues;
   List<EncounterParticipant> get activeEncounterList =>
       activeEncounter.activeValues;
@@ -644,8 +770,12 @@ class RoomNodeState {
   RoomNodeState({
     required this.roomId,
     required this.roomCode,
-    required this.title,
-    this.description = '',
+    String? title,
+    CrdtLwwRegister<String>? titleRegister,
+    HybridLogicalClock? titleTimestamp,
+    String? description,
+    CrdtLwwRegister<String>? descriptionRegister,
+    HybridLogicalClock? descriptionTimestamp,
     List<RoomEntityLink>? entityLinks,
     CrdtOrSet<RoomEntityLink>? entityLinksCrdt,
     List<EntityInstance> entityInstances = const [],
@@ -653,7 +783,35 @@ class RoomNodeState {
     this.activeEncounter = const CrdtOrSet<EncounterParticipant>.empty(),
     this.activeMinions = const CrdtOrSet<dynamic>.empty(),
     Map<String, dynamic> customProperties = const {},
-  })  : entityLinksCrdt = entityLinksCrdt ??
+  })  : titleRegister = titleRegister ??
+            (titleTimestamp != null
+                ? CrdtLwwRegister<String>(
+                    value: title ?? '',
+                    timestamp: titleTimestamp,
+                  )
+                : CrdtLwwRegister<String>(
+                    value: title ?? '',
+                    timestamp: const HybridLogicalClock(
+                      physicalTime: 0,
+                      logicalCounter: 0,
+                      nodeId: 'genesis',
+                    ),
+                  )),
+        descriptionRegister = descriptionRegister ??
+            (descriptionTimestamp != null
+                ? CrdtLwwRegister<String>(
+                    value: description ?? '',
+                    timestamp: descriptionTimestamp,
+                  )
+                : CrdtLwwRegister<String>(
+                    value: description ?? '',
+                    timestamp: const HybridLogicalClock(
+                      physicalTime: 0,
+                      logicalCounter: 0,
+                      nodeId: 'genesis',
+                    ),
+                  )),
+        entityLinksCrdt = entityLinksCrdt ??
             (entityLinks != null && entityLinks.isNotEmpty
                 ? _buildInitialLinksCrdt(entityLinks)
                 : const CrdtOrSet<RoomEntityLink>.empty()),
@@ -664,8 +822,22 @@ class RoomNodeState {
   const RoomNodeState.empty()
       : roomId = '',
         roomCode = '',
-        title = '',
-        description = '',
+        titleRegister = const CrdtLwwRegister<String>(
+          value: '',
+          timestamp: HybridLogicalClock(
+            physicalTime: 0,
+            logicalCounter: 0,
+            nodeId: 'genesis',
+          ),
+        ),
+        descriptionRegister = const CrdtLwwRegister<String>(
+          value: '',
+          timestamp: HybridLogicalClock(
+            physicalTime: 0,
+            logicalCounter: 0,
+            nodeId: 'genesis',
+          ),
+        ),
         entityLinksCrdt = const CrdtOrSet<RoomEntityLink>.empty(),
         entityInstances = const [],
         containers = const [],
@@ -694,8 +866,10 @@ class RoomNodeState {
   factory RoomNodeState.fromLists({
     required String roomId,
     required String roomCode,
-    required String title,
-    String description = '',
+    String? title,
+    CrdtLwwRegister<String>? titleRegister,
+    String? description,
+    CrdtLwwRegister<String>? descriptionRegister,
     List<RoomEntityLink> entityLinks = const [],
     CrdtOrSet<RoomEntityLink>? entityLinksCrdt,
     List<EntityInstance> entityInstances = const [],
@@ -737,7 +911,9 @@ class RoomNodeState {
       roomId: roomId,
       roomCode: roomCode,
       title: title,
+      titleRegister: titleRegister,
       description: description,
+      descriptionRegister: descriptionRegister,
       entityLinks: entityLinks,
       entityLinksCrdt: entityLinksCrdt,
       entityInstances: entityInstances,
@@ -752,7 +928,11 @@ class RoomNodeState {
     String? roomId,
     String? roomCode,
     String? title,
+    CrdtLwwRegister<String>? titleRegister,
+    HybridLogicalClock? titleTimestamp,
     String? description,
+    CrdtLwwRegister<String>? descriptionRegister,
+    HybridLogicalClock? descriptionTimestamp,
     List<RoomEntityLink>? entityLinks,
     CrdtOrSet<RoomEntityLink>? entityLinksCrdt,
     List<EntityInstance>? entityInstances,
@@ -761,6 +941,40 @@ class RoomNodeState {
     CrdtOrSet<dynamic>? activeMinions,
     Map<String, dynamic>? customProperties,
   }) {
+    final CrdtLwwRegister<String> resolvedTitleRegister;
+    if (titleRegister != null) {
+      resolvedTitleRegister = titleRegister;
+    } else if (title != null) {
+      if (titleTimestamp == null) {
+        throw ArgumentError(
+          'Updating title via copyWith requires an authoritative titleTimestamp stamped by StatefulHlcClock.',
+        );
+      }
+      resolvedTitleRegister = CrdtLwwRegister<String>(
+        value: title,
+        timestamp: titleTimestamp,
+      );
+    } else {
+      resolvedTitleRegister = this.titleRegister;
+    }
+
+    final CrdtLwwRegister<String> resolvedDescRegister;
+    if (descriptionRegister != null) {
+      resolvedDescRegister = descriptionRegister;
+    } else if (description != null) {
+      if (descriptionTimestamp == null) {
+        throw ArgumentError(
+          'Updating description via copyWith requires an authoritative descriptionTimestamp stamped by StatefulHlcClock.',
+        );
+      }
+      resolvedDescRegister = CrdtLwwRegister<String>(
+        value: description,
+        timestamp: descriptionTimestamp,
+      );
+    } else {
+      resolvedDescRegister = this.descriptionRegister;
+    }
+
     final effectiveLinks = entityLinksCrdt ??
         (entityLinks != null
             ? _buildInitialLinksCrdt(entityLinks)
@@ -769,8 +983,8 @@ class RoomNodeState {
     return RoomNodeState(
       roomId: roomId ?? this.roomId,
       roomCode: roomCode ?? this.roomCode,
-      title: title ?? this.title,
-      description: description ?? this.description,
+      titleRegister: resolvedTitleRegister,
+      descriptionRegister: resolvedDescRegister,
       entityLinksCrdt: effectiveLinks,
       entityInstances: entityInstances ?? this.entityInstances,
       containers: containers ?? this.containers,
@@ -784,7 +998,15 @@ class RoomNodeState {
         'roomId': roomId,
         'roomCode': roomCode,
         'title': title,
+        'titleRegister': {
+          'value': titleRegister.value,
+          'timestamp': titleRegister.timestamp.toMap(),
+        },
         'description': description,
+        'descriptionRegister': {
+          'value': descriptionRegister.value,
+          'timestamp': descriptionRegister.timestamp.toMap(),
+        },
         'entityLinks': entityLinks.map((e) => e.toMap()).toList(),
         'entityLinks_crdt': entityLinksCrdt.toMap((e) => e.toMap()),
         if (entityInstances.isNotEmpty)
@@ -798,16 +1020,52 @@ class RoomNodeState {
             .toList(),
         'activeMinions_crdt': activeMinions
             .toMap((m) => m is Map ? m : (m as dynamic).toMap()),
-        'customProperties': customProperties,
+        if (customProperties.isNotEmpty)
+          'customProperties': customProperties,
       };
 
-  factory RoomNodeState.fromMap(
-    Map<String, dynamic> map, {
-    dynamic Function(Map<String, dynamic>)? minionParser,
-  }) {
-    final parser = minionParser ?? defaultMinionParser ?? (m) => deepFreezeMap(m);
+  factory RoomNodeState.fromMap(Map<String, dynamic> map,
+      {dynamic Function(Map<String, dynamic>)? minionParser}) {
+    final parser = minionParser ?? defaultMinionParser ?? (m) => m;
 
-    CrdtOrSet<RoomEntityLink> linksSet = const CrdtOrSet<RoomEntityLink>.empty();
+    final CrdtLwwRegister<String> titleReg;
+    if (map.containsKey('titleRegister') && map['titleRegister'] is Map) {
+      final rawTitleReg = map['titleRegister'] as Map;
+      titleReg = CrdtLwwRegister<String>(
+        value: rawTitleReg['value']?.toString() ?? '',
+        timestamp: HybridLogicalClock.fromMap(rawTitleReg['timestamp'] as Map),
+      );
+    } else {
+      titleReg = CrdtLwwRegister<String>(
+        value: map['title']?.toString() ?? '',
+        timestamp: const HybridLogicalClock(
+          physicalTime: 0,
+          logicalCounter: 0,
+          nodeId: 'genesis',
+        ),
+      );
+    }
+
+    final CrdtLwwRegister<String> descReg;
+    if (map.containsKey('descriptionRegister') && map['descriptionRegister'] is Map) {
+      final rawDescReg = map['descriptionRegister'] as Map;
+      descReg = CrdtLwwRegister<String>(
+        value: rawDescReg['value']?.toString() ?? '',
+        timestamp: HybridLogicalClock.fromMap(rawDescReg['timestamp'] as Map),
+      );
+    } else {
+      descReg = CrdtLwwRegister<String>(
+        value: map['description']?.toString() ?? '',
+        timestamp: const HybridLogicalClock(
+          physicalTime: 0,
+          logicalCounter: 0,
+          nodeId: 'genesis',
+        ),
+      );
+    }
+
+    CrdtOrSet<RoomEntityLink> linksSet =
+        const CrdtOrSet<RoomEntityLink>.empty();
     if (map.containsKey('entityLinks_crdt')) {
       final rawCrdt = map['entityLinks_crdt'];
       if (rawCrdt is! Map) {
@@ -981,8 +1239,8 @@ class RoomNodeState {
     return RoomNodeState(
       roomId: map['roomId']?.toString() ?? '',
       roomCode: map['roomCode']?.toString() ?? '',
-      title: map['title']?.toString() ?? '',
-      description: map['description']?.toString() ?? '',
+      titleRegister: titleReg,
+      descriptionRegister: descReg,
       entityLinksCrdt: linksSet,
       entityInstances: entityInstances,
       containers: (map['containers'] as List? ?? [])
@@ -1014,16 +1272,8 @@ class RoomNodeState {
       b.roomCode,
       fieldName: 'RoomNodeState.roomCode',
     );
-    final mergedTitle = joinUnversionedString(
-      a.title,
-      b.title,
-      fieldName: 'RoomNodeState.title',
-    );
-    final mergedDescription = joinUnversionedString(
-      a.description,
-      b.description,
-      fieldName: 'RoomNodeState.description',
-    );
+    final mergedTitle = a.titleRegister.merge(b.titleRegister);
+    final mergedDescription = a.descriptionRegister.merge(b.descriptionRegister);
 
     // 1. Nested CRDT sets: pure OR-Set join
     final mergedMinions = a.activeMinions.merge(b.activeMinions);
@@ -1046,8 +1296,8 @@ class RoomNodeState {
     return RoomNodeState(
       roomId: mergedRoomId,
       roomCode: mergedRoomCode,
-      title: mergedTitle,
-      description: mergedDescription,
+      titleRegister: mergedTitle,
+      descriptionRegister: mergedDescription,
       entityLinksCrdt: mergedLinks,
       entityInstances: mergedInstances,
       containers: mergedContainers,
@@ -1067,8 +1317,8 @@ class RoomNodeState {
           runtimeType == other.runtimeType &&
           roomId == other.roomId &&
           roomCode == other.roomCode &&
-          title == other.title &&
-          description == other.description &&
+          titleRegister == other.titleRegister &&
+          descriptionRegister == other.descriptionRegister &&
           entityLinksCrdt == other.entityLinksCrdt &&
           _deepEquality.equals(entityInstances, other.entityInstances) &&
           _deepEquality.equals(containers, other.containers) &&
@@ -1080,8 +1330,8 @@ class RoomNodeState {
   int get hashCode => Object.hash(
         roomId,
         roomCode,
-        title,
-        description,
+        titleRegister,
+        descriptionRegister,
         entityLinksCrdt,
         _deepEquality.hash(entityInstances),
         _deepEquality.hash(containers),

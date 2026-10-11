@@ -307,17 +307,23 @@ void main() {
       expect(joinAbThenC.partyCharacterIds, contains('wizard-1'));
     });
 
-    test('Randomized Aggregate Law Tests over 100 deterministic iterations with deletions', () {
+    test('Randomized Aggregate Law Tests over 100 deterministic iterations with deletions and scalar mutations', () {
       final rng = Random(424242);
 
       for (var iter = 0; iter < 100; iter++) {
         final seed = rng.nextInt(1000000);
         final subRng = Random(seed);
 
-        final linkBase = RoomEntityLink(entityId: 'link_base', displayName: 'Base Link');
+        final linkBase = RoomEntityLink(
+          entityId: 'link_base',
+          displayName: 'Base Link',
+          notes: 'Genesis Link Notes',
+          notesTimestamp: const HybridLogicalClock(physicalTime: 1000, logicalCounter: 0, nodeId: 'genesis'),
+        );
         final base = CampaignProfile.raw(
           id: 'camp_test',
           name: 'Randomized Campaign',
+          nameTimestamp: const HybridLogicalClock(physicalTime: 1000, logicalCounter: 0, nodeId: 'genesis'),
           edition: const RulesetIdentifier('generic_tabletop'),
           createdAt: DateTime.utc(2026, 1, 1),
           lastPlayedAt: DateTime.utc(2026, 1, 1),
@@ -325,6 +331,9 @@ void main() {
             roomId: 'room_test',
             roomCode: 'RC-TEST',
             title: 'Base Room',
+            titleTimestamp: const HybridLogicalClock(physicalTime: 1000, logicalCounter: 0, nodeId: 'genesis'),
+            description: 'Base Description',
+            descriptionTimestamp: const HybridLogicalClock(physicalTime: 1000, logicalCounter: 0, nodeId: 'genesis'),
             entityLinks: [linkBase],
             customProperties: {'seed': seed},
           ),
@@ -337,34 +346,51 @@ void main() {
           pinnedRuleIds: const {'base_rule', 'unpin_target'},
         );
 
-        // Replica A unpins 'unpin_target' and unbinds 'link_base'
-        final repA = ReplicaId('rep_a_$iter');
+        // Replica A unpins 'unpin_target' and unbinds 'link_base', may mutate name, title, description
+        final repA = ReplicaId('rep_a_');
         final unpinHlc = HybridLogicalClock(physicalTime: 1100 + iter, logicalCounter: 1, nodeId: repA.value);
+        final mutateNameA = subRng.nextBool();
+        final mutateTitleA = subRng.nextBool();
+        final mutateDescA = subRng.nextBool();
+
         var branchA = base.copyWith(
+          name: mutateNameA ? 'Campaign A ' : base.name,
+          nameTimestamp: mutateNameA ? unpinHlc : base.nameRegister.timestamp,
           partyPurse: base.partyPurse.modifyDenomination('gold', subRng.nextInt(50) + 1, replicaId: repA),
           notesRegister: CrdtLwwRegister<String>(
-            value: 'Notes A $iter',
+            value: 'Notes A ',
             timestamp: unpinHlc,
           ),
           pinnedRules: base.pinnedRules.remove('unpin_target', unpinHlc),
-          partyRoster: base.partyRoster.add('c_a_$iter', 'c_a_$iter', unpinHlc),
+          partyRoster: base.partyRoster.add('c_a_', 'c_a_', unpinHlc),
           roomState: base.roomState.copyWith(
+            title: mutateTitleA ? 'Room Title A ' : base.roomState.title,
+            titleTimestamp: mutateTitleA ? unpinHlc : base.roomState.titleRegister.timestamp,
+            description: mutateDescA ? 'Room Desc A ' : base.roomState.description,
+            descriptionTimestamp: mutateDescA ? unpinHlc : base.roomState.descriptionRegister.timestamp,
             entityLinksCrdt: base.roomState.entityLinksCrdt.remove('link_base', unpinHlc),
             customProperties: {'seed': seed, 'a_prop': iter},
           ),
         );
 
-        // Replica B removes 'c_extra' via changelog
-        final repB = ReplicaId('rep_b_$iter');
+        // Replica B removes 'c_extra' via changelog, may mutate name, title, description
+        final repB = ReplicaId('rep_b_');
+        final hlcB = HybridLogicalClock(physicalTime: 1200 + iter, logicalCounter: 1, nodeId: repB.value);
+        final mutateNameB = subRng.nextBool();
+        final mutateTitleB = subRng.nextBool();
+        final mutateDescB = subRng.nextBool();
+
         var branchB = base.copyWith(
+          name: mutateNameB ? 'Campaign B ' : base.name,
+          nameTimestamp: mutateNameB ? hlcB : base.nameRegister.timestamp,
           partyPurse: base.partyPurse.modifyDenomination('silver', subRng.nextInt(50) + 1, replicaId: repB),
           notesRegister: CrdtLwwRegister<String>(
-            value: 'Notes B $iter',
-            timestamp: HybridLogicalClock(physicalTime: 1200 + iter, logicalCounter: 1, nodeId: repB.value),
+            value: 'Notes B ',
+            timestamp: hlcB,
           ),
           changeLog: [
             PartyEvent(
-              id: 'ev_rm_$iter',
+              id: 'ev_rm_',
               roomCode: 'RC-TEST',
               type: 'characterRemove',
               playerName: 'B',
@@ -373,44 +399,105 @@ void main() {
               timestamp: DateTime.utc(2026, 1, 1, iter ~/ 60, iter % 60),
             ),
           ],
-          partyRoster: base.partyRoster.remove('c_extra', HybridLogicalClock(physicalTime: 1200 + iter, logicalCounter: 1, nodeId: repB.value)).add('c_b_$iter', 'c_b_$iter', HybridLogicalClock(physicalTime: 1200 + iter, logicalCounter: 1, nodeId: repB.value)),
+          partyRoster: base.partyRoster.remove('c_extra', hlcB).add('c_b_', 'c_b_', hlcB),
           roomState: base.roomState.copyWith(
+            title: mutateTitleB ? 'Room Title B ' : base.roomState.title,
+            titleTimestamp: mutateTitleB ? hlcB : base.roomState.titleRegister.timestamp,
+            description: mutateDescB ? 'Room Desc B ' : base.roomState.description,
+            descriptionTimestamp: mutateDescB ? hlcB : base.roomState.descriptionRegister.timestamp,
             customProperties: {'seed': seed, 'b_prop': iter},
           ),
         );
 
-        // Replica C adds a new rule and link
-        final repC = ReplicaId('rep_c_$iter');
+        // Replica C adds a new rule and link, may mutate name, title, description
+        final repC = ReplicaId('rep_c_');
         final addHlc = HybridLogicalClock(physicalTime: 1300 + iter, logicalCounter: 1, nodeId: repC.value);
-        final newLink = RoomEntityLink(entityId: 'link_c_$iter', displayName: 'Link C');
+        final newLink = RoomEntityLink(
+          entityId: 'link_c_',
+          displayName: 'Link C',
+          notes: 'Notes C ',
+          notesTimestamp: addHlc,
+        );
+        final mutateNameC = subRng.nextBool();
+        final mutateTitleC = subRng.nextBool();
+        final mutateDescC = subRng.nextBool();
+
         var branchC = base.copyWith(
+          name: mutateNameC ? 'Campaign C ' : base.name,
+          nameTimestamp: mutateNameC ? addHlc : base.nameRegister.timestamp,
           partyPurse: base.partyPurse.modifyDenomination('copper', subRng.nextInt(50) + 1, replicaId: repC),
           notesRegister: CrdtLwwRegister<String>(
-            value: 'Notes C $iter',
+            value: 'Notes C ',
             timestamp: addHlc,
           ),
-          pinnedRules: base.pinnedRules.add('rule_c_$iter', 'rule_c_$iter', addHlc),
-          partyRoster: base.partyRoster.add('c_c_$iter', 'c_c_$iter', addHlc),
+          pinnedRules: base.pinnedRules.add('rule_c_', 'rule_c_', addHlc),
+          partyRoster: base.partyRoster.add('c_c_', 'c_c_', addHlc),
           roomState: base.roomState.copyWith(
-            entityLinksCrdt: base.roomState.entityLinksCrdt.add('link_c_$iter', newLink, addHlc),
+            title: mutateTitleC ? 'Room Title C ' : base.roomState.title,
+            titleTimestamp: mutateTitleC ? addHlc : base.roomState.titleRegister.timestamp,
+            description: mutateDescC ? 'Room Desc C ' : base.roomState.description,
+            descriptionTimestamp: mutateDescC ? addHlc : base.roomState.descriptionRegister.timestamp,
+            entityLinksCrdt: base.roomState.entityLinksCrdt.add('link_c_', newLink, addHlc),
             customProperties: {'seed': seed, 'c_prop': iter},
           ),
         );
 
         // 1. Idempotence: join(A, A) == A
         final idempA = CampaignProfile.join(branchA, branchA);
-        expect(idempA, equals(branchA), reason: 'Idempotence failed at iter $iter with seed $seed');
+        expect(idempA, equals(branchA), reason: 'Idempotence failed at iter  with seed ');
 
         // 2. Commutativity: join(A, B) == join(B, A)
         final joinAB = CampaignProfile.join(branchA, branchB);
         final joinBA = CampaignProfile.join(branchB, branchA);
-        expect(joinAB, equals(joinBA), reason: 'Commutativity failed at iter $iter with seed $seed');
+        expect(joinAB, equals(joinBA), reason: 'Commutativity failed at iter  with seed ');
+
+        // Repeated join convergence
+        final repeatedJoinAB = CampaignProfile.join(joinAB, branchB);
+        expect(repeatedJoinAB, equals(joinAB), reason: 'Repeated join idempotence failed at iter ');
 
         // 3. Associativity: join(join(A, B), C) == join(A, join(B, C))
         final joinAbThenC = CampaignProfile.join(joinAB, branchC);
         final joinBC = CampaignProfile.join(branchB, branchC);
         final joinAThenBc = CampaignProfile.join(branchA, joinBC);
-        expect(joinAbThenC, equals(joinAThenBc), reason: 'Associativity failed at iter $iter with seed $seed');
+        expect(joinAbThenC, equals(joinAThenBc), reason: 'Associativity failed at iter  with seed ');
+
+        // Reconnection permutations: (B+C)+A and (C+A)+B must converge identically
+        final joinCaThenB = CampaignProfile.join(CampaignProfile.join(branchC, branchA), branchB);
+        final joinBcThenA = CampaignProfile.join(joinBC, branchA);
+        expect(joinCaThenB, equals(joinAbThenC), reason: 'Reconnection permutation (C+A)+B failed at iter ');
+        expect(joinBcThenA, equals(joinAbThenC), reason: 'Reconnection permutation (B+C)+A failed at iter ');
+
+        // Verify single-writer / LWW propagation for scalar fields:
+        // C has highest HLC (1300 + iter), then B (1200 + iter), then A (1100 + iter).
+        if (mutateNameC) {
+          expect(joinAbThenC.name, equals('Campaign C '));
+        } else if (mutateNameB) {
+          expect(joinAbThenC.name, equals('Campaign B '));
+        } else if (mutateNameA) {
+          expect(joinAbThenC.name, equals('Campaign A '));
+        } else {
+          expect(joinAbThenC.name, equals(base.name));
+        }
+
+        if (mutateTitleC) {
+          expect(joinAbThenC.roomState.title, equals('Room Title C '));
+        } else if (mutateTitleB) {
+          expect(joinAbThenC.roomState.title, equals('Room Title B '));
+        } else if (mutateTitleA) {
+          expect(joinAbThenC.roomState.title, equals('Room Title A '));
+        } else {
+          expect(joinAbThenC.roomState.title, equals(base.roomState.title));
+        }
+
+        if (mutateDescC) {
+          expect(joinAbThenC.roomState.description, equals('Room Desc C '));
+        } else if (mutateDescB) {
+          expect(joinAbThenC.roomState.description, equals('Room Desc B '));
+        } else if (mutateDescA) {
+          expect(joinAbThenC.roomState.description, equals('Room Desc A '));
+        } else {
+          expect(joinAbThenC.roomState.description, equals(base.roomState.description));
+        }
 
         // Ensure intended deletions survived
         expect(joinAbThenC.pinnedRuleIds.contains('unpin_target'), isFalse);
