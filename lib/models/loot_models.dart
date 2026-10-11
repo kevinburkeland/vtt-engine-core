@@ -163,11 +163,24 @@ class LootContainer {
     );
 
     final CrdtLwwRegister<String> nameReg;
-    if (map.containsKey('nameRegister') && map['nameRegister'] is Map) {
-      final rawReg = map['nameRegister'] as Map;
+    if (map.containsKey('nameRegister')) {
+      final rawReg = map['nameRegister'];
+      if (rawReg is! Map) {
+        throw FormatException(
+          'LootContainer.fromMap: "nameRegister" must be a Map, got ${rawReg.runtimeType}',
+        );
+      }
+      final rawTs = rawReg['timestamp'] ?? rawReg['ts'];
+      if (rawTs is! Map) {
+        throw FormatException(
+          'LootContainer.fromMap: "nameRegister" missing or invalid timestamp: $rawTs',
+        );
+      }
+      final timestamp = HybridLogicalClock.fromMap(rawTs);
+      final rawVal = rawReg.containsKey('value') ? rawReg['value'] : rawReg['v'];
       nameReg = CrdtLwwRegister<String>(
-        value: rawReg['value']?.toString() ?? 'Chest',
-        timestamp: HybridLogicalClock.fromMap(rawReg['timestamp'] as Map),
+        value: rawVal?.toString() ?? 'Chest',
+        timestamp: timestamp,
       );
     } else {
       nameReg = CrdtLwwRegister<String>(

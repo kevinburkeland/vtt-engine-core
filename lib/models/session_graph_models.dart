@@ -169,11 +169,24 @@ class EntityInstance {
 
   factory EntityInstance.fromMap(Map<String, dynamic> map) {
     final CrdtLwwRegister<String> displayNameReg;
-    if (map.containsKey('displayNameRegister') && map['displayNameRegister'] is Map) {
-      final rawReg = map['displayNameRegister'] as Map;
+    if (map.containsKey('displayNameRegister')) {
+      final rawReg = map['displayNameRegister'];
+      if (rawReg is! Map) {
+        throw FormatException(
+          'EntityInstance.fromMap: "displayNameRegister" must be a Map, got ${rawReg.runtimeType}',
+        );
+      }
+      final rawTs = rawReg['timestamp'] ?? rawReg['ts'];
+      if (rawTs is! Map) {
+        throw FormatException(
+          'EntityInstance.fromMap: "displayNameRegister" missing or invalid timestamp: $rawTs',
+        );
+      }
+      final timestamp = HybridLogicalClock.fromMap(rawTs);
+      final rawVal = rawReg.containsKey('value') ? rawReg['value'] : rawReg['v'];
       displayNameReg = CrdtLwwRegister<String>(
-        value: rawReg['value']?.toString() ?? '',
-        timestamp: HybridLogicalClock.fromMap(rawReg['timestamp'] as Map),
+        value: rawVal?.toString() ?? '',
+        timestamp: timestamp,
       );
     } else {
       displayNameReg = CrdtLwwRegister<String>(
@@ -298,27 +311,46 @@ class EntityInstance {
 /// Contextual pointer linking characters, tokens, objects, or zones to a room or graph node
 @immutable
 class RoomEntityLink {
+  static const Object _sentinel = Object();
+
   final dynamic refType;
   final String entityId;
-  final String displayName;
+  final CrdtLwwRegister<String> displayNameRegister;
   final CrdtLwwRegister<String?> notesRegister;
   final Map<String, dynamic>? position; // e.g. {"x": 2, "y": 5}
   final bool isIsolatedClone; // If true, runtime modifications don't mutate parent template
   final Map<String, dynamic>? cloneRuntimeData;
 
+  String get displayName => displayNameRegister.value;
   String? get notes => notesRegister.value;
 
   RoomEntityLink({
     this.refType = const EntityCategory('generic', 'Generic'),
     required this.entityId,
-    required this.displayName,
+    String? displayName,
+    CrdtLwwRegister<String>? displayNameRegister,
+    HybridLogicalClock? displayNameTimestamp,
     String? notes,
     CrdtLwwRegister<String?>? notesRegister,
     HybridLogicalClock? notesTimestamp,
     Map<String, dynamic>? position,
     this.isIsolatedClone = false,
     Map<String, dynamic>? cloneRuntimeData,
-  })  : notesRegister = notesRegister ??
+  })  : displayNameRegister = displayNameRegister ??
+            (displayNameTimestamp != null
+                ? CrdtLwwRegister<String>(
+                    value: displayName ?? '',
+                    timestamp: displayNameTimestamp,
+                  )
+                : CrdtLwwRegister<String>(
+                    value: displayName ?? '',
+                    timestamp: const HybridLogicalClock(
+                      physicalTime: 0,
+                      logicalCounter: 0,
+                      nodeId: 'genesis',
+                    ),
+                  )),
+        notesRegister = notesRegister ??
             (notesTimestamp != null
                 ? CrdtLwwRegister<String?>(
                     value: notes,
@@ -339,7 +371,14 @@ class RoomEntityLink {
   const RoomEntityLink.empty()
       : refType = const EntityCategory('generic', 'Generic'),
         entityId = '',
-        displayName = '',
+        displayNameRegister = const CrdtLwwRegister<String>(
+          value: '',
+          timestamp: HybridLogicalClock(
+            physicalTime: 0,
+            logicalCounter: 0,
+            nodeId: 'genesis',
+          ),
+        ),
         notesRegister = const CrdtLwwRegister<String?>(
           value: null,
           timestamp: HybridLogicalClock(
@@ -356,17 +395,47 @@ class RoomEntityLink {
     dynamic refType,
     String? entityId,
     String? displayName,
-    String? notes,
+    CrdtLwwRegister<String>? displayNameRegister,
+    HybridLogicalClock? displayNameTimestamp,
+    Object? notes = _sentinel,
     CrdtLwwRegister<String?>? notesRegister,
     HybridLogicalClock? notesTimestamp,
+    bool clearNotes = false,
     Map<String, dynamic>? position,
     bool? isIsolatedClone,
     Map<String, dynamic>? cloneRuntimeData,
   }) {
+    final CrdtLwwRegister<String> resolvedDisplayNameRegister;
+    if (displayNameRegister != null) {
+      resolvedDisplayNameRegister = displayNameRegister;
+    } else if (displayName != null) {
+      if (displayNameTimestamp == null) {
+        throw ArgumentError(
+          'Updating displayName via copyWith requires an authoritative displayNameTimestamp stamped by StatefulHlcClock.',
+        );
+      }
+      resolvedDisplayNameRegister = CrdtLwwRegister<String>(
+        value: displayName,
+        timestamp: displayNameTimestamp,
+      );
+    } else {
+      resolvedDisplayNameRegister = this.displayNameRegister;
+    }
+
     final CrdtLwwRegister<String?> resolvedNotesRegister;
     if (notesRegister != null) {
       resolvedNotesRegister = notesRegister;
-    } else if (notes != null) {
+    } else if (clearNotes || (notes != _sentinel && notes == null)) {
+      if (notesTimestamp == null) {
+        throw ArgumentError(
+          'Clearing notes via copyWith requires an authoritative notesTimestamp stamped by StatefulHlcClock.',
+        );
+      }
+      resolvedNotesRegister = CrdtLwwRegister<String?>(
+        value: null,
+        timestamp: notesTimestamp,
+      );
+    } else if (notes != _sentinel && notes is String) {
       if (notesTimestamp == null) {
         throw ArgumentError(
           'Updating notes via copyWith requires an authoritative notesTimestamp stamped by StatefulHlcClock.',
@@ -383,7 +452,7 @@ class RoomEntityLink {
     return RoomEntityLink(
       refType: refType ?? this.refType,
       entityId: entityId ?? this.entityId,
-      displayName: displayName ?? this.displayName,
+      displayNameRegister: resolvedDisplayNameRegister,
       notesRegister: resolvedNotesRegister,
       position: position ?? this.position,
       isIsolatedClone: isIsolatedClone ?? this.isIsolatedClone,
@@ -418,14 +487,18 @@ class RoomEntityLink {
         'refType': canonicalRefTypeKey(refType),
         'entityId': entityId,
         'displayName': displayName,
-        'notes': notes,
+        'displayNameRegister': {
+          'value': displayNameRegister.value,
+          'timestamp': displayNameRegister.timestamp.toMap(),
+        },
+        if (notes != null) 'notes': notes,
         'notesRegister': {
           'value': notesRegister.value,
           'timestamp': notesRegister.timestamp.toMap(),
         },
-        'position': position,
-        'isIsolatedClone': isIsolatedClone,
-        'cloneRuntimeData': cloneRuntimeData,
+        if (position != null) 'position': position,
+        if (isIsolatedClone) 'isIsolatedClone': true,
+        if (cloneRuntimeData != null) 'cloneRuntimeData': cloneRuntimeData,
       };
 
   factory RoomEntityLink.fromMap(Map<String, dynamic> map,
@@ -435,12 +508,56 @@ class RoomEntityLink {
         ? refTypeResolver(typeStr)
         : EntityCategory(typeStr, typeStr);
 
+    final CrdtLwwRegister<String> displayNameReg;
+    if (map.containsKey('displayNameRegister')) {
+      final rawReg = map['displayNameRegister'];
+      if (rawReg is! Map) {
+        throw FormatException(
+          'RoomEntityLink.fromMap: "displayNameRegister" must be a Map, got ${rawReg.runtimeType}',
+        );
+      }
+      final rawTs = rawReg['timestamp'] ?? rawReg['ts'];
+      if (rawTs is! Map) {
+        throw FormatException(
+          'RoomEntityLink.fromMap: "displayNameRegister" missing or invalid timestamp: $rawTs',
+        );
+      }
+      final timestamp = HybridLogicalClock.fromMap(rawTs);
+      final rawVal = rawReg.containsKey('value') ? rawReg['value'] : rawReg['v'];
+      displayNameReg = CrdtLwwRegister<String>(
+        value: rawVal?.toString() ?? '',
+        timestamp: timestamp,
+      );
+    } else {
+      displayNameReg = CrdtLwwRegister<String>(
+        value: map['displayName']?.toString() ?? '',
+        timestamp: const HybridLogicalClock(
+          physicalTime: 0,
+          logicalCounter: 0,
+          nodeId: 'genesis',
+        ),
+      );
+    }
+
     final CrdtLwwRegister<String?> notesReg;
-    if (map.containsKey('notesRegister') && map['notesRegister'] is Map) {
-      final rawReg = map['notesRegister'] as Map;
+    if (map.containsKey('notesRegister')) {
+      final rawReg = map['notesRegister'];
+      if (rawReg is! Map) {
+        throw FormatException(
+          'RoomEntityLink.fromMap: "notesRegister" must be a Map, got ${rawReg.runtimeType}',
+        );
+      }
+      final rawTs = rawReg['timestamp'] ?? rawReg['ts'];
+      if (rawTs is! Map) {
+        throw FormatException(
+          'RoomEntityLink.fromMap: "notesRegister" missing or invalid timestamp: $rawTs',
+        );
+      }
+      final timestamp = HybridLogicalClock.fromMap(rawTs);
+      final rawVal = rawReg.containsKey('value') ? rawReg['value'] : rawReg['v'];
       notesReg = CrdtLwwRegister<String?>(
-        value: rawReg['value']?.toString(),
-        timestamp: HybridLogicalClock.fromMap(rawReg['timestamp'] as Map),
+        value: rawVal?.toString(),
+        timestamp: timestamp,
       );
     } else {
       notesReg = CrdtLwwRegister<String?>(
@@ -456,7 +573,7 @@ class RoomEntityLink {
     return RoomEntityLink(
       refType: resolvedRefType,
       entityId: map['entityId']?.toString() ?? '',
-      displayName: map['displayName']?.toString() ?? '',
+      displayNameRegister: displayNameReg,
       notesRegister: notesReg,
       position: map['position'] != null
           ? Map<String, dynamic>.from(map['position'] as Map)
@@ -495,12 +612,7 @@ class RoomEntityLink {
       );
     }
 
-    final mergedDisplayName = joinUnversionedString(
-      a.displayName,
-      b.displayName,
-      fieldName: 'RoomEntityLink.displayName',
-    );
-
+    final mergedDisplayName = a.displayNameRegister.merge(b.displayNameRegister);
     final mergedNotes = a.notesRegister.merge(b.notesRegister);
 
     final mergedPosition = joinNullableMap(
@@ -518,7 +630,7 @@ class RoomEntityLink {
     return RoomEntityLink(
       refType: a.refType,
       entityId: mergedEntityId,
-      displayName: mergedDisplayName,
+      displayNameRegister: mergedDisplayName,
       notesRegister: mergedNotes,
       position: mergedPosition,
       isIsolatedClone: a.isIsolatedClone,
@@ -536,7 +648,7 @@ class RoomEntityLink {
           runtimeType == other.runtimeType &&
           canonicalRefTypeKey(refType) == canonicalRefTypeKey(other.refType) &&
           entityId == other.entityId &&
-          displayName == other.displayName &&
+          displayNameRegister == other.displayNameRegister &&
           notesRegister == other.notesRegister &&
           _deepEquality.equals(position, other.position) &&
           isIsolatedClone == other.isIsolatedClone &&
@@ -546,7 +658,7 @@ class RoomEntityLink {
   int get hashCode => Object.hash(
         canonicalRefTypeKey(refType),
         entityId,
-        displayName,
+        displayNameRegister,
         notesRegister,
         _deepEquality.hash(position),
         isIsolatedClone,
@@ -1029,11 +1141,24 @@ class RoomNodeState {
     final parser = minionParser ?? defaultMinionParser ?? (m) => m;
 
     final CrdtLwwRegister<String> titleReg;
-    if (map.containsKey('titleRegister') && map['titleRegister'] is Map) {
-      final rawTitleReg = map['titleRegister'] as Map;
+    if (map.containsKey('titleRegister')) {
+      final rawTitleReg = map['titleRegister'];
+      if (rawTitleReg is! Map) {
+        throw FormatException(
+          'RoomNodeState.fromMap: "titleRegister" must be a Map, got ${rawTitleReg.runtimeType}',
+        );
+      }
+      final rawTs = rawTitleReg['timestamp'] ?? rawTitleReg['ts'];
+      if (rawTs is! Map) {
+        throw FormatException(
+          'RoomNodeState.fromMap: "titleRegister" missing or invalid timestamp: $rawTs',
+        );
+      }
+      final timestamp = HybridLogicalClock.fromMap(rawTs);
+      final rawVal = rawTitleReg.containsKey('value') ? rawTitleReg['value'] : rawTitleReg['v'];
       titleReg = CrdtLwwRegister<String>(
-        value: rawTitleReg['value']?.toString() ?? '',
-        timestamp: HybridLogicalClock.fromMap(rawTitleReg['timestamp'] as Map),
+        value: rawVal?.toString() ?? '',
+        timestamp: timestamp,
       );
     } else {
       titleReg = CrdtLwwRegister<String>(
@@ -1047,11 +1172,24 @@ class RoomNodeState {
     }
 
     final CrdtLwwRegister<String> descReg;
-    if (map.containsKey('descriptionRegister') && map['descriptionRegister'] is Map) {
-      final rawDescReg = map['descriptionRegister'] as Map;
+    if (map.containsKey('descriptionRegister')) {
+      final rawDescReg = map['descriptionRegister'];
+      if (rawDescReg is! Map) {
+        throw FormatException(
+          'RoomNodeState.fromMap: "descriptionRegister" must be a Map, got ${rawDescReg.runtimeType}',
+        );
+      }
+      final rawTs = rawDescReg['timestamp'] ?? rawDescReg['ts'];
+      if (rawTs is! Map) {
+        throw FormatException(
+          'RoomNodeState.fromMap: "descriptionRegister" missing or invalid timestamp: $rawTs',
+        );
+      }
+      final timestamp = HybridLogicalClock.fromMap(rawTs);
+      final rawVal = rawDescReg.containsKey('value') ? rawDescReg['value'] : rawDescReg['v'];
       descReg = CrdtLwwRegister<String>(
-        value: rawDescReg['value']?.toString() ?? '',
-        timestamp: HybridLogicalClock.fromMap(rawDescReg['timestamp'] as Map),
+        value: rawVal?.toString() ?? '',
+        timestamp: timestamp,
       );
     } else {
       descReg = CrdtLwwRegister<String>(
