@@ -1,5 +1,7 @@
 import 'package:collection/collection.dart';
+import '../crdt/crdt_lww_register.dart';
 import '../crdt/crdt_or_set.dart';
+import '../crdt/hybrid_logical_clock.dart';
 import '../models/loot_models.dart';
 import '../models/party_event.dart';
 import '../models/session_graph_models.dart';
@@ -159,12 +161,83 @@ CrdtOrSet<String> joinPinnedRules(
   return a.merge(b);
 }
 
-/// Symmetrically merges two [CrdtOrSet<RoomEntityLink>] collections.
+/// Symmetrically merges two [CrdtOrSet<RoomEntityLink>] collections with recursive
+/// nested CRDT composition for surviving [RoomEntityLink] payloads with identical entityId.
+///
+/// 1. Evaluates authoritative membership, tombstones, and re-adds according to OR-set semantics.
+/// 2. If both sides contain surviving [RoomEntityLink] items for the same entityId,
+///    recursively merges the link payloads via [RoomEntityLink.join], preserving independent
+///    nested field edits (such as [displayNameRegister] and [notesRegister]).
+/// 3. Assigns the maximum surviving item timestamp to the merged link item, deterministically
+///    preserving OR-set causal ordering.
+/// 4. Preserves commutativity, associativity, and idempotence across all valid states.
 CrdtOrSet<RoomEntityLink> joinEntityLinks(
   CrdtOrSet<RoomEntityLink> a,
   CrdtOrSet<RoomEntityLink> b,
 ) {
-  return a.merge(b);
+  if (identical(a, b)) return a;
+
+  final allIds = <String>{
+    ...a.items.keys,
+    ...a.tombstones.keys,
+    ...b.items.keys,
+    ...b.tombstones.keys,
+  };
+
+  final mergedItems = <String, CrdtLwwRegister<RoomEntityLink>>{};
+  final mergedTombstones = <String, HybridLogicalClock>{};
+
+  for (final id in allIds) {
+    final localItem = a.items[id];
+    final remoteItem = b.items[id];
+    final localTomb = a.tombstones[id];
+    final remoteTomb = b.tombstones[id];
+
+    // 1. Resolve candidate tombstone across both sets
+    HybridLogicalClock? candidateTomb;
+    if (localTomb != null && remoteTomb != null) {
+      candidateTomb = localTomb.isAfter(remoteTomb) ? localTomb : remoteTomb;
+    } else {
+      candidateTomb = localTomb ?? remoteTomb;
+    }
+
+    // 2. Resolve candidate item:
+    // If both sides contain an item, recursively merge payloads via RoomEntityLink.join
+    // and take the max surviving item timestamp.
+    CrdtLwwRegister<RoomEntityLink>? candidateItem;
+    if (localItem != null && remoteItem != null) {
+      final mergedLink = RoomEntityLink.join(localItem.value, remoteItem.value);
+      final winningTs = localItem.timestamp.isAfter(remoteItem.timestamp)
+          ? localItem.timestamp
+          : remoteItem.timestamp;
+      candidateItem = CrdtLwwRegister<RoomEntityLink>(
+        value: mergedLink,
+        timestamp: winningTs,
+      );
+    } else {
+      candidateItem = localItem ?? remoteItem;
+    }
+
+    // 3. Reconcile candidate item vs candidate tombstone under ADD-WINS
+    if (candidateItem != null && candidateTomb != null) {
+      if (!candidateTomb.isAfter(candidateItem.timestamp)) {
+        // candidateItem.timestamp >= candidateTomb -> ADD WINS!
+        mergedItems[id] = candidateItem;
+      } else {
+        // candidateTomb is strictly newer -> TOMBSTONE WINS!
+        mergedTombstones[id] = candidateTomb;
+      }
+    } else if (candidateItem != null) {
+      mergedItems[id] = candidateItem;
+    } else if (candidateTomb != null) {
+      mergedTombstones[id] = candidateTomb;
+    }
+  }
+
+  return CrdtOrSet<RoomEntityLink>(
+    items: mergedItems,
+    tombstones: mergedTombstones,
+  );
 }
 
 /// Merges two lists of [EntityInstance] by ID, recursively joining instances

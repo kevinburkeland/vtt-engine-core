@@ -177,9 +177,19 @@ class LootContainer {
         );
       }
       final timestamp = HybridLogicalClock.fromMap(rawTs);
+      if (!rawReg.containsKey('value') && !rawReg.containsKey('v')) {
+        throw const FormatException(
+          'LootContainer.fromMap: "nameRegister" missing "value" or "v" field.',
+        );
+      }
       final rawVal = rawReg.containsKey('value') ? rawReg['value'] : rawReg['v'];
+      if (rawVal == null) {
+        throw const FormatException(
+          'LootContainer.fromMap: "nameRegister" value cannot be null.',
+        );
+      }
       nameReg = CrdtLwwRegister<String>(
-        value: rawVal?.toString() ?? 'Chest',
+        value: rawVal.toString(),
         timestamp: timestamp,
       );
     } else {

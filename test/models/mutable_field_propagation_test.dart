@@ -6,7 +6,9 @@ import 'package:vtt_engine_core/crdt/crdt_lww_register.dart';
 import 'package:vtt_engine_core/models/aggregate_hlc_extractor.dart';
 import 'package:vtt_engine_core/models/campaign_profile.dart';
 import 'package:vtt_engine_core/models/loot_models.dart';
+import 'package:vtt_engine_core/crdt/crdt_or_set.dart';
 import 'package:vtt_engine_core/models/session_graph_models.dart';
+import 'package:vtt_engine_core/utils/aggregate_join_utils.dart';
 
 void main() {
   group('Cold Iron Birdcage — Pass 4.2: Mutable Field Propagation & Single-Writer Law', () {
@@ -849,6 +851,278 @@ void main() {
         // Omitting notes preserves existing notes
         final untouched = link.copyWith(entityId: "e2");
         expect(untouched.notes, equals("A note"));
+      });
+    });
+
+    group('8. Strict Register Value-Key Presence (Pass 4.2.2)', () {
+      final validHlcMap = {"pt": 1000, "lc": 0, "node": "n1"};
+
+      test('LootContainer.fromMap: timestamp without value/v key throws FormatException', () {
+        expect(
+          () => LootContainer.fromMap({
+            "containerId": "c1",
+            "nameRegister": {"timestamp": validHlcMap},
+          }),
+          throwsA(isA<FormatException>()),
+        );
+        expect(
+          () => LootContainer.fromMap({
+            "containerId": "c1",
+            "nameRegister": {"ts": validHlcMap},
+          }),
+          throwsA(isA<FormatException>()),
+        );
+        expect(
+          () => LootContainer.fromMap({
+            "containerId": "c1",
+            "nameRegister": {"timestamp": validHlcMap, "value": null},
+          }),
+          throwsA(isA<FormatException>()),
+        );
+      });
+
+      test('RoomNodeState.fromMap: titleRegister timestamp without value throws FormatException', () {
+        expect(
+          () => RoomNodeState.fromMap({
+            "roomId": "r1",
+            "titleRegister": {"timestamp": validHlcMap},
+          }),
+          throwsA(isA<FormatException>()),
+        );
+        expect(
+          () => RoomNodeState.fromMap({
+            "roomId": "r1",
+            "titleRegister": {"timestamp": validHlcMap, "value": null},
+          }),
+          throwsA(isA<FormatException>()),
+        );
+      });
+
+      test('RoomNodeState.fromMap: descriptionRegister timestamp without value throws FormatException', () {
+        expect(
+          () => RoomNodeState.fromMap({
+            "roomId": "r1",
+            "descriptionRegister": {"timestamp": validHlcMap},
+          }),
+          throwsA(isA<FormatException>()),
+        );
+        expect(
+          () => RoomNodeState.fromMap({
+            "roomId": "r1",
+            "descriptionRegister": {"timestamp": validHlcMap, "value": null},
+          }),
+          throwsA(isA<FormatException>()),
+        );
+      });
+
+      test('EntityInstance.fromMap: displayNameRegister timestamp without value throws FormatException', () {
+        expect(
+          () => EntityInstance.fromMap({
+            "instanceId": "i1",
+            "displayNameRegister": {"timestamp": validHlcMap},
+          }),
+          throwsA(isA<FormatException>()),
+        );
+        expect(
+          () => EntityInstance.fromMap({
+            "instanceId": "i1",
+            "displayNameRegister": {"timestamp": validHlcMap, "value": null},
+          }),
+          throwsA(isA<FormatException>()),
+        );
+      });
+
+      test('RoomEntityLink.fromMap: displayNameRegister timestamp without value throws FormatException', () {
+        expect(
+          () => RoomEntityLink.fromMap({
+            "entityId": "e1",
+            "displayNameRegister": {"timestamp": validHlcMap},
+          }),
+          throwsA(isA<FormatException>()),
+        );
+        expect(
+          () => RoomEntityLink.fromMap({
+            "entityId": "e1",
+            "displayNameRegister": {"timestamp": validHlcMap, "value": null},
+          }),
+          throwsA(isA<FormatException>()),
+        );
+      });
+
+      test('RoomEntityLink.fromMap: notesRegister distinguishes authoritative null from missing value', () {
+        // Missing value key throws FormatException
+        expect(
+          () => RoomEntityLink.fromMap({
+            "entityId": "e1",
+            "notesRegister": {"timestamp": validHlcMap},
+          }),
+          throwsA(isA<FormatException>()),
+        );
+        expect(
+          () => RoomEntityLink.fromMap({
+            "entityId": "e1",
+            "notesRegister": {"ts": validHlcMap},
+          }),
+          throwsA(isA<FormatException>()),
+        );
+
+        // Explicit "value": null is valid authoritative null
+        final linkWithNullValue = RoomEntityLink.fromMap({
+          "entityId": "e1",
+          "notesRegister": {"value": null, "timestamp": validHlcMap},
+        });
+        expect(linkWithNullValue.notes, isNull);
+        expect(linkWithNullValue.notesRegister.timestamp.physicalTime, equals(1000));
+
+        // Explicit "v": null is valid authoritative null
+        final linkWithNullV = RoomEntityLink.fromMap({
+          "entityId": "e1",
+          "notesRegister": {"v": null, "ts": validHlcMap},
+        });
+        expect(linkWithNullV.notes, isNull);
+        expect(linkWithNullV.notesRegister.timestamp.physicalTime, equals(1000));
+      });
+    });
+
+    group('9. joinEntityLinks Recursive Nested Composition & Algebra (Pass 4.2.2)', () {
+      const ts1000 = HybridLogicalClock(physicalTime: 1000, logicalCounter: 0, nodeId: "n1");
+      const ts2000 = HybridLogicalClock(physicalTime: 2000, logicalCounter: 0, nodeId: "nA");
+      const ts3000 = HybridLogicalClock(physicalTime: 3000, logicalCounter: 0, nodeId: "nB");
+      const ts4000 = HybridLogicalClock(physicalTime: 4000, logicalCounter: 0, nodeId: "nC");
+
+      final baseLink = RoomEntityLink(
+        entityId: "link-door",
+        displayName: "Door",
+        displayNameTimestamp: ts1000,
+        notes: "Locked",
+        notesTimestamp: ts1000,
+      );
+
+      test('Concurrent independent nested-field edits: both edits survive', () {
+        // Replica A edits displayName
+        final linkA = baseLink.copyWith(
+          displayName: "Secret Door",
+          displayNameTimestamp: ts2000,
+        );
+        final setA = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", linkA, ts2000);
+
+        // Replica B edits notes
+        final linkB = baseLink.copyWith(
+          notes: "Trapped",
+          notesTimestamp: ts3000,
+        );
+        final setB = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", linkB, ts3000);
+
+        final mergedAB = joinEntityLinks(setA, setB);
+        final mergedBA = joinEntityLinks(setB, setA);
+
+        expect(mergedAB, equals(mergedBA));
+        expect(mergedAB.items.containsKey("link-door"), isTrue);
+
+        final surviving = mergedAB.items["link-door"]!;
+        expect(surviving.timestamp, equals(ts3000)); // max(ts2000, ts3000)
+        expect(surviving.value.displayName, equals("Secret Door"));
+        expect(surviving.value.notes, equals("Trapped"));
+      });
+
+      test('Removal vs edit: newer removal defeats stale edit', () {
+        // Replica A edits at ts1000
+        final setA = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", baseLink, ts1000);
+
+        // Replica B removes at ts2000
+        final setB = const CrdtOrSet<RoomEntityLink>.empty()
+            .add("link-door", baseLink, ts1000)
+            .remove("link-door", ts2000);
+
+        final merged = joinEntityLinks(setA, setB);
+        expect(merged.items.containsKey("link-door"), isFalse);
+        expect(merged.tombstones["link-door"], equals(ts2000));
+      });
+
+      test('Newer re-add defeats older tombstone', () {
+        // Replica A had removed at ts1000
+        final setA = const CrdtOrSet<RoomEntityLink>.empty().remove("link-door", ts1000);
+
+        // Replica B re-added at ts2000
+        final setB = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", baseLink, ts2000);
+
+        final merged = joinEntityLinks(setA, setB);
+        expect(merged.items.containsKey("link-door"), isTrue);
+        expect(merged.items["link-door"]!.timestamp, equals(ts2000));
+      });
+
+      test('Newer edit after re-add is preserved', () {
+        // Set with re-add at ts2000, then edit at ts3000
+        final readdedLink = baseLink.copyWith(
+          displayName: "Dungeon Gate",
+          displayNameTimestamp: ts3000,
+        );
+        final setA = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", readdedLink, ts3000);
+        final setB = const CrdtOrSet<RoomEntityLink>.empty().remove("link-door", ts1000);
+
+        final merged = joinEntityLinks(setA, setB);
+        expect(merged.items["link-door"]!.value.displayName, equals("Dungeon Gate"));
+        expect(merged.items["link-door"]!.timestamp, equals(ts3000));
+      });
+
+      test('Exact-HLC divergent nested payload collision throws StateError', () {
+        final linkA = baseLink.copyWith(
+          displayName: "Iron Door",
+          displayNameTimestamp: ts2000,
+        );
+        final linkB = baseLink.copyWith(
+          displayName: "Wooden Door",
+          displayNameTimestamp: ts2000,
+        );
+        final setA = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", linkA, ts2000);
+        final setB = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", linkB, ts2000);
+
+        expect(() => joinEntityLinks(setA, setB), throwsA(isA<StateError>()));
+        expect(() => joinEntityLinks(setB, setA), throwsA(isA<StateError>()));
+      });
+
+      test('Algebra laws: Idempotence, Commutativity, Associativity', () {
+        final linkA = baseLink.copyWith(displayName: "A Door", displayNameTimestamp: ts2000);
+        final linkB = baseLink.copyWith(notes: "B Trap", notesTimestamp: ts3000);
+        final linkC = baseLink.copyWith(displayName: "C Portal", displayNameTimestamp: ts4000);
+
+        final setA = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", linkA, ts2000);
+        final setB = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", linkB, ts3000);
+        final setC = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", linkC, ts4000);
+
+        // Idempotence
+        expect(joinEntityLinks(setA, setA), equals(setA));
+        expect(joinEntityLinks(setB, setB), equals(setB));
+
+        // Commutativity
+        expect(joinEntityLinks(setA, setB), equals(joinEntityLinks(setB, setA)));
+        expect(joinEntityLinks(setB, setC), equals(joinEntityLinks(setC, setB)));
+        expect(joinEntityLinks(setA, setC), equals(joinEntityLinks(setC, setA)));
+
+        // Associativity
+        final ab_c = joinEntityLinks(joinEntityLinks(setA, setB), setC);
+        final a_bc = joinEntityLinks(setA, joinEntityLinks(setB, setC));
+        expect(ab_c, equals(a_bc));
+        expect(ab_c.items["link-door"]!.value.displayName, equals("C Portal"));
+        expect(ab_c.items["link-door"]!.value.notes, equals("B Trap"));
+      });
+
+      test('Permanent bar: joinEntityLinks cannot regress to opaque a.merge(b)', () {
+        final linkA = baseLink.copyWith(displayName: "Portcullis", displayNameTimestamp: ts2000);
+        final linkB = baseLink.copyWith(notes: "Electrified", notesTimestamp: ts3000);
+
+        final setA = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", linkA, ts2000);
+        final setB = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", linkB, ts3000);
+
+        // Generic a.merge(b) would drop linkA.displayName because ts3000 > ts2000
+        final opaqueResult = setA.merge(setB);
+        expect(opaqueResult.items["link-door"]!.value.displayName, equals("Door"),
+            reason: "Generic merge erroneously drops nested field edit");
+
+        // joinEntityLinks MUST preserve both
+        final properResult = joinEntityLinks(setA, setB);
+        expect(properResult.items["link-door"]!.value.displayName, equals("Portcullis"));
+        expect(properResult.items["link-door"]!.value.notes, equals("Electrified"));
       });
     });
   });

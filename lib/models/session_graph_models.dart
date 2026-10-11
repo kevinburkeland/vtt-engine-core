@@ -183,9 +183,19 @@ class EntityInstance {
         );
       }
       final timestamp = HybridLogicalClock.fromMap(rawTs);
+      if (!rawReg.containsKey('value') && !rawReg.containsKey('v')) {
+        throw const FormatException(
+          'EntityInstance.fromMap: "displayNameRegister" missing "value" or "v" field.',
+        );
+      }
       final rawVal = rawReg.containsKey('value') ? rawReg['value'] : rawReg['v'];
+      if (rawVal == null) {
+        throw const FormatException(
+          'EntityInstance.fromMap: "displayNameRegister" value cannot be null.',
+        );
+      }
       displayNameReg = CrdtLwwRegister<String>(
-        value: rawVal?.toString() ?? '',
+        value: rawVal.toString(),
         timestamp: timestamp,
       );
     } else {
@@ -523,9 +533,19 @@ class RoomEntityLink {
         );
       }
       final timestamp = HybridLogicalClock.fromMap(rawTs);
+      if (!rawReg.containsKey('value') && !rawReg.containsKey('v')) {
+        throw const FormatException(
+          'RoomEntityLink.fromMap: "displayNameRegister" missing "value" or "v" field.',
+        );
+      }
       final rawVal = rawReg.containsKey('value') ? rawReg['value'] : rawReg['v'];
+      if (rawVal == null) {
+        throw const FormatException(
+          'RoomEntityLink.fromMap: "displayNameRegister" value cannot be null.',
+        );
+      }
       displayNameReg = CrdtLwwRegister<String>(
-        value: rawVal?.toString() ?? '',
+        value: rawVal.toString(),
         timestamp: timestamp,
       );
     } else {
@@ -554,6 +574,11 @@ class RoomEntityLink {
         );
       }
       final timestamp = HybridLogicalClock.fromMap(rawTs);
+      if (!rawReg.containsKey('value') && !rawReg.containsKey('v')) {
+        throw const FormatException(
+          'RoomEntityLink.fromMap: "notesRegister" missing "value" or "v" field.',
+        );
+      }
       final rawVal = rawReg.containsKey('value') ? rawReg['value'] : rawReg['v'];
       notesReg = CrdtLwwRegister<String?>(
         value: rawVal?.toString(),
@@ -1155,9 +1180,19 @@ class RoomNodeState {
         );
       }
       final timestamp = HybridLogicalClock.fromMap(rawTs);
+      if (!rawTitleReg.containsKey('value') && !rawTitleReg.containsKey('v')) {
+        throw const FormatException(
+          'RoomNodeState.fromMap: "titleRegister" missing "value" or "v" field.',
+        );
+      }
       final rawVal = rawTitleReg.containsKey('value') ? rawTitleReg['value'] : rawTitleReg['v'];
+      if (rawVal == null) {
+        throw const FormatException(
+          'RoomNodeState.fromMap: "titleRegister" value cannot be null.',
+        );
+      }
       titleReg = CrdtLwwRegister<String>(
-        value: rawVal?.toString() ?? '',
+        value: rawVal.toString(),
         timestamp: timestamp,
       );
     } else {
@@ -1186,9 +1221,19 @@ class RoomNodeState {
         );
       }
       final timestamp = HybridLogicalClock.fromMap(rawTs);
+      if (!rawDescReg.containsKey('value') && !rawDescReg.containsKey('v')) {
+        throw const FormatException(
+          'RoomNodeState.fromMap: "descriptionRegister" missing "value" or "v" field.',
+        );
+      }
       final rawVal = rawDescReg.containsKey('value') ? rawDescReg['value'] : rawDescReg['v'];
+      if (rawVal == null) {
+        throw const FormatException(
+          'RoomNodeState.fromMap: "descriptionRegister" value cannot be null.',
+        );
+      }
       descReg = CrdtLwwRegister<String>(
-        value: rawVal?.toString() ?? '',
+        value: rawVal.toString(),
         timestamp: timestamp,
       );
     } else {
