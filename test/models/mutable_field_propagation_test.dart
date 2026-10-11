@@ -1100,11 +1100,11 @@ void main() {
         expect(joinEntityLinks(setA, setC), equals(joinEntityLinks(setC, setA)));
 
         // Associativity
-        final ab_c = joinEntityLinks(joinEntityLinks(setA, setB), setC);
-        final a_bc = joinEntityLinks(setA, joinEntityLinks(setB, setC));
-        expect(ab_c, equals(a_bc));
-        expect(ab_c.items["link-door"]!.value.displayName, equals("C Portal"));
-        expect(ab_c.items["link-door"]!.value.notes, equals("B Trap"));
+        final abThenC = joinEntityLinks(joinEntityLinks(setA, setB), setC);
+        final aThenBc = joinEntityLinks(setA, joinEntityLinks(setB, setC));
+        expect(abThenC, equals(aThenBc));
+        expect(abThenC.items["link-door"]!.value.displayName, equals("C Portal"));
+        expect(abThenC.items["link-door"]!.value.notes, equals("B Trap"));
       });
 
       test('Permanent bar: joinEntityLinks cannot regress to opaque a.merge(b)', () {
