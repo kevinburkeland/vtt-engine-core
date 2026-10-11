@@ -1310,14 +1310,14 @@ class RoomNodeState {
       );
     }
 
-    CrdtOrSet<RoomEntityLink> linksSet =
-        const CrdtOrSet<RoomEntityLink>.empty();
+    EntityLinkCrdtSet linksSet =
+        const EntityLinkCrdtSet.empty();
     if (map.containsKey('entityLinks_crdt')) {
       final rawCrdt = map['entityLinks_crdt'];
       if (rawCrdt is! Map) {
         throw const FormatException('RoomNodeState.fromMap: "entityLinks_crdt" must be a Map.');
       }
-      linksSet = CrdtOrSet<RoomEntityLink>.fromMap(
+      linksSet = EntityLinkCrdtSet.fromMap(
         Map<dynamic, dynamic>.from(rawCrdt),
         (raw) {
           if (raw is! Map) {
@@ -1329,7 +1329,7 @@ class RoomNodeState {
     } else if (map.containsKey('entityLinks')) {
       final rawLinks = map['entityLinks'];
       if (rawLinks is Map) {
-        linksSet = CrdtOrSet<RoomEntityLink>.fromMap(
+        linksSet = EntityLinkCrdtSet.fromMap(
           Map<dynamic, dynamic>.from(rawLinks),
           (raw) {
             if (raw is! Map) {
@@ -1339,24 +1339,21 @@ class RoomNodeState {
           },
         );
       } else if (rawLinks is List) {
-        final entries =
-            <({String id, RoomEntityLink item, HybridLogicalClock timestamp})>[];
         for (final raw in rawLinks) {
           if (raw is! Map) {
             throw const FormatException('RoomNodeState.fromMap: legacy entity link must be a Map.');
           }
           final l = RoomEntityLink.fromMap(Map<String, dynamic>.from(raw));
-          entries.add((
-            id: l.entityId,
-            item: l,
-            timestamp: const HybridLogicalClock(
+          linksSet = linksSet.add(
+            l.entityId,
+            l,
+            const HybridLogicalClock(
               physicalTime: 0,
               logicalCounter: 0,
               nodeId: 'genesis',
             ),
-          ));
+          );
         }
-        linksSet = linksSet.addBatch(entries);
       } else {
         throw const FormatException('RoomNodeState.fromMap: "entityLinks" must be a Map or List.');
       }
