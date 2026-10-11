@@ -10,6 +10,7 @@ List<HybridLogicalClock> extractCampaignProfileTimestamps(CampaignProfile profil
     result.add(profile.notesRegister.timestamp);
   }
   result.addAll(profile.pinnedRules.extractTimestamps());
+  result.addAll(profile.partyRoster.extractTimestamps());
   result.addAll(extractRoomNodeTimestamps(profile.roomState));
   return result;
 }

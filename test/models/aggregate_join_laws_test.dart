@@ -166,11 +166,11 @@ void main() {
       expect(joinReadd.entityLinks.map((l) => l.entityId), contains('goblin-1'));
     });
 
-    test('Party roster removal uses typed entityId and does not parse display prose', () {
+    test('Party roster removal uses CRDT tombstone, preserves audit events, and allows intentional re-add', () {
       final base = CampaignProfile.initial(id: 'camp_1', name: 'Campaign', nodeId: 'n1')
           .copyWith(partyCharacterIds: ['cleric-1', 'fighter-1']);
 
-      // Removal event with explicit typed entityId
+      const rmTs = HybridLogicalClock(physicalTime: 100, logicalCounter: 0, nodeId: 'nodeA');
       final removeEvent = PartyEvent(
         id: 'ev-rm-1',
         roomCode: 'RC-1',
@@ -181,27 +181,28 @@ void main() {
         timestamp: DateTime.utc(2026, 1, 1),
       );
 
-      // Unrelated event that mentions 'fighter-1' in prose but is not a deletion event for it
-      final chatEvent = PartyEvent(
-        id: 'ev-chat-1',
-        roomCode: 'RC-1',
-        type: 'info',
-        playerName: 'DM',
-        details: 'fighter-1 characterRemove rogue-1',
-        timestamp: DateTime.utc(2026, 1, 1, 0, 1),
+      final pA = base.copyWith(
+        partyRoster: base.partyRoster.remove('cleric-1', rmTs),
+        changeLog: [removeEvent],
       );
-
-      final pA = base.copyWith(changeLog: [removeEvent, chatEvent]);
       final pB = base; // Stale replica still containing cleric-1
 
       final joinAB = CampaignProfile.join(pA, pB);
       final joinBA = CampaignProfile.join(pB, pA);
 
       expect(joinAB, equals(joinBA));
-      // cleric-1 was removed via typed entityId
+      // cleric-1 was removed via tombstone
       expect(joinAB.partyCharacterIds.contains('cleric-1'), isFalse);
-      // fighter-1 was NOT removed despite prose containing 'characterRemove'
       expect(joinAB.partyCharacterIds, contains('fighter-1'));
+
+      // Later intentional re-add at newer HLC
+      const readdTs = HybridLogicalClock(physicalTime: 200, logicalCounter: 0, nodeId: 'nodeA');
+      final pAReadd = joinAB.copyWith(
+        partyRoster: joinAB.partyRoster.add('cleric-1', 'cleric-1', readdTs),
+      );
+      final joinReadd = CampaignProfile.join(pAReadd, pB);
+      expect(joinReadd.partyCharacterIds, contains('cleric-1'),
+          reason: 'Intentional re-add must succeed over stale replica and historical tombstone');
     });
 
     test('Edition canonicalization produces direction-independent representation', () {
@@ -267,8 +268,12 @@ void main() {
         ),
       );
 
-      // Replica C removes 'cleric-1' via typed changelog event
+      // Replica C removes 'cleric-1' via roster tombstone
       final repC = base.copyWith(
+        partyRoster: base.partyRoster.remove(
+          'cleric-1',
+          const HybridLogicalClock(physicalTime: 400, logicalCounter: 1, nodeId: 'nodeC'),
+        ),
         changeLog: [
           PartyEvent(
             id: 'ev-rm-cleric',
@@ -342,7 +347,7 @@ void main() {
             timestamp: unpinHlc,
           ),
           pinnedRules: base.pinnedRules.remove('unpin_target', unpinHlc),
-          partyCharacterIds: ['c_base', 'c_extra', 'c_a_$iter'],
+          partyRoster: base.partyRoster.add('c_a_$iter', 'c_a_$iter', unpinHlc),
           roomState: base.roomState.copyWith(
             entityLinksCrdt: base.roomState.entityLinksCrdt.remove('link_base', unpinHlc),
             customProperties: {'seed': seed, 'a_prop': iter},
@@ -368,7 +373,7 @@ void main() {
               timestamp: DateTime.utc(2026, 1, 1, iter ~/ 60, iter % 60),
             ),
           ],
-          partyCharacterIds: ['c_base', 'c_b_$iter'],
+          partyRoster: base.partyRoster.remove('c_extra', HybridLogicalClock(physicalTime: 1200 + iter, logicalCounter: 1, nodeId: repB.value)).add('c_b_$iter', 'c_b_$iter', HybridLogicalClock(physicalTime: 1200 + iter, logicalCounter: 1, nodeId: repB.value)),
           roomState: base.roomState.copyWith(
             customProperties: {'seed': seed, 'b_prop': iter},
           ),
@@ -385,7 +390,7 @@ void main() {
             timestamp: addHlc,
           ),
           pinnedRules: base.pinnedRules.add('rule_c_$iter', 'rule_c_$iter', addHlc),
-          partyCharacterIds: ['c_base', 'c_c_$iter'],
+          partyRoster: base.partyRoster.add('c_c_$iter', 'c_c_$iter', addHlc),
           roomState: base.roomState.copyWith(
             entityLinksCrdt: base.roomState.entityLinksCrdt.add('link_c_$iter', newLink, addHlc),
             customProperties: {'seed': seed, 'c_prop': iter},

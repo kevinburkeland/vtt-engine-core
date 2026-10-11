@@ -170,6 +170,14 @@ List<String> joinPartyRoster(
 }
 
 /// Symmetrically merges two [CrdtOrSet<String>] pinned rules collections.
+/// Symmetrically merges two [CrdtOrSet<String>] party roster collections via CvRDT OR-Set join.
+CrdtOrSet<String> joinPartyRosterCrdt(
+  CrdtOrSet<String> a,
+  CrdtOrSet<String> b,
+) {
+  return a.merge(b);
+}
+
 CrdtOrSet<String> joinPinnedRules(
   CrdtOrSet<String> a,
   CrdtOrSet<String> b,

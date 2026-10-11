@@ -20,7 +20,7 @@ class CampaignProfile {
   final DateTime createdAt;
   final DateTime lastPlayedAt;
   final RoomNodeState roomState;
-  final List<String> partyCharacterIds;
+  final CrdtOrSet<String> partyRoster;
   final CrdtOrSet<String> pinnedRules;
   final CrdtLwwRegister<String> notesRegister;
   final PartyPurse partyPurse;
@@ -42,7 +42,10 @@ class CampaignProfile {
   /// Derived view of currently active pinned rule identifiers.
   Set<String> get pinnedRuleIds => Set.unmodifiable(pinnedRules.activeValues.toSet());
 
-  static const _listStringEquality = ListEquality<String>();
+  /// Derived view of currently active party character identifiers, sorted deterministically.
+  List<String> get partyCharacterIds =>
+      List.unmodifiable(partyRoster.activeValues.toList()..sort());
+
   static const _listEventEquality = ListEquality<PartyEvent>();
 
   CampaignProfile.raw({
@@ -52,18 +55,39 @@ class CampaignProfile {
     required this.createdAt,
     required this.lastPlayedAt,
     required this.roomState,
-    List<String> partyCharacterIds = const [],
+    CrdtOrSet<String>? partyRoster,
+    List<String>? partyCharacterIds,
     Set<String>? pinnedRuleIds,
     CrdtOrSet<String>? pinnedRules,
     required this.notesRegister,
     this.partyPurse = const PartyPurse.empty(),
     List<PartyEvent> changeLog = const [],
-  })  : partyCharacterIds = List.unmodifiable(partyCharacterIds),
+  })  : partyRoster = partyRoster ??
+            (partyCharacterIds != null && partyCharacterIds.isNotEmpty
+                ? _buildInitialPartyRoster(partyCharacterIds)
+                : const CrdtOrSet<String>.empty()),
         pinnedRules = pinnedRules ??
             (pinnedRuleIds != null && pinnedRuleIds.isNotEmpty
                 ? _buildInitialPinnedRules(pinnedRuleIds)
                 : const CrdtOrSet<String>.empty()),
         changeLog = List.unmodifiable(changeLog);
+
+  static CrdtOrSet<String> _buildInitialPartyRoster(Iterable<String> ids) {
+    final entries =
+        <({String id, String item, HybridLogicalClock timestamp})>[];
+    for (final id in ids) {
+      entries.add((
+        id: id,
+        item: id,
+        timestamp: const HybridLogicalClock(
+          physicalTime: 0,
+          logicalCounter: 0,
+          nodeId: 'genesis',
+        ),
+      ));
+    }
+    return const CrdtOrSet<String>.empty().addBatch(entries);
+  }
 
   static CrdtOrSet<String> _buildInitialPinnedRules(Set<String> ruleIds) {
     final entries =
@@ -90,7 +114,8 @@ class CampaignProfile {
     required DateTime createdAt,
     required DateTime lastPlayedAt,
     required RoomNodeState roomState,
-    List<String> partyCharacterIds = const [],
+    CrdtOrSet<String>? partyRoster,
+    List<String>? partyCharacterIds,
     Set<String>? pinnedRuleIds,
     CrdtOrSet<String>? pinnedRules,
     CrdtLwwRegister<String>? notesRegister,
@@ -127,6 +152,7 @@ class CampaignProfile {
       createdAt: createdAt,
       lastPlayedAt: lastPlayedAt,
       roomState: roomState,
+      partyRoster: partyRoster,
       partyCharacterIds: partyCharacterIds,
       pinnedRuleIds: pinnedRuleIds,
       pinnedRules: pinnedRules,
@@ -203,6 +229,7 @@ class CampaignProfile {
     DateTime? createdAt,
     DateTime? lastPlayedAt,
     RoomNodeState? roomState,
+    CrdtOrSet<String>? partyRoster,
     List<String>? partyCharacterIds,
     Set<String>? pinnedRuleIds,
     CrdtOrSet<String>? pinnedRules,
@@ -229,6 +256,11 @@ class CampaignProfile {
       resolvedNotesRegister = this.notesRegister;
     }
 
+    final effectivePartyRoster = partyRoster ??
+        (partyCharacterIds != null
+            ? _buildInitialPartyRoster(partyCharacterIds)
+            : this.partyRoster);
+
     final effectivePinnedRules = pinnedRules ??
         (pinnedRuleIds != null
             ? _buildInitialPinnedRules(pinnedRuleIds)
@@ -241,9 +273,7 @@ class CampaignProfile {
       createdAt: createdAt ?? this.createdAt,
       lastPlayedAt: lastPlayedAt ?? this.lastPlayedAt,
       roomState: roomState ?? this.roomState,
-      partyCharacterIds: partyCharacterIds != null
-          ? List<String>.from(partyCharacterIds)
-          : this.partyCharacterIds,
+      partyRoster: effectivePartyRoster,
       pinnedRules: effectivePinnedRules,
       notesRegister: resolvedNotesRegister,
       partyPurse: partyPurse ?? this.partyPurse,
@@ -300,12 +330,8 @@ class CampaignProfile {
     // 4. Change Log: pure canonical changelog join
     final mergedEvents = joinChangeLog(a.changeLog, b.changeLog);
 
-    // 5. Party Roster: Set-like membership respecting removal events in merged changelog, deterministically sorted
-    final mergedPartyCharacterIds = joinPartyRoster(
-      a.partyCharacterIds,
-      b.partyCharacterIds,
-      changeLog: mergedEvents,
-    );
+    // 5. Party Roster: pure CRDT OR-Set join
+    final mergedPartyRoster = joinPartyRosterCrdt(a.partyRoster, b.partyRoster);
 
     // 6. Nested RoomNodeState: recursive canonical join
     final mergedRoomState = RoomNodeState.join(a.roomState, b.roomState);
@@ -317,7 +343,7 @@ class CampaignProfile {
       createdAt: mergedCreatedAt,
       lastPlayedAt: mergedLastPlayedAt,
       roomState: mergedRoomState,
-      partyCharacterIds: mergedPartyCharacterIds,
+      partyRoster: mergedPartyRoster,
       pinnedRules: mergedPinnedRules,
       notesRegister: mergedNotes,
       partyPurse: mergedPurse,
@@ -339,7 +365,7 @@ class CampaignProfile {
           createdAt.isAtSameMomentAs(other.createdAt) &&
           lastPlayedAt.isAtSameMomentAs(other.lastPlayedAt) &&
           roomState == other.roomState &&
-          _listStringEquality.equals(partyCharacterIds, other.partyCharacterIds) &&
+          partyRoster == other.partyRoster &&
           pinnedRules == other.pinnedRules &&
           notesRegister == other.notesRegister &&
           partyPurse == other.partyPurse &&
@@ -353,7 +379,7 @@ class CampaignProfile {
         createdAt.toUtc().millisecondsSinceEpoch,
         lastPlayedAt.toUtc().millisecondsSinceEpoch,
         roomState,
-        _listStringEquality.hash(partyCharacterIds),
+        partyRoster,
         pinnedRules,
         notesRegister,
         partyPurse,

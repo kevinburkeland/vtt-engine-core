@@ -201,6 +201,28 @@ void main() {
         logicalCounter: 0,
         nodeId: 'node-enc-ts',
       );
+      const tsRosterItem = HybridLogicalClock(
+        physicalTime: localNow + 6000,
+        logicalCounter: 0,
+        nodeId: 'node-roster-item',
+      );
+      const tsRosterTombstone = HybridLogicalClock(
+        physicalTime: localNow + 7000,
+        logicalCounter: 0,
+        nodeId: 'node-roster-ts',
+      );
+
+      final rosterSet = CrdtOrSet<String>(
+        items: {
+          'cleric-1': const CrdtLwwRegister<String>(
+            value: 'cleric-1',
+            timestamp: tsRosterItem,
+          ),
+        },
+        tombstones: {
+          'rogue-1': tsRosterTombstone,
+        },
+      );
 
       final pinnedRulesSet = CrdtOrSet<String>(
         items: {
@@ -269,6 +291,7 @@ void main() {
         lastPlayedAt: DateTime.now().toUtc(),
         roomState: roomState,
         pinnedRules: pinnedRulesSet,
+        partyRoster: rosterSet,
         notesRegister: const CrdtLwwRegister<String>(
           value: 'Hello',
           timestamp: tsNotes,
@@ -286,9 +309,11 @@ void main() {
         tsMinionTombstone,
         tsEncounterItem,
         tsEncounterTombstone,
+        tsRosterItem,
+        tsRosterTombstone,
       };
       expect(extracted.toSet(), equals(expected));
-      expect(extracted.length, equals(9));
+      expect(extracted.length, equals(11));
     });
   });
 }
