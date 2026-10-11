@@ -8,6 +8,8 @@ import '../crdt/crdt_lww_register.dart';
 import '../crdt/crdt_or_set.dart';
 import '../crdt/hybrid_logical_clock.dart';
 import 'loot_models.dart';
+import 'entity_link_crdt_set.dart';
+export 'entity_link_crdt_set.dart';
 
 const _deepEquality = DeepCollectionEquality();
 
@@ -941,7 +943,7 @@ class RoomNodeState {
   final String roomCode;
   final CrdtLwwRegister<String> titleRegister;
   final CrdtLwwRegister<String> descriptionRegister;
-  final CrdtOrSet<RoomEntityLink> entityLinksCrdt;
+  final EntityLinkCrdtSet entityLinksCrdt;
   final List<EntityInstance> entityInstances;
   final List<LootContainer> containers;
   final CrdtOrSet<EncounterParticipant> activeEncounter;
@@ -969,7 +971,7 @@ class RoomNodeState {
     CrdtLwwRegister<String>? descriptionRegister,
     HybridLogicalClock? descriptionTimestamp,
     List<RoomEntityLink>? entityLinks,
-    CrdtOrSet<RoomEntityLink>? entityLinksCrdt,
+    dynamic entityLinksCrdt,
     List<EntityInstance> entityInstances = const [],
     List<LootContainer> containers = const [],
     this.activeEncounter = const CrdtOrSet<EncounterParticipant>.empty(),
@@ -1003,10 +1005,13 @@ class RoomNodeState {
                       nodeId: 'genesis',
                     ),
                   )),
-        entityLinksCrdt = entityLinksCrdt ??
-            (entityLinks != null && entityLinks.isNotEmpty
-                ? _buildInitialLinksCrdt(entityLinks)
-                : const CrdtOrSet<RoomEntityLink>.empty()),
+        entityLinksCrdt = entityLinksCrdt is EntityLinkCrdtSet
+            ? entityLinksCrdt
+            : (entityLinksCrdt is CrdtOrSet<RoomEntityLink>
+                ? EntityLinkCrdtSet.fromCrdtOrSet(entityLinksCrdt)
+                : (entityLinks != null && entityLinks.isNotEmpty
+                    ? _buildInitialLinksCrdt(entityLinks)
+                    : const EntityLinkCrdtSet.empty())),
         entityInstances = List.unmodifiable(entityInstances),
         containers = List.unmodifiable(containers),
         customProperties = deepFreezeMap(customProperties);
@@ -1030,14 +1035,14 @@ class RoomNodeState {
             nodeId: 'genesis',
           ),
         ),
-        entityLinksCrdt = const CrdtOrSet<RoomEntityLink>.empty(),
+        entityLinksCrdt = const EntityLinkCrdtSet.empty(),
         entityInstances = const [],
         containers = const [],
         activeEncounter = const CrdtOrSet<EncounterParticipant>.empty(),
         activeMinions = const CrdtOrSet<dynamic>.empty(),
         customProperties = const {};
 
-  static CrdtOrSet<RoomEntityLink> _buildInitialLinksCrdt(
+  static EntityLinkCrdtSet _buildInitialLinksCrdt(
       List<RoomEntityLink> links) {
     final entries =
         <({String id, RoomEntityLink item, HybridLogicalClock timestamp})>[];
@@ -1052,7 +1057,7 @@ class RoomNodeState {
         ),
       ));
     }
-    return const CrdtOrSet<RoomEntityLink>.empty().addBatch(entries);
+    return const EntityLinkCrdtSet.empty().addBatch(entries);
   }
 
   factory RoomNodeState.fromLists({
@@ -1063,7 +1068,7 @@ class RoomNodeState {
     String? description,
     CrdtLwwRegister<String>? descriptionRegister,
     List<RoomEntityLink> entityLinks = const [],
-    CrdtOrSet<RoomEntityLink>? entityLinksCrdt,
+    dynamic entityLinksCrdt,
     List<EntityInstance> entityInstances = const [],
     List<LootContainer> containers = const [],
     Iterable<EncounterParticipant>? activeEncounter,
@@ -1126,7 +1131,7 @@ class RoomNodeState {
     CrdtLwwRegister<String>? descriptionRegister,
     HybridLogicalClock? descriptionTimestamp,
     List<RoomEntityLink>? entityLinks,
-    CrdtOrSet<RoomEntityLink>? entityLinksCrdt,
+    dynamic entityLinksCrdt,
     List<EntityInstance>? entityInstances,
     List<LootContainer>? containers,
     CrdtOrSet<EncounterParticipant>? activeEncounter,
@@ -1167,10 +1172,13 @@ class RoomNodeState {
       resolvedDescRegister = this.descriptionRegister;
     }
 
-    final effectiveLinks = entityLinksCrdt ??
-        (entityLinks != null
-            ? _buildInitialLinksCrdt(entityLinks)
-            : this.entityLinksCrdt);
+    final effectiveLinks = entityLinksCrdt is EntityLinkCrdtSet
+        ? entityLinksCrdt
+        : (entityLinksCrdt is CrdtOrSet<RoomEntityLink>
+            ? EntityLinkCrdtSet.fromCrdtOrSet(entityLinksCrdt)
+            : (entityLinks != null
+                ? _buildInitialLinksCrdt(entityLinks)
+                : this.entityLinksCrdt));
 
     return RoomNodeState(
       roomId: roomId ?? this.roomId,

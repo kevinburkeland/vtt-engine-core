@@ -30,17 +30,6 @@ List<HybridLogicalClock> extractRoomNodeTimestamps(RoomNodeState roomState) {
     result.add(roomState.descriptionRegister.timestamp);
   }
   result.addAll(roomState.entityLinksCrdt.extractTimestamps());
-  for (final link in roomState.entityLinks) {
-    if (link.incarnationTimestamp.physicalTime > 0) {
-      result.add(link.incarnationTimestamp);
-    }
-    if (link.displayNameRegister.timestamp.physicalTime > 0) {
-      result.add(link.displayNameRegister.timestamp);
-    }
-    if (link.notesRegister.timestamp.physicalTime > 0) {
-      result.add(link.notesRegister.timestamp);
-    }
-  }
   for (final instance in roomState.entityInstances) {
     if (instance.displayNameRegister.timestamp.physicalTime > 0) {
       result.add(instance.displayNameRegister.timestamp);

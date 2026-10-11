@@ -27,6 +27,7 @@ export 'models/aggregate_hlc_extractor.dart';
 export 'models/campaign_profile.dart';
 export 'models/character_models.dart';
 export 'models/core_types.dart';
+export 'models/entity_link_crdt_set.dart';
 export 'models/entity_reference.dart';
 export 'models/generic_tabletop_primitives.dart';
 export 'models/loot_models.dart';

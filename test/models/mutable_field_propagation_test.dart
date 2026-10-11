@@ -1027,28 +1027,33 @@ void main() {
 
       test('Removal vs edit: newer removal defeats stale edit', () {
         // Replica A edits at ts1000
-        final setA = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", baseLink, ts1000);
+        final setA = const EntityLinkCrdtSet.empty().add("link-door", baseLink, ts1000);
 
         // Replica B removes at ts2000
-        final setB = const CrdtOrSet<RoomEntityLink>.empty()
+        final setB = const EntityLinkCrdtSet.empty()
             .add("link-door", baseLink, ts1000)
             .remove("link-door", ts2000);
 
         final merged = joinEntityLinks(setA, setB);
         expect(merged.items.containsKey("link-door"), isFalse);
-        expect(merged.tombstones["link-door"], equals(ts2000));
+        expect(merged.tombstones["link-door"]!.timestamp, equals(ts2000));
       });
 
       test('Newer re-add defeats older tombstone', () {
         // Replica A had removed at ts1000
-        final setA = const CrdtOrSet<RoomEntityLink>.empty().remove("link-door", ts1000);
+        final setA = const EntityLinkCrdtSet.empty().remove("link-door", ts1000);
 
-        // Replica B re-added at ts2000
-        final setB = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", baseLink, ts2000);
+        // Replica B re-added at ts2000 (new generation ts2000)
+        final readdedLink = baseLink.copyWith(
+          incarnationTimestamp: ts2000,
+          displayNameTimestamp: ts2000,
+        );
+        final setB = const EntityLinkCrdtSet.empty().add("link-door", readdedLink, ts2000);
 
         final merged = joinEntityLinks(setA, setB);
         expect(merged.items.containsKey("link-door"), isTrue);
         expect(merged.items["link-door"]!.timestamp, equals(ts2000));
+        expect(merged.items["link-door"]!.value.incarnationTimestamp, equals(ts2000));
       });
 
       test('Newer edit after re-add is preserved', () {
@@ -1056,13 +1061,15 @@ void main() {
         final readdedLink = baseLink.copyWith(
           displayName: "Dungeon Gate",
           displayNameTimestamp: ts3000,
+          incarnationTimestamp: ts2000,
         );
-        final setA = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", readdedLink, ts3000);
-        final setB = const CrdtOrSet<RoomEntityLink>.empty().remove("link-door", ts1000);
+        final setA = const EntityLinkCrdtSet.empty().add("link-door", readdedLink, ts3000);
+        final setB = const EntityLinkCrdtSet.empty().remove("link-door", ts1000);
 
         final merged = joinEntityLinks(setA, setB);
         expect(merged.items["link-door"]!.value.displayName, equals("Dungeon Gate"));
         expect(merged.items["link-door"]!.timestamp, equals(ts3000));
+        expect(merged.items["link-door"]!.value.incarnationTimestamp, equals(ts2000));
       });
 
       test('Exact-HLC divergent nested payload collision throws StateError', () {
@@ -1074,8 +1081,8 @@ void main() {
           displayName: "Wooden Door",
           displayNameTimestamp: ts2000,
         );
-        final setA = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", linkA, ts2000);
-        final setB = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", linkB, ts2000);
+        final setA = const EntityLinkCrdtSet.empty().add("link-door", linkA, ts2000);
+        final setB = const EntityLinkCrdtSet.empty().add("link-door", linkB, ts2000);
 
         expect(() => joinEntityLinks(setA, setB), throwsA(isA<StateError>()));
         expect(() => joinEntityLinks(setB, setA), throwsA(isA<StateError>()));
@@ -1086,9 +1093,9 @@ void main() {
         final linkB = baseLink.copyWith(notes: "B Trap", notesTimestamp: ts3000);
         final linkC = baseLink.copyWith(displayName: "C Portal", displayNameTimestamp: ts4000);
 
-        final setA = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", linkA, ts2000);
-        final setB = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", linkB, ts3000);
-        final setC = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", linkC, ts4000);
+        final setA = const EntityLinkCrdtSet.empty().add("link-door", linkA, ts2000);
+        final setB = const EntityLinkCrdtSet.empty().add("link-door", linkB, ts3000);
+        final setC = const EntityLinkCrdtSet.empty().add("link-door", linkC, ts4000);
 
         // Idempotence
         expect(joinEntityLinks(setA, setA), equals(setA));
@@ -1268,6 +1275,268 @@ void main() {
           }),
           throwsA(isA<FormatException>()),
         );
+      });
+    });
+
+    group('11. Generation-Aware Entity-Link Membership & Full Remove-Readd Algebra (Pass 4.2.4)', () {
+      const ts10 = HybridLogicalClock(physicalTime: 10, logicalCounter: 0, nodeId: "n1");
+      const ts20 = HybridLogicalClock(physicalTime: 20, logicalCounter: 0, nodeId: "n2");
+      const ts30 = HybridLogicalClock(physicalTime: 30, logicalCounter: 0, nodeId: "n3");
+      const ts35 = HybridLogicalClock(physicalTime: 35, logicalCounter: 0, nodeId: "n2");
+      const ts40 = HybridLogicalClock(physicalTime: 40, logicalCounter: 0, nodeId: "n1");
+      const ts50 = HybridLogicalClock(physicalTime: 50, logicalCounter: 0, nodeId: "n1");
+
+      final linkG1 = RoomEntityLink(
+        entityId: "link-gate",
+        displayName: "Gate G1",
+        displayNameTimestamp: ts10,
+        notes: "G1 Secret Notes",
+        notesTimestamp: ts10,
+        incarnationTimestamp: ts10,
+      );
+
+      final linkG2 = RoomEntityLink(
+        entityId: "link-gate",
+        displayName: "Gate G2",
+        displayNameTimestamp: ts30,
+        notes: null,
+        incarnationTimestamp: ts30,
+      );
+
+      test('J. Core Counterexample: all 6 permutations converge to C without grouping dependence', () {
+        // A: G1 created @10, offline edit @40
+        final linkA = linkG1.copyWith(
+          displayName: "Gate G1 Stale Offline Edit",
+          displayNameTimestamp: ts40,
+        );
+        final setA = const EntityLinkCrdtSet.empty().add("link-gate", linkA, ts40);
+
+        // B: removal targeting G1 @35
+        final setB = const EntityLinkCrdtSet.empty()
+            .add("link-gate", linkG1, ts10)
+            .remove("link-gate", ts35);
+
+        // C: re-add G2 @30, item @30
+        final setC = const EntityLinkCrdtSet.empty().add("link-gate", linkG2, ts30);
+
+        final abThenC = joinEntityLinks(joinEntityLinks(setA, setB), setC);
+        final aThenBc = joinEntityLinks(setA, joinEntityLinks(setB, setC));
+        final cbThenA = joinEntityLinks(joinEntityLinks(setC, setB), setA);
+        final cThenBa = joinEntityLinks(setC, joinEntityLinks(setB, setA));
+        final acThenB = joinEntityLinks(joinEntityLinks(setA, setC), setB);
+        final aThenCb = joinEntityLinks(setA, joinEntityLinks(setC, setB));
+
+        expect(abThenC, equals(aThenBc));
+        expect(abThenC, equals(cbThenA));
+        expect(abThenC, equals(cThenBa));
+        expect(abThenC, equals(acThenB));
+        expect(abThenC, equals(aThenCb));
+
+        // Result: G2 survives cleanly, notes are null (no resurrection of G1 notes)
+        final item = abThenC.items["link-gate"]!;
+        expect(item.value.displayName, equals("Gate G2"));
+        expect(item.value.notes, isNull);
+        expect(item.value.incarnationTimestamp, equals(ts30));
+      });
+
+      test('K. Old-edit-after-remove: removal targeting G1 defeats subsequent offline edit to G1', () {
+        // Replica A: edits G1 @40
+        final linkA = linkG1.copyWith(
+          displayName: "Offline G1 T40",
+          displayNameTimestamp: ts40,
+        );
+        final setA = const EntityLinkCrdtSet.empty().add("link-gate", linkA, ts40);
+
+        // Replica B: removes G1 @35
+        final setB = const EntityLinkCrdtSet.empty()
+            .add("link-gate", linkG1, ts10)
+            .remove("link-gate", ts35);
+
+        // Both directions converge to G1 removed
+        final mergedAB = joinEntityLinks(setA, setB);
+        final mergedBA = joinEntityLinks(setB, setA);
+
+        expect(mergedAB, equals(mergedBA));
+        expect(mergedAB.items.containsKey("link-gate"), isFalse);
+        expect(mergedAB.isRemoved("link-gate"), isTrue);
+        expect(mergedAB.tombstones["link-gate"]!.targetGeneration, equals(ts10));
+        expect(mergedAB.tombstones["link-gate"]!.timestamp, equals(ts35));
+      });
+
+      test('L. Stale G1 edit arrives with high edit timestamp (@50) after G2 re-add: G2 survives', () {
+        // G1 created, removed @20, G2 created @30
+        final setG2 = const EntityLinkCrdtSet.empty()
+            .add("link-gate", linkG1, ts10)
+            .remove("link-gate", ts20)
+            .add("link-gate", linkG2, ts30);
+
+        // Stale G1 edit arrives @50
+        final linkG1Stale = linkG1.copyWith(
+          displayName: "Very High HLC G1 Edit",
+          displayNameTimestamp: ts50,
+        );
+        final setStaleG1 = const EntityLinkCrdtSet.empty().add("link-gate", linkG1Stale, ts50);
+
+        final merged = joinEntityLinks(setG2, setStaleG1);
+        expect(merged, equals(joinEntityLinks(setStaleG1, setG2)));
+
+        // G2 stays current, G1 fields do not leak
+        final item = merged.items["link-gate"]!;
+        expect(item.value.displayName, equals("Gate G2"));
+        expect(item.value.notes, isNull);
+        expect(item.value.incarnationTimestamp, equals(ts30));
+      });
+
+      test('M. Second removal: G1 -> remove -> G2 -> edit -> remove G2: stale snapshots cannot resurrect', () {
+        // G1 created @10, removed @20, G2 created @30, edited @35, removed @40
+        final linkG2Edit = linkG2.copyWith(displayName: "G2 Edit @35", displayNameTimestamp: ts35);
+        final setDeadG2 = const EntityLinkCrdtSet.empty()
+            .add("link-gate", linkG1, ts10)
+            .remove("link-gate", ts20)
+            .add("link-gate", linkG2, ts30)
+            .add("link-gate", linkG2Edit, ts35)
+            .remove("link-gate", ts40);
+
+        // Stale G1 snapshot @50 (from an offline replica)
+        final staleG1 = const EntityLinkCrdtSet.empty().add(
+          "link-gate",
+          linkG1.copyWith(displayName: "Stale G1", displayNameTimestamp: ts50),
+          ts50,
+        );
+
+        // Stale G2 snapshot @35
+        final staleG2 = const EntityLinkCrdtSet.empty().add("link-gate", linkG2Edit, ts35);
+
+        final merged = joinEntityLinks(joinEntityLinks(setDeadG2, staleG1), staleG2);
+        expect(merged.items.containsKey("link-gate"), isFalse);
+        expect(merged.isRemoved("link-gate"), isTrue);
+        expect(merged.tombstones["link-gate"]!.targetGeneration, equals(ts30));
+        expect(merged.tombstones["link-gate"]!.timestamp, equals(ts40));
+      });
+
+      test('N. Same-generation field composition remains fully functional', () {
+        final linkA = linkG2.copyWith(displayName: "DisplayName A", displayNameTimestamp: ts35);
+        final linkB = linkG2.copyWith(notes: "Notes B", notesTimestamp: ts40);
+
+        final setA = const EntityLinkCrdtSet.empty().add("link-gate", linkA, ts35);
+        final setB = const EntityLinkCrdtSet.empty().add("link-gate", linkB, ts40);
+
+        final merged = joinEntityLinks(setA, setB);
+        expect(merged, equals(joinEntityLinks(setB, setA)));
+
+        final item = merged.items["link-gate"]!;
+        expect(item.value.displayName, equals("DisplayName A"));
+        expect(item.value.notes, equals("Notes B"));
+        expect(item.value.incarnationTimestamp, equals(ts30));
+        expect(item.timestamp, equals(ts40));
+      });
+
+      test('T & V. EntityLinkCrdtSet serialization roundtrip and malformed validation', () {
+        final set = const EntityLinkCrdtSet.empty()
+            .add("live-1", linkG2, ts30)
+            .remove("dead-1", ts35);
+
+        final map = set.toMap();
+        expect(map["items"], isA<Map>());
+        expect(map["tombstones"], isA<Map>());
+
+        final restored = EntityLinkCrdtSet.fromMap(map);
+        expect(restored, equals(set));
+
+        // Malformed tombstones throw FormatException
+        expect(
+          () => EntityLinkCrdtSet.fromMap({
+            "tombstones": {
+              "dead-1": "not-a-map",
+            },
+          }),
+          throwsA(isA<FormatException>()),
+        );
+
+        expect(
+          () => EntityLinkCrdtSet.fromMap({
+            "items": {
+              "live-1": "not-a-map",
+            },
+          }),
+          throwsA(isA<FormatException>()),
+        );
+      });
+
+      test('X. Randomized property tests: idempotence, commutativity, and associativity over 100 transitions', () {
+
+        for (int i = 0; i < 100; i++) {
+          final t1 = (i * 10) + 1;
+          final t2 = t1 + 5;
+          final t3 = t2 + 5;
+          final t4 = t3 + 5;
+
+          final hlc1 = HybridLogicalClock(physicalTime: t1, logicalCounter: 0, nodeId: "n1");
+          final hlc2 = HybridLogicalClock(physicalTime: t2, logicalCounter: 0, nodeId: "n2");
+          final hlc3 = HybridLogicalClock(physicalTime: t3, logicalCounter: 0, nodeId: "n3");
+          final hlc4 = HybridLogicalClock(physicalTime: t4, logicalCounter: 0, nodeId: "n4");
+
+          final l1 = RoomEntityLink(
+            entityId: "link-rnd",
+            displayName: "Name $t1",
+            displayNameTimestamp: hlc1,
+            incarnationTimestamp: hlc1,
+          );
+
+          final l2 = RoomEntityLink(
+            entityId: "link-rnd",
+            displayName: "Name $t3",
+            displayNameTimestamp: hlc3,
+            incarnationTimestamp: hlc3,
+          );
+
+          // Construct 3 diverse states:
+          // State A: generation 1 live or edited
+          EntityLinkCrdtSet setA = const EntityLinkCrdtSet.empty().add("link-rnd", l1, hlc1);
+          if (i % 2 == 0) {
+            setA = setA.add("link-rnd", l1.copyWith(displayName: "Edit A $t2", displayNameTimestamp: hlc2), hlc2);
+          }
+
+          // State B: generation 1 removed or generation 2 live
+          EntityLinkCrdtSet setB;
+          if (i % 3 == 0) {
+            setB = const EntityLinkCrdtSet.empty().add("link-rnd", l1, hlc1).remove("link-rnd", hlc2);
+          } else {
+            setB = const EntityLinkCrdtSet.empty().add("link-rnd", l2, hlc3);
+          }
+
+          // State C: generation 2 edited or generation 2 removed
+          EntityLinkCrdtSet setC;
+          if (i % 4 == 0) {
+            setC = const EntityLinkCrdtSet.empty().add("link-rnd", l2, hlc3).remove("link-rnd", hlc4);
+          } else {
+            setC = const EntityLinkCrdtSet.empty().add("link-rnd", l2.copyWith(notes: "Notes C $t4", notesTimestamp: hlc4), hlc4);
+          }
+
+          // 1. Idempotence
+          expect(setA.merge(setA), equals(setA));
+          expect(setB.merge(setB), equals(setB));
+          expect(setC.merge(setC), equals(setC));
+
+          // 2. Commutativity
+          expect(setA.merge(setB), equals(setB.merge(setA)));
+          expect(setB.merge(setC), equals(setC.merge(setB)));
+          expect(setA.merge(setC), equals(setC.merge(setA)));
+
+          // 3. Associativity across all groupings
+          final abThenC = (setA.merge(setB)).merge(setC);
+          final aThenBc = setA.merge(setB.merge(setC));
+          final cbThenA = (setC.merge(setB)).merge(setA);
+          final cThenBa = setC.merge(setB.merge(setA));
+          final acThenB = (setA.merge(setC)).merge(setB);
+          final aThenCb = setA.merge(setC.merge(setB));
+
+          expect(abThenC, equals(aThenBc));
+          expect(abThenC, equals(cbThenA));
+          expect(abThenC, equals(cThenBa));
+          expect(abThenC, equals(acThenB));
+          expect(abThenC, equals(aThenCb));
+        }
       });
     });
   });
