@@ -1015,12 +1015,11 @@ class RoomNodeState {
                 ? throw ArgumentError('RoomNodeState: entityLinksCrdt cannot be null.')
                 : (entityLinksCrdt is EntityLinkCrdtSet
                     ? entityLinksCrdt
-                    : (entityLinksCrdt is CrdtOrSet<RoomEntityLink>
-                        ? EntityLinkCrdtSet.fromCrdtOrSet(entityLinksCrdt)
-                        : throw ArgumentError(
-                            'RoomNodeState: invalid entityLinksCrdt type "'
-                            '${entityLinksCrdt.runtimeType}". Expected EntityLinkCrdtSet or CrdtOrSet<RoomEntityLink>.',
-                          )))),
+                    : throw ArgumentError(
+                        'RoomNodeState: invalid entityLinksCrdt type "'
+                        '${entityLinksCrdt.runtimeType}". Expected EntityLinkCrdtSet. '
+                        'Use RoomNodeState.fromLegacyCrdtOrSet for legacy CrdtOrSet migration.',
+                      ))),
         entityInstances = List.unmodifiable(entityInstances),
         containers = List.unmodifiable(containers),
         customProperties = deepFreezeMap(customProperties);
@@ -1051,10 +1050,69 @@ class RoomNodeState {
         activeMinions = const CrdtOrSet<dynamic>.empty(),
         customProperties = const {};
 
+  /// Explicit compatibility/migration boundary converting legacy [CrdtOrSet<RoomEntityLink>]
+  /// to [EntityLinkCrdtSet] for [RoomNodeState].
+  factory RoomNodeState.fromLegacyCrdtOrSet({
+    required String roomId,
+    required String roomCode,
+    String? title,
+    CrdtLwwRegister<String>? titleRegister,
+    HybridLogicalClock? titleTimestamp,
+    String? description,
+    CrdtLwwRegister<String>? descriptionRegister,
+    HybridLogicalClock? descriptionTimestamp,
+    required CrdtOrSet<RoomEntityLink> entityLinksCrdt,
+    List<EntityInstance> entityInstances = const [],
+    List<LootContainer> containers = const [],
+    CrdtOrSet<EncounterParticipant> activeEncounter =
+        const CrdtOrSet<EncounterParticipant>.empty(),
+    CrdtOrSet<dynamic> activeMinions = const CrdtOrSet<dynamic>.empty(),
+    Map<String, dynamic> customProperties = const {},
+  }) {
+    return RoomNodeState(
+      roomId: roomId,
+      roomCode: roomCode,
+      title: title,
+      titleRegister: titleRegister,
+      titleTimestamp: titleTimestamp,
+      description: description,
+      descriptionRegister: descriptionRegister,
+      descriptionTimestamp: descriptionTimestamp,
+      entityLinksCrdt: EntityLinkCrdtSet.fromCrdtOrSet(entityLinksCrdt),
+      entityInstances: entityInstances,
+      containers: containers,
+      activeEncounter: activeEncounter,
+      activeMinions: activeMinions,
+      customProperties: customProperties,
+    );
+  }
+
   static EntityLinkCrdtSet _buildInitialLinksCrdt(
       List<RoomEntityLink> links) {
-    EntityLinkCrdtSet current = const EntityLinkCrdtSet.empty();
+    final Map<String, RoomEntityLink> deduplicated = {};
     for (final l in links) {
+      final existing = deduplicated[l.entityId];
+      if (existing == null) {
+        deduplicated[l.entityId] = l;
+      } else {
+        if (l.incarnationTimestamp.isAfter(existing.incarnationTimestamp)) {
+          deduplicated[l.entityId] = l;
+        } else if (existing.incarnationTimestamp.isAfter(l.incarnationTimestamp)) {
+          // Existing link has strictly higher generation; keep it.
+        } else {
+          if (existing == l) {
+            // Identical payload; duplicate is a no-op.
+          } else {
+            throw FormatException(
+              'RoomNodeState: duplicate entity link ID "${l.entityId}" '
+              'with divergent payload in same generation.',
+            );
+          }
+        }
+      }
+    }
+    EntityLinkCrdtSet current = const EntityLinkCrdtSet.empty();
+    for (final l in deduplicated.values) {
       final ts = l.incarnationTimestamp.physicalTime > 0
           ? l.incarnationTimestamp
           : const HybridLogicalClock(
@@ -1188,12 +1246,10 @@ class RoomNodeState {
       throw ArgumentError('RoomNodeState.copyWith: entityLinksCrdt cannot be null.');
     } else if (entityLinksCrdt is EntityLinkCrdtSet) {
       effectiveLinks = entityLinksCrdt;
-    } else if (entityLinksCrdt is CrdtOrSet<RoomEntityLink>) {
-      effectiveLinks = EntityLinkCrdtSet.fromCrdtOrSet(entityLinksCrdt);
     } else {
       throw ArgumentError(
         'RoomNodeState.copyWith: invalid entityLinksCrdt type "'
-        '${entityLinksCrdt.runtimeType}". Expected EntityLinkCrdtSet or CrdtOrSet<RoomEntityLink>.',
+        '${entityLinksCrdt.runtimeType}". Expected EntityLinkCrdtSet.',
       );
     }
 
@@ -1356,19 +1412,44 @@ class RoomNodeState {
           },
         );
       } else if (rawLinks is List) {
+        final Map<String, RoomEntityLink> deduplicated = {};
         for (final raw in rawLinks) {
           if (raw is! Map) {
             throw const FormatException('RoomNodeState.fromMap: legacy entity link must be a Map.');
           }
           final l = RoomEntityLink.fromMap(Map<String, dynamic>.from(raw));
+          final existing = deduplicated[l.entityId];
+          if (existing == null) {
+            deduplicated[l.entityId] = l;
+          } else {
+            if (l.incarnationTimestamp.isAfter(existing.incarnationTimestamp)) {
+              deduplicated[l.entityId] = l;
+            } else if (existing.incarnationTimestamp.isAfter(l.incarnationTimestamp)) {
+              // Existing link has strictly higher generation; keep it.
+            } else {
+              if (existing == l) {
+                // Same generation / same payload: duplicate is a no-op.
+              } else {
+                throw FormatException(
+                  'RoomNodeState.fromMap: duplicate entity link ID "${l.entityId}" '
+                  'with divergent payload in same generation.',
+                );
+              }
+            }
+          }
+        }
+        for (final l in deduplicated.values) {
+          final ts = l.incarnationTimestamp.physicalTime > 0
+              ? l.incarnationTimestamp
+              : const HybridLogicalClock(
+                  physicalTime: 0,
+                  logicalCounter: 0,
+                  nodeId: 'genesis',
+                );
           linksSet = linksSet.add(
             l.entityId,
             l,
-            const HybridLogicalClock(
-              physicalTime: 0,
-              logicalCounter: 0,
-              nodeId: 'genesis',
-            ),
+            ts,
           );
         }
       } else {

@@ -275,7 +275,7 @@ void main() {
         },
       );
 
-      final roomState = RoomNodeState(
+      final roomState = RoomNodeState.fromLegacyCrdtOrSet(
         roomId: 'room_1',
         roomCode: 'RC1',
         title: 'Throne Room',

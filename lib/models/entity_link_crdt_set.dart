@@ -13,20 +13,27 @@ class EntityLinkTombstone {
   /// The timestamp of the removal write.
   final HybridLogicalClock timestamp;
 
+  /// Whether this tombstone originated from a legacy CrdtOrSet where
+  /// equal-timestamp addition and removal resolves as add-wins.
+  final bool legacyAddWins;
+
   const EntityLinkTombstone({
     required this.targetGeneration,
     required this.timestamp,
+    this.legacyAddWins = false,
   });
 
   Map<String, dynamic> toMap() => {
         'targetGeneration': targetGeneration.toMap(),
         'timestamp': timestamp.toMap(),
+        if (legacyAddWins) 'legacyAddWins': true,
       };
 
   factory EntityLinkTombstone.fromMap(Map<dynamic, dynamic> map) {
     final safeMap = Map<String, dynamic>.from(map);
     final rawGen = safeMap['targetGeneration'] ?? safeMap['targetIncarnation'];
     final rawTs = safeMap['timestamp'] ?? safeMap['ts'];
+    final bool legacyAddWins = safeMap['legacyAddWins'] == true;
 
     if (rawGen != null && rawTs != null) {
       if (rawGen is! Map) {
@@ -42,6 +49,7 @@ class EntityLinkTombstone {
             HybridLogicalClock.fromMap(Map<String, dynamic>.from(rawGen)),
         timestamp:
             HybridLogicalClock.fromMap(Map<String, dynamic>.from(rawTs)),
+        legacyAddWins: legacyAddWins,
       );
     } else if (safeMap.containsKey('physicalTime')) {
       // Deterministic migration for legacy tombstones:
@@ -49,6 +57,7 @@ class EntityLinkTombstone {
       return EntityLinkTombstone(
         targetGeneration: legacyHlc,
         timestamp: legacyHlc,
+        legacyAddWins: true,
       );
     } else {
       throw const FormatException(
@@ -61,14 +70,15 @@ class EntityLinkTombstone {
       identical(this, other) ||
       other is EntityLinkTombstone &&
           targetGeneration == other.targetGeneration &&
-          timestamp == other.timestamp;
+          timestamp == other.timestamp &&
+          legacyAddWins == other.legacyAddWins;
 
   @override
-  int get hashCode => Object.hash(targetGeneration, timestamp);
+  int get hashCode => Object.hash(targetGeneration, timestamp, legacyAddWins);
 
   @override
   String toString() =>
-      'EntityLinkTombstone(targetGeneration: $targetGeneration, timestamp: $timestamp)';
+      'EntityLinkTombstone(targetGeneration: $targetGeneration, timestamp: $timestamp${legacyAddWins ? ", legacyAddWins: true" : ""})';
 }
 
 /// Generation-aware replicated collection for [RoomEntityLink] instances.
@@ -93,6 +103,19 @@ class EntityLinkCrdtSet {
   })  : items = _canonicalizeItems(items, tombstones),
         tombstones = _canonicalizeTombstones(items, tombstones);
 
+  static bool _isItemWinning(
+    RoomEntityLink item,
+    EntityLinkTombstone tomb,
+  ) {
+    if (item.incarnationTimestamp.isAfter(tomb.targetGeneration)) {
+      return true;
+    }
+    if (item.incarnationTimestamp == tomb.targetGeneration && tomb.legacyAddWins) {
+      return true;
+    }
+    return false;
+  }
+
   static Map<String, CrdtLwwRegister<RoomEntityLink>> _canonicalizeItems(
     Map<String, CrdtLwwRegister<RoomEntityLink>>? items,
     Map<String, EntityLinkTombstone>? tombstones,
@@ -102,8 +125,7 @@ class EntityLinkCrdtSet {
     for (final entry in items.entries) {
       final tomb = tombstones?[entry.key];
       if (tomb != null) {
-        if (entry.value.value.incarnationTimestamp
-            .isAfter(tomb.targetGeneration)) {
+        if (_isItemWinning(entry.value.value, tomb)) {
           result[entry.key] = entry.value;
         }
       } else {
@@ -122,8 +144,7 @@ class EntityLinkCrdtSet {
     for (final entry in tombstones.entries) {
       final item = items?[entry.key];
       if (item != null) {
-        if (!item.value.incarnationTimestamp
-            .isAfter(entry.value.targetGeneration)) {
+        if (!_isItemWinning(item.value, entry.value)) {
           result[entry.key] = entry.value;
         }
       } else {
@@ -167,39 +188,22 @@ class EntityLinkCrdtSet {
       }
     }
 
-    final bool isReadd = existingTombstone != null || currentItem != null;
-    final HybridLogicalClock resolvedGen =
-        (isReadd || link.incarnationTimestamp.physicalTime == 0)
-            ? timestamp
-            : link.incarnationTimestamp;
-
-    final bool hasNewOrUnstampedNotes = link.notes != null &&
-        (!isReadd ||
-            link.notesRegister.timestamp.physicalTime == 0 ||
-            !link.notesRegister.timestamp.isBefore(timestamp));
-
-    final RoomEntityLink freshLink;
-    if (hasNewOrUnstampedNotes) {
-      freshLink = link.copyWith(
-        entityId: id,
-        incarnationTimestamp: resolvedGen,
-        displayNameTimestamp: link.displayNameRegister.timestamp.physicalTime > 0
-            ? (isReadd ? timestamp : link.displayNameRegister.timestamp)
-            : timestamp,
-        notes: link.notes,
-        notesTimestamp: link.notesRegister.timestamp.physicalTime > 0
-            ? (isReadd ? timestamp : link.notesRegister.timestamp)
-            : timestamp,
-      );
-    } else {
-      freshLink = link.copyWith(
-        entityId: id,
-        incarnationTimestamp: resolvedGen,
-        displayNameTimestamp: timestamp,
-        clearNotes: true,
-        notesTimestamp: timestamp,
-      );
-    }
+    final freshLink = RoomEntityLink(
+      refType: link.refType,
+      entityId: id,
+      displayNameRegister: CrdtLwwRegister<String>(
+        value: link.displayName,
+        timestamp: timestamp,
+      ),
+      notesRegister: CrdtLwwRegister<String?>(
+        value: link.notes,
+        timestamp: timestamp,
+      ),
+      position: link.position,
+      isIsolatedClone: link.isIsolatedClone,
+      cloneRuntimeData: link.cloneRuntimeData,
+      incarnationTimestamp: timestamp,
+    );
 
     final newItems = Map<String, CrdtLwwRegister<RoomEntityLink>>.from(items);
     newItems[id] = CrdtLwwRegister<RoomEntityLink>(
@@ -330,6 +334,17 @@ class EntityLinkCrdtSet {
       // Currently removed: add() cannot resurrect removed state.
       return this;
     } else {
+      if (link.incarnationTimestamp.physicalTime > 0) {
+        final newItems = Map<String, CrdtLwwRegister<RoomEntityLink>>.from(items);
+        newItems[id] = CrdtLwwRegister<RoomEntityLink>(
+          value: link,
+          timestamp: timestamp,
+        );
+        return EntityLinkCrdtSet(
+          items: newItems,
+          tombstones: tombstones,
+        );
+      }
       return createOrReadd(id, link, timestamp);
     }
   }
@@ -368,11 +383,13 @@ class EntityLinkCrdtSet {
       EntityLinkTombstone? candidateTomb;
       if (localTomb != null && remoteTomb != null) {
         if (localTomb.targetGeneration == remoteTomb.targetGeneration) {
+          final winningTs = localTomb.timestamp.isAfter(remoteTomb.timestamp)
+              ? localTomb.timestamp
+              : remoteTomb.timestamp;
           candidateTomb = EntityLinkTombstone(
             targetGeneration: localTomb.targetGeneration,
-            timestamp: localTomb.timestamp.isAfter(remoteTomb.timestamp)
-                ? localTomb.timestamp
-                : remoteTomb.timestamp,
+            timestamp: winningTs,
+            legacyAddWins: localTomb.legacyAddWins && remoteTomb.legacyAddWins,
           );
         } else if (localTomb.targetGeneration
             .isAfter(remoteTomb.targetGeneration)) {
@@ -411,9 +428,8 @@ class EntityLinkCrdtSet {
 
       // 3. Reconcile candidate item vs candidate tombstone
       if (candidateItem != null && candidateTomb != null) {
-        if (candidateItem.value.incarnationTimestamp
-            .isAfter(candidateTomb.targetGeneration)) {
-          // Item belongs to a newer generation than the tombstone target -> ITEM WINS!
+        if (_isItemWinning(candidateItem.value, candidateTomb)) {
+          // Item belongs to a newer generation than the tombstone target (or equal under legacy add-wins) -> ITEM WINS!
           mergedItems[id] = candidateItem;
         } else {
           // Tombstone targets this generation (or a newer one) -> TOMBSTONE WINS!
@@ -568,10 +584,22 @@ class EntityLinkCrdtSet {
       tombs[entry.key] = EntityLinkTombstone(
         targetGeneration: entry.value,
         timestamp: entry.value,
+        legacyAddWins: true,
+      );
+    }
+    final items = <String, CrdtLwwRegister<RoomEntityLink>>{};
+    for (final entry in orSet.items.entries) {
+      final link = entry.value.value;
+      final itemGen = link.incarnationTimestamp.physicalTime > 0
+          ? link.incarnationTimestamp
+          : entry.value.timestamp;
+      items[entry.key] = CrdtLwwRegister<RoomEntityLink>(
+        value: link.copyWith(incarnationTimestamp: itemGen),
+        timestamp: entry.value.timestamp,
       );
     }
     return EntityLinkCrdtSet(
-      items: orSet.items,
+      items: items,
       tombstones: tombs,
     );
   }
