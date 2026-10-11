@@ -144,32 +144,6 @@ List<PartyEvent> joinChangeLog(List<PartyEvent> a, List<PartyEvent> b) {
   return List.unmodifiable(mergedEvents);
 }
 
-/// Merges two party roster lists, respecting typed removal events in the changelog
-/// (events of type 'characterRemove' or 'playerLeave' with a non-empty entityId),
-/// returning a deterministically sorted list.
-List<String> joinPartyRoster(
-  List<String> a,
-  List<String> b, {
-  List<PartyEvent> changeLog = const [],
-}) {
-  final removed = <String>{};
-  for (final event in changeLog) {
-    if (event.type == 'characterRemove' || event.type == 'playerLeave') {
-      final targetId = event.entityId?.trim();
-      if (targetId != null && targetId.isNotEmpty) {
-        removed.add(targetId);
-      }
-    }
-  }
-  final activeRoster = <String>{
-    ...a,
-    ...b,
-  }..removeAll(removed);
-  final sorted = activeRoster.toList()..sort();
-  return List.unmodifiable(sorted);
-}
-
-/// Symmetrically merges two [CrdtOrSet<String>] pinned rules collections.
 /// Symmetrically merges two [CrdtOrSet<String>] party roster collections via CvRDT OR-Set join.
 CrdtOrSet<String> joinPartyRosterCrdt(
   CrdtOrSet<String> a,
