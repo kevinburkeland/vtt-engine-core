@@ -1163,32 +1163,32 @@ void main() {
         final setC = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", readdedLink, ts30);
 
         // Permutation 1: (A + B) + C
-        final ab_c = joinEntityLinks(joinEntityLinks(setA, setB), setC);
+        final abThenC = joinEntityLinks(joinEntityLinks(setA, setB), setC);
 
         // Permutation 2: A + (B + C)
-        final a_bc = joinEntityLinks(setA, joinEntityLinks(setB, setC));
+        final aThenBc = joinEntityLinks(setA, joinEntityLinks(setB, setC));
 
         // Permutation 3: (C + B) + A
-        final cb_a = joinEntityLinks(joinEntityLinks(setC, setB), setA);
+        final cbThenA = joinEntityLinks(joinEntityLinks(setC, setB), setA);
 
         // Permutation 4: C + (B + A)
-        final c_ba = joinEntityLinks(setC, joinEntityLinks(setB, setA));
+        final cThenBa = joinEntityLinks(setC, joinEntityLinks(setB, setA));
 
         // Permutation 5: (A + C) + B
-        final ac_b = joinEntityLinks(joinEntityLinks(setA, setC), setB);
+        final acThenB = joinEntityLinks(joinEntityLinks(setA, setC), setB);
 
         // Permutation 6: A + (C + B)
-        final a_cb = joinEntityLinks(setA, joinEntityLinks(setC, setB));
+        final aThenCb = joinEntityLinks(setA, joinEntityLinks(setC, setB));
 
         // All 6 permutations must evaluate identically
-        expect(ab_c, equals(a_bc));
-        expect(ab_c, equals(cb_a));
-        expect(ab_c, equals(c_ba));
-        expect(ab_c, equals(ac_b));
-        expect(ab_c, equals(a_cb));
+        expect(abThenC, equals(aThenBc));
+        expect(abThenC, equals(cbThenA));
+        expect(abThenC, equals(cThenBa));
+        expect(abThenC, equals(acThenB));
+        expect(abThenC, equals(aThenCb));
 
         // Invariant: link exists with new incarnation, new displayName, and null notes (old notes do NOT resurrect)
-        final surviving = ab_c.items["link-door"]!;
+        final surviving = abThenC.items["link-door"]!;
         expect(surviving.value.displayName, equals("New Door"));
         expect(surviving.value.notes, isNull);
         expect(surviving.value.incarnationTimestamp, equals(ts30));
