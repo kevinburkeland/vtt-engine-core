@@ -1647,7 +1647,7 @@ void main() {
         );
 
         // Constructor accepts valid EntityLinkCrdtSet
-        final validSet = const EntityLinkCrdtSet.empty();
+        const validSet = EntityLinkCrdtSet.empty();
         final room = RoomNodeState(
           roomId: "r1",
           roomCode: "RC",
@@ -1656,7 +1656,7 @@ void main() {
         expect(room.entityLinksCrdt, equals(validSet));
 
         // Constructor accepts valid CrdtOrSet via explicit legacy migration boundary
-        final legacyOrSet = const CrdtOrSet<RoomEntityLink>.empty();
+        const legacyOrSet = CrdtOrSet<RoomEntityLink>.empty();
         final roomFromLegacy = RoomNodeState(
           roomId: "r1",
           roomCode: "RC",
