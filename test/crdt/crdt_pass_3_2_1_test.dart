@@ -155,11 +155,31 @@ void main() {
       expect(clock.latest, equals(initialLatest));
     });
 
-    test('7. extractCampaignProfileTimestamps extracts notes, minions, encounter and tombstones', () {
+    test('7. extractCampaignProfileTimestamps extracts notes, pinned rules, entity links, minions, encounter and tombstones', () {
       const tsNotes = HybridLogicalClock(
         physicalTime: localNow + 1000,
         logicalCounter: 0,
         nodeId: 'node-notes',
+      );
+      const tsPinnedItem = HybridLogicalClock(
+        physicalTime: localNow + 1500,
+        logicalCounter: 0,
+        nodeId: 'node-pinned-item',
+      );
+      const tsPinnedTombstone = HybridLogicalClock(
+        physicalTime: localNow + 1600,
+        logicalCounter: 0,
+        nodeId: 'node-pinned-ts',
+      );
+      const tsEntityLinkItem = HybridLogicalClock(
+        physicalTime: localNow + 1700,
+        logicalCounter: 0,
+        nodeId: 'node-link-item',
+      );
+      const tsEntityLinkTombstone = HybridLogicalClock(
+        physicalTime: localNow + 1800,
+        logicalCounter: 0,
+        nodeId: 'node-link-ts',
       );
       const tsMinionItem = HybridLogicalClock(
         physicalTime: localNow + 2000,
@@ -180,6 +200,30 @@ void main() {
         physicalTime: localNow + 5000,
         logicalCounter: 0,
         nodeId: 'node-enc-ts',
+      );
+
+      final pinnedRulesSet = CrdtOrSet<String>(
+        items: {
+          'rule_1': const CrdtLwwRegister<String>(
+            value: 'rule_1',
+            timestamp: tsPinnedItem,
+          ),
+        },
+        tombstones: {
+          'rule_2': tsPinnedTombstone,
+        },
+      );
+
+      final entityLinksSet = CrdtOrSet<RoomEntityLink>(
+        items: {
+          'link_1': CrdtLwwRegister<RoomEntityLink>(
+            value: RoomEntityLink(entityId: 'link_1', displayName: 'Hero'),
+            timestamp: tsEntityLinkItem,
+          ),
+        },
+        tombstones: {
+          'link_2': tsEntityLinkTombstone,
+        },
       );
 
       final minionsSet = CrdtOrSet<dynamic>(
@@ -213,6 +257,7 @@ void main() {
         roomId: 'room_1',
         roomCode: 'RC1',
         title: 'Throne Room',
+        entityLinksCrdt: entityLinksSet,
         activeMinions: minionsSet,
         activeEncounter: encounterSet,
       );
@@ -223,6 +268,7 @@ void main() {
         createdAt: DateTime.now().toUtc(),
         lastPlayedAt: DateTime.now().toUtc(),
         roomState: roomState,
+        pinnedRules: pinnedRulesSet,
         notesRegister: const CrdtLwwRegister<String>(
           value: 'Hello',
           timestamp: tsNotes,
@@ -230,14 +276,19 @@ void main() {
       );
 
       final extracted = extractCampaignProfileTimestamps(profile);
-      expect(extracted, containsAll([
+      final expected = {
         tsNotes,
+        tsPinnedItem,
+        tsPinnedTombstone,
+        tsEntityLinkItem,
+        tsEntityLinkTombstone,
         tsMinionItem,
         tsMinionTombstone,
         tsEncounterItem,
         tsEncounterTombstone,
-      ]));
-      expect(extracted.length, equals(5));
+      };
+      expect(extracted.toSet(), equals(expected));
+      expect(extracted.length, equals(9));
     });
   });
 }
