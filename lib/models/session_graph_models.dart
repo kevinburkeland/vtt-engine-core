@@ -626,7 +626,7 @@ class RoomNodeState {
   final String roomCode;
   final String title;
   final String description;
-  final List<RoomEntityLink> entityLinks;
+  final CrdtOrSet<RoomEntityLink> entityLinksCrdt;
   final List<EntityInstance> entityInstances;
   final List<LootContainer> containers;
   final CrdtOrSet<EncounterParticipant> activeEncounter;
@@ -636,6 +636,7 @@ class RoomNodeState {
   /// Hook for modules to provide custom deserializer for active minions / summons.
   static dynamic Function(Map<String, dynamic>)? defaultMinionParser;
 
+  List<RoomEntityLink> get entityLinks => entityLinksCrdt.activeValues;
   List<EncounterParticipant> get activeEncounterList =>
       activeEncounter.activeValues;
   List<dynamic> get activeMinionsList => activeMinions.activeValues;
@@ -645,13 +646,17 @@ class RoomNodeState {
     required this.roomCode,
     required this.title,
     this.description = '',
-    List<RoomEntityLink> entityLinks = const [],
+    List<RoomEntityLink>? entityLinks,
+    CrdtOrSet<RoomEntityLink>? entityLinksCrdt,
     List<EntityInstance> entityInstances = const [],
     List<LootContainer> containers = const [],
     this.activeEncounter = const CrdtOrSet<EncounterParticipant>.empty(),
     this.activeMinions = const CrdtOrSet<dynamic>.empty(),
     Map<String, dynamic> customProperties = const {},
-  })  : entityLinks = List.unmodifiable(entityLinks),
+  })  : entityLinksCrdt = entityLinksCrdt ??
+            (entityLinks != null && entityLinks.isNotEmpty
+                ? _buildInitialLinksCrdt(entityLinks)
+                : const CrdtOrSet<RoomEntityLink>.empty()),
         entityInstances = List.unmodifiable(entityInstances),
         containers = List.unmodifiable(containers),
         customProperties = deepFreezeMap(customProperties);
@@ -661,12 +666,30 @@ class RoomNodeState {
         roomCode = '',
         title = '',
         description = '',
-        entityLinks = const [],
+        entityLinksCrdt = const CrdtOrSet<RoomEntityLink>.empty(),
         entityInstances = const [],
         containers = const [],
         activeEncounter = const CrdtOrSet<EncounterParticipant>.empty(),
         activeMinions = const CrdtOrSet<dynamic>.empty(),
         customProperties = const {};
+
+  static CrdtOrSet<RoomEntityLink> _buildInitialLinksCrdt(
+      List<RoomEntityLink> links) {
+    final entries =
+        <({String id, RoomEntityLink item, HybridLogicalClock timestamp})>[];
+    for (final l in links) {
+      entries.add((
+        id: l.entityId,
+        item: l,
+        timestamp: const HybridLogicalClock(
+          physicalTime: 0,
+          logicalCounter: 0,
+          nodeId: 'genesis',
+        ),
+      ));
+    }
+    return const CrdtOrSet<RoomEntityLink>.empty().addBatch(entries);
+  }
 
   factory RoomNodeState.fromLists({
     required String roomId,
@@ -674,6 +697,7 @@ class RoomNodeState {
     required String title,
     String description = '',
     List<RoomEntityLink> entityLinks = const [],
+    CrdtOrSet<RoomEntityLink>? entityLinksCrdt,
     List<EntityInstance> entityInstances = const [],
     List<LootContainer> containers = const [],
     Iterable<EncounterParticipant>? activeEncounter,
@@ -715,6 +739,7 @@ class RoomNodeState {
       title: title,
       description: description,
       entityLinks: entityLinks,
+      entityLinksCrdt: entityLinksCrdt,
       entityInstances: entityInstances,
       containers: containers,
       activeEncounter: effectiveEncounter,
@@ -729,18 +754,24 @@ class RoomNodeState {
     String? title,
     String? description,
     List<RoomEntityLink>? entityLinks,
+    CrdtOrSet<RoomEntityLink>? entityLinksCrdt,
     List<EntityInstance>? entityInstances,
     List<LootContainer>? containers,
     CrdtOrSet<EncounterParticipant>? activeEncounter,
     CrdtOrSet<dynamic>? activeMinions,
     Map<String, dynamic>? customProperties,
   }) {
+    final effectiveLinks = entityLinksCrdt ??
+        (entityLinks != null
+            ? _buildInitialLinksCrdt(entityLinks)
+            : this.entityLinksCrdt);
+
     return RoomNodeState(
       roomId: roomId ?? this.roomId,
       roomCode: roomCode ?? this.roomCode,
       title: title ?? this.title,
       description: description ?? this.description,
-      entityLinks: entityLinks ?? this.entityLinks,
+      entityLinksCrdt: effectiveLinks,
       entityInstances: entityInstances ?? this.entityInstances,
       containers: containers ?? this.containers,
       activeEncounter: activeEncounter ?? this.activeEncounter,
@@ -755,6 +786,7 @@ class RoomNodeState {
         'title': title,
         'description': description,
         'entityLinks': entityLinks.map((e) => e.toMap()).toList(),
+        'entityLinks_crdt': entityLinksCrdt.toMap((e) => e.toMap()),
         if (entityInstances.isNotEmpty)
           'entityInstances': entityInstances.map((e) => e.toMap()).toList(),
         'containers': containers.map((c) => c.toMap()).toList(),
@@ -774,6 +806,57 @@ class RoomNodeState {
     dynamic Function(Map<String, dynamic>)? minionParser,
   }) {
     final parser = minionParser ?? defaultMinionParser ?? (m) => deepFreezeMap(m);
+
+    CrdtOrSet<RoomEntityLink> linksSet = const CrdtOrSet<RoomEntityLink>.empty();
+    if (map.containsKey('entityLinks_crdt')) {
+      final rawCrdt = map['entityLinks_crdt'];
+      if (rawCrdt is! Map) {
+        throw const FormatException('RoomNodeState.fromMap: "entityLinks_crdt" must be a Map.');
+      }
+      linksSet = CrdtOrSet<RoomEntityLink>.fromMap(
+        Map<dynamic, dynamic>.from(rawCrdt),
+        (raw) {
+          if (raw is! Map) {
+            throw const FormatException('RoomNodeState.fromMap: raw entity link must be a Map.');
+          }
+          return RoomEntityLink.fromMap(Map<String, dynamic>.from(raw));
+        },
+      );
+    } else if (map.containsKey('entityLinks')) {
+      final rawLinks = map['entityLinks'];
+      if (rawLinks is Map) {
+        linksSet = CrdtOrSet<RoomEntityLink>.fromMap(
+          Map<dynamic, dynamic>.from(rawLinks),
+          (raw) {
+            if (raw is! Map) {
+              throw const FormatException('RoomNodeState.fromMap: raw entity link must be a Map.');
+            }
+            return RoomEntityLink.fromMap(Map<String, dynamic>.from(raw));
+          },
+        );
+      } else if (rawLinks is List) {
+        final entries =
+            <({String id, RoomEntityLink item, HybridLogicalClock timestamp})>[];
+        for (final raw in rawLinks) {
+          if (raw is! Map) {
+            throw const FormatException('RoomNodeState.fromMap: legacy entity link must be a Map.');
+          }
+          final l = RoomEntityLink.fromMap(Map<String, dynamic>.from(raw));
+          entries.add((
+            id: l.entityId,
+            item: l,
+            timestamp: const HybridLogicalClock(
+              physicalTime: 0,
+              logicalCounter: 0,
+              nodeId: 'genesis',
+            ),
+          ));
+        }
+        linksSet = linksSet.addBatch(entries);
+      } else {
+        throw const FormatException('RoomNodeState.fromMap: "entityLinks" must be a Map or List.');
+      }
+    }
 
     CrdtOrSet<dynamic> minionsSet = const CrdtOrSet<dynamic>.empty();
     if (map.containsKey('activeMinions_crdt')) {
@@ -900,10 +983,7 @@ class RoomNodeState {
       roomCode: map['roomCode']?.toString() ?? '',
       title: map['title']?.toString() ?? '',
       description: map['description']?.toString() ?? '',
-      entityLinks: (map['entityLinks'] as List? ?? [])
-          .whereType<Map>()
-          .map((l) => RoomEntityLink.fromMap(Map<String, dynamic>.from(l)))
-          .toList(),
+      entityLinksCrdt: linksSet,
       entityInstances: entityInstances,
       containers: (map['containers'] as List? ?? [])
           .whereType<Map>()
@@ -915,7 +995,6 @@ class RoomNodeState {
           Map<String, dynamic>.from(map['customProperties'] as Map? ?? {}),
     );
   }
-
 
   /// Pure canonical aggregate join of two [RoomNodeState] instances.
   ///
@@ -949,6 +1028,7 @@ class RoomNodeState {
     // 1. Nested CRDT sets: pure OR-Set join
     final mergedMinions = a.activeMinions.merge(b.activeMinions);
     final mergedEncounter = a.activeEncounter.merge(b.activeEncounter);
+    final mergedLinks = joinEntityLinks(a.entityLinksCrdt, b.entityLinksCrdt);
 
     // 2. Custom properties: deterministic per-key ownership merge
     final mergedCustomProperties = joinCustomProperties(
@@ -957,81 +1037,18 @@ class RoomNodeState {
       context: 'RoomNodeState.customProperties',
     );
 
-    // 3. Entity Links: map by entityId, recursively join, sort deterministically
-    final linksMapA = <String, RoomEntityLink>{};
-    for (final l in a.entityLinks) {
-      linksMapA[l.entityId] = l;
-    }
-    final linksMapB = <String, RoomEntityLink>{};
-    for (final l in b.entityLinks) {
-      linksMapB[l.entityId] = l;
-    }
-    final allLinkIds = <String>{...linksMapA.keys, ...linksMapB.keys}.toList()..sort();
-    final mergedLinks = <RoomEntityLink>[];
-    for (final id in allLinkIds) {
-      final linkA = linksMapA[id];
-      final linkB = linksMapB[id];
-      if (linkA != null && linkB != null) {
-        mergedLinks.add(RoomEntityLink.join(linkA, linkB));
-      } else if (linkA != null) {
-        mergedLinks.add(linkA);
-      } else if (linkB != null) {
-        mergedLinks.add(linkB);
-      }
-    }
+    // 3. Entity Instances: recursively join instances by instanceId
+    final mergedInstances = joinEntityInstances(a.entityInstances, b.entityInstances);
 
-    // 4. Entity Instances: map by instanceId, recursively join, sort deterministically
-    final instancesMapA = <String, EntityInstance>{};
-    for (final i in a.entityInstances) {
-      instancesMapA[i.instanceId] = i;
-    }
-    final instancesMapB = <String, EntityInstance>{};
-    for (final i in b.entityInstances) {
-      instancesMapB[i.instanceId] = i;
-    }
-    final allInstanceIds = <String>{...instancesMapA.keys, ...instancesMapB.keys}.toList()..sort();
-    final mergedInstances = <EntityInstance>[];
-    for (final id in allInstanceIds) {
-      final instA = instancesMapA[id];
-      final instB = instancesMapB[id];
-      if (instA != null && instB != null) {
-        mergedInstances.add(EntityInstance.join(instA, instB));
-      } else if (instA != null) {
-        mergedInstances.add(instA);
-      } else if (instB != null) {
-        mergedInstances.add(instB);
-      }
-    }
-
-    // 5. Containers: map by containerId, recursively join, sort deterministically
-    final containerMapA = <String, LootContainer>{};
-    for (final c in a.containers) {
-      containerMapA[c.containerId] = c;
-    }
-    final containerMapB = <String, LootContainer>{};
-    for (final c in b.containers) {
-      containerMapB[c.containerId] = c;
-    }
-    final allContainerIds = <String>{...containerMapA.keys, ...containerMapB.keys}.toList()..sort();
-    final mergedContainers = <LootContainer>[];
-    for (final id in allContainerIds) {
-      final cA = containerMapA[id];
-      final cB = containerMapB[id];
-      if (cA != null && cB != null) {
-        mergedContainers.add(LootContainer.join(cA, cB));
-      } else if (cA != null) {
-        mergedContainers.add(cA);
-      } else if (cB != null) {
-        mergedContainers.add(cB);
-      }
-    }
+    // 4. Containers: recursively join containers by containerId
+    final mergedContainers = joinContainers(a.containers, b.containers);
 
     return RoomNodeState(
       roomId: mergedRoomId,
       roomCode: mergedRoomCode,
       title: mergedTitle,
       description: mergedDescription,
-      entityLinks: mergedLinks,
+      entityLinksCrdt: mergedLinks,
       entityInstances: mergedInstances,
       containers: mergedContainers,
       activeEncounter: mergedEncounter,
@@ -1052,7 +1069,7 @@ class RoomNodeState {
           roomCode == other.roomCode &&
           title == other.title &&
           description == other.description &&
-          _deepEquality.equals(entityLinks, other.entityLinks) &&
+          entityLinksCrdt == other.entityLinksCrdt &&
           _deepEquality.equals(entityInstances, other.entityInstances) &&
           _deepEquality.equals(containers, other.containers) &&
           activeEncounter == other.activeEncounter &&
@@ -1065,7 +1082,7 @@ class RoomNodeState {
         roomCode,
         title,
         description,
-        _deepEquality.hash(entityLinks),
+        entityLinksCrdt,
         _deepEquality.hash(entityInstances),
         _deepEquality.hash(containers),
         activeEncounter,

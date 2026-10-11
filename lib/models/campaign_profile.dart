@@ -1,6 +1,7 @@
 import 'package:collection/collection.dart';
 import 'package:meta/meta.dart';
 import '../crdt/crdt_lww_register.dart';
+import '../crdt/crdt_or_set.dart';
 import '../crdt/hybrid_logical_clock.dart';
 import '../rules/i_ruleset_module.dart';
 import '../rules/ruleset_edition.dart';
@@ -20,7 +21,7 @@ class CampaignProfile {
   final DateTime lastPlayedAt;
   final RoomNodeState roomState;
   final List<String> partyCharacterIds;
-  final Set<String> pinnedRuleIds;
+  final CrdtOrSet<String> pinnedRules;
   final CrdtLwwRegister<String> notesRegister;
   final PartyPurse partyPurse;
   final List<PartyEvent> changeLog;
@@ -38,8 +39,11 @@ class CampaignProfile {
 
   String get notesMarkdown => notesRegister.value;
 
-  static const _listEquality = ListEquality<String>();
-  static const _setEquality = SetEquality<String>();
+  /// Derived view of currently active pinned rule identifiers.
+  Set<String> get pinnedRuleIds => Set.unmodifiable(pinnedRules.activeValues.toSet());
+
+  static const _listStringEquality = ListEquality<String>();
+  static const _listEventEquality = ListEquality<PartyEvent>();
 
   CampaignProfile.raw({
     required this.id,
@@ -49,13 +53,34 @@ class CampaignProfile {
     required this.lastPlayedAt,
     required this.roomState,
     List<String> partyCharacterIds = const [],
-    Set<String> pinnedRuleIds = const {},
+    Set<String>? pinnedRuleIds,
+    CrdtOrSet<String>? pinnedRules,
     required this.notesRegister,
     this.partyPurse = const PartyPurse.empty(),
     List<PartyEvent> changeLog = const [],
   })  : partyCharacterIds = List.unmodifiable(partyCharacterIds),
-        pinnedRuleIds = Set.unmodifiable(pinnedRuleIds),
+        pinnedRules = pinnedRules ??
+            (pinnedRuleIds != null && pinnedRuleIds.isNotEmpty
+                ? _buildInitialPinnedRules(pinnedRuleIds)
+                : const CrdtOrSet<String>.empty()),
         changeLog = List.unmodifiable(changeLog);
+
+  static CrdtOrSet<String> _buildInitialPinnedRules(Set<String> ruleIds) {
+    final entries =
+        <({String id, String item, HybridLogicalClock timestamp})>[];
+    for (final id in ruleIds) {
+      entries.add((
+        id: id,
+        item: id,
+        timestamp: const HybridLogicalClock(
+          physicalTime: 0,
+          logicalCounter: 0,
+          nodeId: 'genesis',
+        ),
+      ));
+    }
+    return const CrdtOrSet<String>.empty().addBatch(entries);
+  }
 
   factory CampaignProfile({
     required String id,
@@ -66,7 +91,8 @@ class CampaignProfile {
     required DateTime lastPlayedAt,
     required RoomNodeState roomState,
     List<String> partyCharacterIds = const [],
-    Set<String> pinnedRuleIds = const {},
+    Set<String>? pinnedRuleIds,
+    CrdtOrSet<String>? pinnedRules,
     CrdtLwwRegister<String>? notesRegister,
     String? notesMarkdown,
     PartyPurse partyPurse = const PartyPurse.empty(),
@@ -103,17 +129,18 @@ class CampaignProfile {
       roomState: roomState,
       partyCharacterIds: partyCharacterIds,
       pinnedRuleIds: pinnedRuleIds,
+      pinnedRules: pinnedRules,
       notesRegister: effectiveNotesRegister,
       partyPurse: partyPurse,
       changeLog: changeLog,
     );
   }
 
-  /// Factory creating an empty/initial campaign state.
+  /// Factory creating an initial/blank campaign profile.
   factory CampaignProfile.initial({
     required String id,
     required String name,
-    dynamic edition = const RulesetIdentifier('generic_tabletop'),
+    dynamic edition,
     String? rulesetId,
     required String nodeId,
     DateTime? now,
@@ -178,6 +205,7 @@ class CampaignProfile {
     RoomNodeState? roomState,
     List<String>? partyCharacterIds,
     Set<String>? pinnedRuleIds,
+    CrdtOrSet<String>? pinnedRules,
     String? notesMarkdown,
     CrdtLwwRegister<String>? notesRegister,
     PartyPurse? partyPurse,
@@ -201,6 +229,11 @@ class CampaignProfile {
       resolvedNotesRegister = this.notesRegister;
     }
 
+    final effectivePinnedRules = pinnedRules ??
+        (pinnedRuleIds != null
+            ? _buildInitialPinnedRules(pinnedRuleIds)
+            : this.pinnedRules);
+
     return CampaignProfile.raw(
       id: id ?? this.id,
       name: name ?? this.name,
@@ -211,16 +244,13 @@ class CampaignProfile {
       partyCharacterIds: partyCharacterIds != null
           ? List<String>.from(partyCharacterIds)
           : this.partyCharacterIds,
-      pinnedRuleIds: pinnedRuleIds != null
-          ? Set<String>.from(pinnedRuleIds)
-          : this.pinnedRuleIds,
+      pinnedRules: effectivePinnedRules,
       notesRegister: resolvedNotesRegister,
       partyPurse: partyPurse ?? this.partyPurse,
       changeLog:
           changeLog != null ? List<PartyEvent>.from(changeLog) : this.changeLog,
     );
   }
-
 
   /// Pure canonical aggregate join of two [CampaignProfile] instances.
   ///
@@ -242,6 +272,10 @@ class CampaignProfile {
       );
     }
 
+    final canonicalEdition = a.edition == b.edition
+        ? a.edition
+        : RulesetIdentifier(a.rulesetId);
+
     final mergedName = joinUnversionedString(
       a.name,
       b.name,
@@ -260,56 +294,18 @@ class CampaignProfile {
     // 2. Party Purse: pure PN-counter CvRDT lattice join across denominations
     final mergedPurse = a.partyPurse.merge(b.partyPurse);
 
-    // 3. Pinned Rules: pure set union
-    final mergedPinnedRules = a.pinnedRuleIds.union(b.pinnedRuleIds);
+    // 3. Pinned Rules: pure CRDT OR-Set join
+    final mergedPinnedRules = joinPinnedRules(a.pinnedRules, b.pinnedRules);
 
-    // 4. Change Log: map by event id, sort by timestamp & id, fail loudly on same-id divergence
-    final eventMapA = <String, PartyEvent>{};
-    for (final ev in a.changeLog) {
-      eventMapA[ev.id] = ev;
-    }
-    final eventMapB = <String, PartyEvent>{};
-    for (final ev in b.changeLog) {
-      eventMapB[ev.id] = ev;
-    }
-    final allEventIds = <String>{...eventMapA.keys, ...eventMapB.keys};
-    final mergedEvents = <PartyEvent>[];
-    for (final id in allEventIds) {
-      final evA = eventMapA[id];
-      final evB = eventMapB[id];
-      if (evA != null && evB != null) {
-        if (evA != evB) {
-          throw StateError(
-            'Divergent PartyEvent under same event id "$id".',
-          );
-        }
-        mergedEvents.add(evA);
-      } else if (evA != null) {
-        mergedEvents.add(evA);
-      } else if (evB != null) {
-        mergedEvents.add(evB);
-      }
-    }
-    mergedEvents.sort((x, y) {
-      final cmp = x.timestamp.compareTo(y.timestamp);
-      if (cmp != 0) return cmp;
-      return x.id.compareTo(y.id);
-    });
+    // 4. Change Log: pure canonical changelog join
+    final mergedEvents = joinChangeLog(a.changeLog, b.changeLog);
 
     // 5. Party Roster: Set-like membership respecting removal events in merged changelog, deterministically sorted
-    final removed = <String>{};
-    for (final event in mergedEvents) {
-      if (event.type == 'characterRemove' || event.type == 'playerLeave') {
-        if (event.details.trim().isNotEmpty) {
-          removed.add(event.details.trim());
-        }
-      }
-    }
-    final activeRoster = <String>{
-      ...a.partyCharacterIds,
-      ...b.partyCharacterIds,
-    }..removeAll(removed);
-    final mergedPartyCharacterIds = activeRoster.toList()..sort();
+    final mergedPartyCharacterIds = joinPartyRoster(
+      a.partyCharacterIds,
+      b.partyCharacterIds,
+      changeLog: mergedEvents,
+    );
 
     // 6. Nested RoomNodeState: recursive canonical join
     final mergedRoomState = RoomNodeState.join(a.roomState, b.roomState);
@@ -317,12 +313,12 @@ class CampaignProfile {
     return CampaignProfile.raw(
       id: mergedId,
       name: mergedName,
-      edition: a.edition,
+      edition: canonicalEdition,
       createdAt: mergedCreatedAt,
       lastPlayedAt: mergedLastPlayedAt,
       roomState: mergedRoomState,
       partyCharacterIds: mergedPartyCharacterIds,
-      pinnedRuleIds: mergedPinnedRules,
+      pinnedRules: mergedPinnedRules,
       notesRegister: mergedNotes,
       partyPurse: mergedPurse,
       changeLog: mergedEvents,
@@ -339,22 +335,28 @@ class CampaignProfile {
           runtimeType == other.runtimeType &&
           id == other.id &&
           name == other.name &&
-          edition == other.edition &&
+          rulesetId == other.rulesetId &&
+          createdAt.isAtSameMomentAs(other.createdAt) &&
+          lastPlayedAt.isAtSameMomentAs(other.lastPlayedAt) &&
           roomState == other.roomState &&
-          _listEquality.equals(partyCharacterIds, other.partyCharacterIds) &&
-          _setEquality.equals(pinnedRuleIds, other.pinnedRuleIds) &&
+          _listStringEquality.equals(partyCharacterIds, other.partyCharacterIds) &&
+          pinnedRules == other.pinnedRules &&
           notesRegister == other.notesRegister &&
-          partyPurse == other.partyPurse;
+          partyPurse == other.partyPurse &&
+          _listEventEquality.equals(changeLog, other.changeLog);
 
   @override
   int get hashCode => Object.hash(
         id,
         name,
-        edition,
+        rulesetId,
+        createdAt.toUtc().millisecondsSinceEpoch,
+        lastPlayedAt.toUtc().millisecondsSinceEpoch,
         roomState,
-        _listEquality.hash(partyCharacterIds),
-        _setEquality.hash(pinnedRuleIds),
+        _listStringEquality.hash(partyCharacterIds),
+        pinnedRules,
         notesRegister,
         partyPurse,
+        _listEventEquality.hash(changeLog),
       );
 }

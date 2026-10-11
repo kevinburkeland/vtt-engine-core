@@ -2,10 +2,9 @@ import 'package:vtt_engine_core/crdt/hybrid_logical_clock.dart';
 import 'package:vtt_engine_core/crdt/replica_id.dart';
 import 'package:test/test.dart';
 import 'package:vtt_engine_core/models/campaign_profile.dart';
-
+import 'package:vtt_engine_core/models/party_event.dart';
 import 'package:vtt_engine_core/models/session_graph_models.dart';
 import 'package:vtt_engine_core/models/party_purse.dart';
-
 
 extension on PartyPurse {
   PartyPurse setCoins({int? gp, int? sp, required ReplicaId replicaId}) {
@@ -45,9 +44,8 @@ void main() {
         id: 'camp-1',
         name: 'Dragon Hunt',
         edition: 'dnd5e_2024',
-        createdAt: DateTime.utc(
-            2025, 1, 1), // timestamps differ but aren't equality gated
-        lastPlayedAt: DateTime.utc(2025, 1, 2),
+        createdAt: baseDate,
+        lastPlayedAt: baseDate,
         roomState: room,
         partyCharacterIds: const ['char-1', 'char-2'],
         pinnedRuleIds: const {'cover', 'grapple_shove'},
@@ -58,6 +56,32 @@ void main() {
 
       expect(profileA, equals(profileB));
       expect(profileA.hashCode, equals(profileB.hashCode));
+    });
+
+    test('detects differences in createdAt despite same id', () {
+      final modified = profileA.copyWith(createdAt: DateTime.utc(2025, 1, 1));
+      expect(profileA == modified, isFalse);
+    });
+
+    test('detects differences in lastPlayedAt despite same id', () {
+      final modified = profileA.copyWith(lastPlayedAt: DateTime.utc(2025, 1, 2));
+      expect(profileA == modified, isFalse);
+    });
+
+    test('detects differences in changeLog despite same id', () {
+      final modified = profileA.copyWith(
+        changeLog: [
+          PartyEvent(
+            id: 'ev-1',
+            roomCode: 'CR-101',
+            type: 'coinDeposit',
+            playerName: 'Player1',
+            details: 'Deposited 10gp',
+            timestamp: DateTime.utc(2024, 1, 1),
+          ),
+        ],
+      );
+      expect(profileA == modified, isFalse);
     });
 
     test('detects differences in name despite same id', () {
@@ -104,6 +128,29 @@ void main() {
       final modified =
           profileA.copyWith(partyPurse: const PartyPurse.empty().setCoins(gp: 100, replicaId: ReplicaId('test-node')));
       expect(profileA == modified, isFalse);
+    });
+
+    test('RoomNodeState detects entityInstances and description differences', () {
+      final room1 = RoomNodeState(
+        roomId: 'r1',
+        roomCode: 'C1',
+        title: 'Room 1',
+        description: 'Original description',
+      );
+      final room2 = room1.copyWith(description: 'Modified description');
+      expect(room1 == room2, isFalse);
+
+      final room3 = room1.copyWith(
+        entityInstances: [
+          EntityInstance(
+            instanceId: 'inst-1',
+            entityDefinitionId: 'bp-1',
+            entityType: 'character',
+            displayName: 'Goblin 1',
+          ),
+        ],
+      );
+      expect(room1 == room3, isFalse);
     });
   });
 }
