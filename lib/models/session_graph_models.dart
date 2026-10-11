@@ -330,6 +330,7 @@ class RoomEntityLink {
   final Map<String, dynamic>? position; // e.g. {"x": 2, "y": 5}
   final bool isIsolatedClone; // If true, runtime modifications don't mutate parent template
   final Map<String, dynamic>? cloneRuntimeData;
+  final HybridLogicalClock incarnationTimestamp;
 
   String get displayName => displayNameRegister.value;
   String? get notes => notesRegister.value;
@@ -346,6 +347,7 @@ class RoomEntityLink {
     Map<String, dynamic>? position,
     this.isIsolatedClone = false,
     Map<String, dynamic>? cloneRuntimeData,
+    HybridLogicalClock? incarnationTimestamp,
   })  : displayNameRegister = displayNameRegister ??
             (displayNameTimestamp != null
                 ? CrdtLwwRegister<String>(
@@ -376,7 +378,17 @@ class RoomEntityLink {
                   )),
         position = position != null ? deepFreezeMap(position) : null,
         cloneRuntimeData =
-            cloneRuntimeData != null ? deepFreezeMap(cloneRuntimeData) : null;
+            cloneRuntimeData != null ? deepFreezeMap(cloneRuntimeData) : null,
+        incarnationTimestamp = incarnationTimestamp ??
+            displayNameRegister?.timestamp ??
+            displayNameTimestamp ??
+            notesRegister?.timestamp ??
+            notesTimestamp ??
+            const HybridLogicalClock(
+              physicalTime: 0,
+              logicalCounter: 0,
+              nodeId: 'genesis',
+            );
 
   const RoomEntityLink.empty()
       : refType = const EntityCategory('generic', 'Generic'),
@@ -399,7 +411,12 @@ class RoomEntityLink {
         ),
         position = null,
         isIsolatedClone = false,
-        cloneRuntimeData = null;
+        cloneRuntimeData = null,
+        incarnationTimestamp = const HybridLogicalClock(
+          physicalTime: 0,
+          logicalCounter: 0,
+          nodeId: 'genesis',
+        );
 
   RoomEntityLink copyWith({
     dynamic refType,
@@ -414,6 +431,7 @@ class RoomEntityLink {
     Map<String, dynamic>? position,
     bool? isIsolatedClone,
     Map<String, dynamic>? cloneRuntimeData,
+    HybridLogicalClock? incarnationTimestamp,
   }) {
     final CrdtLwwRegister<String> resolvedDisplayNameRegister;
     if (displayNameRegister != null) {
@@ -467,6 +485,7 @@ class RoomEntityLink {
       position: position ?? this.position,
       isIsolatedClone: isIsolatedClone ?? this.isIsolatedClone,
       cloneRuntimeData: cloneRuntimeData ?? this.cloneRuntimeData,
+      incarnationTimestamp: incarnationTimestamp ?? this.incarnationTimestamp,
     );
   }
 
@@ -506,6 +525,7 @@ class RoomEntityLink {
           'value': notesRegister.value,
           'timestamp': notesRegister.timestamp.toMap(),
         },
+        'incarnationTimestamp': incarnationTimestamp.toMap(),
         if (position != null) 'position': position,
         if (isIsolatedClone) 'isIsolatedClone': true,
         if (cloneRuntimeData != null) 'cloneRuntimeData': cloneRuntimeData,
@@ -595,6 +615,28 @@ class RoomEntityLink {
       );
     }
 
+    final HybridLogicalClock incarnationTs;
+    if (map.containsKey('incarnationTimestamp')) {
+      final rawInc = map['incarnationTimestamp'];
+      if (rawInc is! Map) {
+        throw FormatException(
+          'RoomEntityLink.fromMap: "incarnationTimestamp" must be a Map, got ${rawInc.runtimeType}',
+        );
+      }
+      incarnationTs = HybridLogicalClock.fromMap(rawInc);
+    } else {
+      final maxTs = displayNameReg.timestamp.isAfter(notesReg.timestamp)
+          ? displayNameReg.timestamp
+          : notesReg.timestamp;
+      incarnationTs = maxTs.physicalTime > 0
+          ? maxTs
+          : const HybridLogicalClock(
+              physicalTime: 0,
+              logicalCounter: 0,
+              nodeId: 'genesis',
+            );
+    }
+
     return RoomEntityLink(
       refType: resolvedRefType,
       entityId: map['entityId']?.toString() ?? '',
@@ -607,6 +649,7 @@ class RoomEntityLink {
       cloneRuntimeData: map['cloneRuntimeData'] != null
           ? Map<String, dynamic>.from(map['cloneRuntimeData'] as Map)
           : null,
+      incarnationTimestamp: incarnationTs,
     );
   }
 
@@ -637,6 +680,15 @@ class RoomEntityLink {
       );
     }
 
+    // Incarnation boundary: pre-removal nested fields cannot leak across incarnations.
+    if (a.incarnationTimestamp != b.incarnationTimestamp) {
+      if (a.incarnationTimestamp.isAfter(b.incarnationTimestamp)) {
+        return a;
+      } else {
+        return b;
+      }
+    }
+
     final mergedDisplayName = a.displayNameRegister.merge(b.displayNameRegister);
     final mergedNotes = a.notesRegister.merge(b.notesRegister);
 
@@ -660,6 +712,7 @@ class RoomEntityLink {
       position: mergedPosition,
       isIsolatedClone: a.isIsolatedClone,
       cloneRuntimeData: mergedCloneRuntimeData,
+      incarnationTimestamp: a.incarnationTimestamp,
     );
   }
 
@@ -675,6 +728,7 @@ class RoomEntityLink {
           entityId == other.entityId &&
           displayNameRegister == other.displayNameRegister &&
           notesRegister == other.notesRegister &&
+          incarnationTimestamp == other.incarnationTimestamp &&
           _deepEquality.equals(position, other.position) &&
           isIsolatedClone == other.isIsolatedClone &&
           _deepEquality.equals(cloneRuntimeData, other.cloneRuntimeData);
@@ -685,6 +739,7 @@ class RoomEntityLink {
         entityId,
         displayNameRegister,
         notesRegister,
+        incarnationTimestamp,
         _deepEquality.hash(position),
         isIsolatedClone,
         _deepEquality.hash(cloneRuntimeData),

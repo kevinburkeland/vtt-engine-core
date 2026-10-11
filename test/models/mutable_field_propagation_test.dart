@@ -1125,5 +1125,150 @@ void main() {
         expect(properResult.items["link-door"]!.value.notes, equals("Electrified"));
       });
     });
+
+    group('10. Entity-Link Incarnation Semantics & Remove/Re-add Associativity (Pass 4.2.3)', () {
+      const ts10 = HybridLogicalClock(physicalTime: 10, logicalCounter: 0, nodeId: "n1");
+      const ts20 = HybridLogicalClock(physicalTime: 20, logicalCounter: 0, nodeId: "n2");
+      const ts30 = HybridLogicalClock(physicalTime: 30, logicalCounter: 0, nodeId: "n3");
+      const ts35 = HybridLogicalClock(physicalTime: 35, logicalCounter: 0, nodeId: "n3");
+      const ts40 = HybridLogicalClock(physicalTime: 40, logicalCounter: 0, nodeId: "n4");
+
+      final oldIncarnationLink = RoomEntityLink(
+        entityId: "link-door",
+        displayName: "Old Door",
+        displayNameTimestamp: ts10,
+        notes: "old secret note",
+        notesTimestamp: ts10,
+        incarnationTimestamp: ts10,
+      );
+
+      final readdedLink = RoomEntityLink(
+        entityId: "link-door",
+        displayName: "New Door",
+        displayNameTimestamp: ts30,
+        notes: null,
+        incarnationTimestamp: ts30,
+      );
+
+      test('Associativity across old-incarnation -> removal -> re-add: all permutations converge without note resurrection', () {
+        // State A: old incarnation @ ts10 with secret note
+        final setA = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", oldIncarnationLink, ts10);
+
+        // State B: removal @ ts20
+        final setB = const CrdtOrSet<RoomEntityLink>.empty()
+            .add("link-door", oldIncarnationLink, ts10)
+            .remove("link-door", ts20);
+
+        // State C: re-added link @ ts30 with null notes
+        final setC = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", readdedLink, ts30);
+
+        // Permutation 1: (A + B) + C
+        final ab_c = joinEntityLinks(joinEntityLinks(setA, setB), setC);
+
+        // Permutation 2: A + (B + C)
+        final a_bc = joinEntityLinks(setA, joinEntityLinks(setB, setC));
+
+        // Permutation 3: (C + B) + A
+        final cb_a = joinEntityLinks(joinEntityLinks(setC, setB), setA);
+
+        // Permutation 4: C + (B + A)
+        final c_ba = joinEntityLinks(setC, joinEntityLinks(setB, setA));
+
+        // Permutation 5: (A + C) + B
+        final ac_b = joinEntityLinks(joinEntityLinks(setA, setC), setB);
+
+        // Permutation 6: A + (C + B)
+        final a_cb = joinEntityLinks(setA, joinEntityLinks(setC, setB));
+
+        // All 6 permutations must evaluate identically
+        expect(ab_c, equals(a_bc));
+        expect(ab_c, equals(cb_a));
+        expect(ab_c, equals(c_ba));
+        expect(ab_c, equals(ac_b));
+        expect(ab_c, equals(a_cb));
+
+        // Invariant: link exists with new incarnation, new displayName, and null notes (old notes do NOT resurrect)
+        final surviving = ab_c.items["link-door"]!;
+        expect(surviving.value.displayName, equals("New Door"));
+        expect(surviving.value.notes, isNull);
+        expect(surviving.value.incarnationTimestamp, equals(ts30));
+        expect(surviving.timestamp, equals(ts30));
+      });
+
+      test('Stale replica reconnect: pre-removal payload cannot contaminate new incarnation', () {
+        // Replica A goes offline with old incarnation @ ts10
+        final replicaA = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", oldIncarnationLink, ts10);
+
+        // Replica B removes link @ ts20, re-adds @ ts30, and edits displayName @ ts35
+        final linkB35 = readdedLink.copyWith(
+          displayName: "Reinforced Portcullis",
+          displayNameTimestamp: ts35,
+        );
+        final replicaB = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", linkB35, ts35);
+
+        // Replica A reconnects and merges with Replica B in both directions
+        final mergedAB = joinEntityLinks(replicaA, replicaB);
+        final mergedBA = joinEntityLinks(replicaB, replicaA);
+
+        expect(mergedAB, equals(mergedBA));
+        final surviving = mergedAB.items["link-door"]!;
+        expect(surviving.value.displayName, equals("Reinforced Portcullis"));
+        expect(surviving.value.notes, isNull);
+        expect(surviving.value.incarnationTimestamp, equals(ts30));
+        expect(surviving.timestamp, equals(ts35));
+      });
+
+      test('Same-incarnation independent field edits compose cleanly', () {
+        // In incarnation ts30:
+        // Replica A edits displayName
+        final linkA = readdedLink.copyWith(
+          displayName: "Dungeon Portcullis",
+          displayNameTimestamp: ts35,
+        );
+        final setA = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", linkA, ts35);
+
+        // Replica B edits notes
+        final linkB = readdedLink.copyWith(
+          notes: "Spike trap mechanism active",
+          notesTimestamp: ts40,
+        );
+        final setB = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", linkB, ts40);
+
+        final merged = joinEntityLinks(setA, setB);
+        expect(merged, equals(joinEntityLinks(setB, setA)));
+
+        final surviving = merged.items["link-door"]!;
+        expect(surviving.value.displayName, equals("Dungeon Portcullis"));
+        expect(surviving.value.notes, equals("Spike trap mechanism active"));
+        expect(surviving.value.incarnationTimestamp, equals(ts30));
+        expect(surviving.timestamp, equals(ts40));
+      });
+
+      test('RoomEntityLink serialization roundtrip preserves incarnationTimestamp', () {
+        final link = RoomEntityLink(
+          entityId: "link-door",
+          displayName: "Vault Gate",
+          displayNameTimestamp: ts30,
+          incarnationTimestamp: ts30,
+        );
+
+        final map = link.toMap();
+        expect(map["incarnationTimestamp"], isA<Map>());
+
+        final restored = RoomEntityLink.fromMap(map);
+        expect(restored.incarnationTimestamp, equals(ts30));
+        expect(restored, equals(link));
+      });
+
+      test('RoomEntityLink.fromMap: malformed incarnationTimestamp throws FormatException', () {
+        expect(
+          () => RoomEntityLink.fromMap({
+            "entityId": "link-door",
+            "incarnationTimestamp": "not-a-map",
+          }),
+          throwsA(isA<FormatException>()),
+        );
+      });
+    });
   });
 }

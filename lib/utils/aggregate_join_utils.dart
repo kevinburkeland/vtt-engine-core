@@ -203,13 +203,15 @@ CrdtOrSet<RoomEntityLink> joinEntityLinks(
 
     // 2. Resolve candidate item:
     // If both sides contain an item, recursively merge payloads via RoomEntityLink.join
-    // and take the max surviving item timestamp.
+    // and take the surviving item timestamp respecting incarnation boundaries.
     CrdtLwwRegister<RoomEntityLink>? candidateItem;
     if (localItem != null && remoteItem != null) {
       final mergedLink = RoomEntityLink.join(localItem.value, remoteItem.value);
-      final winningTs = localItem.timestamp.isAfter(remoteItem.timestamp)
-          ? localItem.timestamp
-          : remoteItem.timestamp;
+      final winningTs = localItem.value.incarnationTimestamp == remoteItem.value.incarnationTimestamp
+          ? (localItem.timestamp.isAfter(remoteItem.timestamp) ? localItem.timestamp : remoteItem.timestamp)
+          : (localItem.value.incarnationTimestamp.isAfter(remoteItem.value.incarnationTimestamp)
+              ? localItem.timestamp
+              : remoteItem.timestamp);
       candidateItem = CrdtLwwRegister<RoomEntityLink>(
         value: mergedLink,
         timestamp: winningTs,
