@@ -159,16 +159,16 @@ CrdtOrSet<String> joinPinnedRules(
   return a.merge(b);
 }
 
-/// Symmetrically merges two [CrdtOrSet<RoomEntityLink>] collections with recursive
-/// nested CRDT composition for surviving [RoomEntityLink] payloads with identical entityId.
+/// Symmetrically merges two [EntityLinkCrdtSet] collections with generation-aware
+/// semantics and recursive nested CRDT composition for surviving [RoomEntityLink] payloads.
 ///
-/// 1. Evaluates authoritative membership, tombstones, and re-adds according to OR-set semantics.
-/// 2. If both sides contain surviving [RoomEntityLink] items for the same entityId,
-///    recursively merges the link payloads via [RoomEntityLink.join], preserving independent
-///    nested field edits (such as [displayNameRegister] and [notesRegister]).
-/// 3. Assigns the maximum surviving item timestamp to the merged link item, deterministically
-///    preserving OR-set causal ordering.
-/// 4. Preserves commutativity, associativity, and idempotence across all valid states.
+/// 1. Higher generation strictly dominates lower generation.
+/// 2. For equal generation, native removal strictly dominates active items (same-generation removal wins).
+/// 3. For equal generation and both active, link payloads recursively merge via [RoomEntityLink.join],
+///    preserving independent nested field edits (such as [displayNameRegister] and [notesRegister]).
+/// 4. For equal generation and both removed, the removal timestamp is max(tsA, tsB).
+/// 5. Legacy add-wins semantics exist only at the explicit migration boundary ([EntityLinkTombstone.legacyAddWins]).
+/// 6. Preserves commutativity, associativity, and idempotence across all valid states.
 EntityLinkCrdtSet joinEntityLinks(
   EntityLinkCrdtSet a,
   EntityLinkCrdtSet b,

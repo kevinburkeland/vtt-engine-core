@@ -1617,7 +1617,7 @@ class RoomNodeState {
     final mergedTitle = a.titleRegister.merge(b.titleRegister);
     final mergedDescription = a.descriptionRegister.merge(b.descriptionRegister);
 
-    // 1. Nested CRDT sets: pure OR-Set join
+    // 1. Nested CRDT sets: OR-Set join for minions/encounters, generation-aware join for entityLinks
     final mergedMinions = a.activeMinions.merge(b.activeMinions);
     final mergedEncounter = a.activeEncounter.merge(b.activeEncounter);
     final mergedLinks = joinEntityLinks(a.entityLinksCrdt, b.entityLinksCrdt);

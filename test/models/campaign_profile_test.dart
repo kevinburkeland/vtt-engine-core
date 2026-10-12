@@ -1,3 +1,4 @@
+import 'package:vtt_engine_core/crdt/stateful_hlc_clock.dart';
 import 'package:vtt_engine_core/crdt/hybrid_logical_clock.dart';
 import 'package:vtt_engine_core/crdt/replica_id.dart';
 import 'package:test/test.dart';
@@ -188,6 +189,59 @@ void main() {
         () => room.copyWith(description: 'Renamed Description'),
         throwsArgumentError,
       );
+    });
+     test('defaultProfile requires authoritative timestamp or clock', () {
+      expect(
+        () => CampaignProfile.defaultProfile(nodeId: 'test-node'),
+        throwsArgumentError,
+      );
+    });
+
+    test('defaultProfile rejects genesis sentinel timestamp', () {
+      expect(
+        () => CampaignProfile.defaultProfile(
+          nodeId: 'genesis',
+          timestamp: const HybridLogicalClock(
+            physicalTime: 0,
+            logicalCounter: 0,
+            nodeId: 'genesis',
+          ),
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('defaultProfile rejects writer identity mismatch', () {
+      final clock = StatefulHlcClock(replicaId: ReplicaId('node-a'));
+      expect(
+        () => CampaignProfile.defaultProfile(
+          nodeId: 'node-b',
+          clock: clock,
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('defaultProfile stamps active CRDT membership with runtime writer causality', () {
+      final clock = StatefulHlcClock(replicaId: ReplicaId('authoritative-node'));
+      final profile = CampaignProfile.defaultProfile(
+        id: 'camp-fresh',
+        name: 'Fresh Campaign',
+        nodeId: 'authoritative-node',
+        clock: clock,
+        defaultPinnedRules: {'cover', 'grapple_shove'},
+      );
+
+      expect(profile.nameRegister.timestamp.nodeId, equals('authoritative-node'));
+      expect(profile.nameRegister.timestamp.physicalTime, greaterThan(0));
+      expect(profile.notesRegister.timestamp.nodeId, equals('authoritative-node'));
+      expect(profile.notesRegister.timestamp.physicalTime, greaterThan(0));
+      expect(profile.pinnedRules.items.values.isNotEmpty, isTrue);
+      for (final entry in profile.pinnedRules.items.values) {
+        expect(entry.timestamp.nodeId, equals('authoritative-node'));
+        expect(entry.timestamp.physicalTime, greaterThan(0));
+        expect(entry.timestamp.nodeId, isNot(equals('genesis')));
+      }
     });
   });
 }

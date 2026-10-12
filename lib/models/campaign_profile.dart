@@ -3,6 +3,7 @@ import 'package:meta/meta.dart';
 import '../crdt/crdt_lww_register.dart';
 import '../crdt/crdt_or_set.dart';
 import '../crdt/hybrid_logical_clock.dart';
+import '../crdt/stateful_hlc_clock.dart';
 import '../rules/i_ruleset_module.dart';
 import '../rules/ruleset_edition.dart';
 import '../utils/aggregate_join_utils.dart';
@@ -241,7 +242,27 @@ class CampaignProfile {
     Set<String> defaultPinnedRules = const {},
     IRulesetModule? rulesetModule,
     required String nodeId,
+    HybridLogicalClock? timestamp,
+    StatefulHlcClock? clock,
   }) {
+    final authoritativeTimestamp = timestamp ?? clock?.nextTimestamp();
+    if (authoritativeTimestamp == null) {
+      throw ArgumentError(
+        'CampaignProfile.defaultProfile requires an authoritative timestamp or StatefulHlcClock at active creation boundary.',
+      );
+    }
+    if (authoritativeTimestamp.nodeId == 'genesis') {
+      throw ArgumentError(
+        'CampaignProfile.defaultProfile: "genesis" sentinel cannot be used for active creation causality.',
+      );
+    }
+    if (nodeId.isNotEmpty && nodeId != authoritativeTimestamp.nodeId) {
+      throw ArgumentError(
+        'CampaignProfile.defaultProfile writer identity mismatch: '
+        'nodeId ("$nodeId") does not match timestamp.nodeId ("${authoritativeTimestamp.nodeId}").',
+      );
+    }
+
     final now = DateTime.now();
     final profileId = id ?? 'campaign_${now.millisecondsSinceEpoch}';
     final campaignName = name ?? 'My Campaign';
@@ -251,14 +272,43 @@ class CampaignProfile {
     final effectivePinned = defaultPinnedRules.isNotEmpty
         ? defaultPinnedRules
         : (rulesetModule?.defaultPinnedRules ?? defaultPinnedRulesFallback);
-    return CampaignProfile.initial(
+
+    final entries = <({String id, String item, HybridLogicalClock timestamp})>[];
+    for (final ruleId in effectivePinned) {
+      entries.add((
+        id: ruleId,
+        item: ruleId,
+        timestamp: authoritativeTimestamp,
+      ));
+    }
+    final initialPinned = const CrdtOrSet<String>.empty().addBatch(entries);
+
+    final effectiveNameRegister = nameRegister ??
+        CrdtLwwRegister<String>(
+          value: campaignName,
+          timestamp: authoritativeTimestamp,
+        );
+
+    final effectiveNotesRegister = CrdtLwwRegister<String>(
+      value: '',
+      timestamp: authoritativeTimestamp,
+    );
+
+    return CampaignProfile.raw(
       id: profileId,
-      name: campaignName,
-      nameRegister: nameRegister,
+      nameRegister: effectiveNameRegister,
       edition: effectiveEdition,
-      nodeId: nodeId,
-      now: now,
-    ).copyWith(pinnedRuleIds: effectivePinned);
+      createdAt: now,
+      lastPlayedAt: now,
+      roomState: const RoomNodeState.empty(),
+      partyRoster: const CrdtOrSet<String>.empty(),
+      partyCharacterIds: const [],
+      pinnedRuleIds: effectivePinned,
+      pinnedRules: initialPinned,
+      notesRegister: effectiveNotesRegister,
+      partyPurse: const PartyPurse.empty(),
+      changeLog: const [],
+    );
   }
 
   CampaignProfile copyWith({
