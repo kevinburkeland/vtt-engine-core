@@ -1281,6 +1281,7 @@ class RoomNodeState {
           'timestamp': descriptionRegister.timestamp.toMap(),
         },
         'entityLinks': entityLinks.map((e) => e.toMap()).toList(),
+        'entityLinks_format': 2,
         'entityLinks_crdt': entityLinksCrdt.toMap((e) => e.toMap()),
         if (entityInstances.isNotEmpty)
           'entityInstances': entityInstances.map((e) => e.toMap()).toList(),
@@ -1383,6 +1384,7 @@ class RoomNodeState {
       );
     }
 
+    final int? entityLinksFormat = (map['entityLinks_format'] as num?)?.toInt();
     EntityLinkCrdtSet linksSet =
         const EntityLinkCrdtSet.empty();
     if (map.containsKey('entityLinks_crdt')) {
@@ -1398,6 +1400,7 @@ class RoomNodeState {
           }
           return RoomEntityLink.fromMap(Map<String, dynamic>.from(raw));
         },
+        entityLinksFormat,
       );
     } else if (map.containsKey('entityLinks')) {
       final rawLinks = map['entityLinks'];

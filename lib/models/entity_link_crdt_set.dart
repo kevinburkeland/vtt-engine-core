@@ -29,6 +29,13 @@ class EntityLinkTombstone {
         if (legacyAddWins) 'legacyAddWins': true,
       };
 
+  factory EntityLinkTombstone.fromLegacyHlc(HybridLogicalClock hlc) =>
+      EntityLinkTombstone(
+        targetGeneration: hlc,
+        timestamp: hlc,
+        legacyAddWins: true,
+      );
+
   factory EntityLinkTombstone.fromMap(Map<dynamic, dynamic> map) {
     final safeMap = Map<String, dynamic>.from(map);
     final rawGen = safeMap['targetGeneration'] ?? safeMap['targetIncarnation'];
@@ -51,14 +58,9 @@ class EntityLinkTombstone {
             HybridLogicalClock.fromMap(Map<String, dynamic>.from(rawTs)),
         legacyAddWins: legacyAddWins,
       );
-    } else if (safeMap.containsKey('physicalTime')) {
-      // Deterministic migration for legacy tombstones:
-      final legacyHlc = HybridLogicalClock.fromMap(safeMap);
-      return EntityLinkTombstone(
-        targetGeneration: legacyHlc,
-        timestamp: legacyHlc,
-        legacyAddWins: true,
-      );
+    } else if (safeMap.containsKey('pt') || safeMap.containsKey('physicalTime')) {
+      return EntityLinkTombstone.fromLegacyHlc(
+          HybridLogicalClock.fromMap(safeMap));
     } else {
       throw const FormatException(
           'EntityLinkTombstone.fromMap: malformed tombstone payload.');
@@ -504,6 +506,7 @@ class EntityLinkCrdtSet {
   factory EntityLinkCrdtSet.fromMap(
     Map<dynamic, dynamic> map, [
     RoomEntityLink Function(dynamic)? itemDecoder,
+    int? format,
   ]) {
     final decoder = itemDecoder ??
         (raw) {
@@ -544,9 +547,18 @@ class EntityLinkCrdtSet {
           throw FormatException(
               'EntityLinkCrdtSet.fromMap: value for "$key" must not be null.');
         }
-        final link = decoder(rawVal);
+        if (rawVal is! Map) {
+          throw FormatException(
+              'EntityLinkCrdtSet.fromMap: raw item for "$key" must be a Map.');
+        }
+        final safeVal = Map<String, dynamic>.from(rawVal);
         final ts =
             HybridLogicalClock.fromMap(Map<String, dynamic>.from(rawTs));
+        var link = decoder(safeVal);
+        if (format == null && !safeVal.containsKey('incarnationTimestamp')) {
+          // Legacy item: payload has no incarnationTimestamp -> incarnationTimestamp := outer ts
+          link = link.copyWith(incarnationTimestamp: ts);
+        }
         itemsMap[key] =
             CrdtLwwRegister<RoomEntityLink>(value: link, timestamp: ts);
       }
@@ -566,8 +578,19 @@ class EntityLinkCrdtSet {
           throw FormatException(
               'EntityLinkCrdtSet.fromMap: tombstone for "$key" must be a Map.');
         }
-        tombstonesMap[key] = EntityLinkTombstone.fromMap(
-            Map<String, dynamic>.from(rawTomb));
+        final safeTomb = Map<String, dynamic>.from(rawTomb);
+        final rawGen =
+            safeTomb['targetGeneration'] ?? safeTomb['targetIncarnation'];
+        if (format == null &&
+            rawGen == null &&
+            (safeTomb.containsKey('pt') || safeTomb.containsKey('physicalTime'))) {
+          // Legacy tombstone: bare HLC map -> targetGeneration == timestamp == legacyHlc, legacyAddWins: true
+          tombstonesMap[key] = EntityLinkTombstone.fromLegacyHlc(
+              HybridLogicalClock.fromMap(safeTomb));
+        } else {
+          // Native tombstone
+          tombstonesMap[key] = EntityLinkTombstone.fromMap(safeTomb);
+        }
       }
     }
 
@@ -581,11 +604,7 @@ class EntityLinkCrdtSet {
       CrdtOrSet<RoomEntityLink> orSet) {
     final tombs = <String, EntityLinkTombstone>{};
     for (final entry in orSet.tombstones.entries) {
-      tombs[entry.key] = EntityLinkTombstone(
-        targetGeneration: entry.value,
-        timestamp: entry.value,
-        legacyAddWins: true,
-      );
+      tombs[entry.key] = EntityLinkTombstone.fromLegacyHlc(entry.value);
     }
     final items = <String, CrdtLwwRegister<RoomEntityLink>>{};
     for (final entry in orSet.items.entries) {

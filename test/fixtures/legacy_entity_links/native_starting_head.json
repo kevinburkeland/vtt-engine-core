@@ -1,0 +1,112 @@
+{
+  "roomId": "native_room",
+  "roomCode": "RM-native_room",
+  "title": "Native Room",
+  "titleRegister": {
+    "value": "Native Room",
+    "timestamp": {
+      "pt": 0,
+      "lc": 0,
+      "node": "genesis"
+    }
+  },
+  "description": "",
+  "descriptionRegister": {
+    "value": "",
+    "timestamp": {
+      "pt": 0,
+      "lc": 0,
+      "node": "genesis"
+    }
+  },
+  "entityLinks": [
+    {
+      "refType": "npc",
+      "entityId": "native_1",
+      "displayName": "Native Goblin",
+      "displayNameRegister": {
+        "value": "Native Goblin",
+        "timestamp": {
+          "pt": 50,
+          "lc": 0,
+          "node": "node1"
+        }
+      },
+      "notesRegister": {
+        "value": null,
+        "timestamp": {
+          "pt": 0,
+          "lc": 0,
+          "node": "genesis"
+        }
+      },
+      "incarnationTimestamp": {
+        "pt": 50,
+        "lc": 0,
+        "node": "node1"
+      }
+    }
+  ],
+  "entityLinks_crdt": {
+    "items": {
+      "native_1": {
+        "v": {
+          "refType": "npc",
+          "entityId": "native_1",
+          "displayName": "Native Goblin",
+          "displayNameRegister": {
+            "value": "Native Goblin",
+            "timestamp": {
+              "pt": 50,
+              "lc": 0,
+              "node": "node1"
+            }
+          },
+          "notesRegister": {
+            "value": null,
+            "timestamp": {
+              "pt": 0,
+              "lc": 0,
+              "node": "genesis"
+            }
+          },
+          "incarnationTimestamp": {
+            "pt": 50,
+            "lc": 0,
+            "node": "node1"
+          }
+        },
+        "ts": {
+          "pt": 50,
+          "lc": 0,
+          "node": "node1"
+        }
+      }
+    },
+    "tombstones": {
+      "native_tomb": {
+        "targetGeneration": {
+          "pt": 40,
+          "lc": 0,
+          "node": "node1"
+        },
+        "timestamp": {
+          "pt": 45,
+          "lc": 0,
+          "node": "node1"
+        }
+      }
+    }
+  },
+  "containers": [],
+  "activeEncounter": [],
+  "activeEncounter_crdt": {
+    "items": {},
+    "tombstones": {}
+  },
+  "activeMinions": [],
+  "activeMinions_crdt": {
+    "items": {},
+    "tombstones": {}
+  }
+}

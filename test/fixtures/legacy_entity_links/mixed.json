@@ -1,0 +1,109 @@
+{
+  "roomId": "mixed",
+  "roomCode": "RM-mixed",
+  "title": "Room mixed",
+  "description": "",
+  "entityLinks": [],
+  "entityLinks_crdt": {
+    "items": {
+      "id_item_only": {
+        "v": {
+          "refType": "npc",
+          "entityId": "id_item_only",
+          "displayName": "Solo Goblin",
+          "notes": null,
+          "position": null,
+          "isIsolatedClone": false,
+          "cloneRuntimeData": null
+        },
+        "ts": {
+          "pt": 30,
+          "lc": 0,
+          "node": "a"
+        }
+      },
+      "id_item30_tomb20": {
+        "v": {
+          "refType": "npc",
+          "entityId": "id_item30_tomb20",
+          "displayName": "Persistent Orc",
+          "notes": null,
+          "position": null,
+          "isIsolatedClone": false,
+          "cloneRuntimeData": null
+        },
+        "ts": {
+          "pt": 30,
+          "lc": 0,
+          "node": "a"
+        }
+      },
+      "id_item20_tomb20": {
+        "v": {
+          "refType": "npc",
+          "entityId": "id_item20_tomb20",
+          "displayName": "Tie Shaman",
+          "notes": null,
+          "position": null,
+          "isIsolatedClone": false,
+          "cloneRuntimeData": null
+        },
+        "ts": {
+          "pt": 20,
+          "lc": 0,
+          "node": "b"
+        }
+      },
+      "id_item10_tomb20": {
+        "v": {
+          "refType": "npc",
+          "entityId": "id_item10_tomb20",
+          "displayName": "Doomed Skeleton",
+          "notes": null,
+          "position": null,
+          "isIsolatedClone": false,
+          "cloneRuntimeData": null
+        },
+        "ts": {
+          "pt": 10,
+          "lc": 0,
+          "node": "a"
+        }
+      }
+    },
+    "tombstones": {
+      "id_tomb_only": {
+        "pt": 20,
+        "lc": 0,
+        "node": "b"
+      },
+      "id_item30_tomb20": {
+        "pt": 20,
+        "lc": 0,
+        "node": "b"
+      },
+      "id_item20_tomb20": {
+        "pt": 20,
+        "lc": 0,
+        "node": "b"
+      },
+      "id_item10_tomb20": {
+        "pt": 20,
+        "lc": 0,
+        "node": "b"
+      }
+    }
+  },
+  "containers": [],
+  "activeEncounter": [],
+  "activeEncounter_crdt": {
+    "items": {},
+    "tombstones": {}
+  },
+  "activeMinions": [],
+  "activeMinions_crdt": {
+    "items": {},
+    "tombstones": {}
+  },
+  "customProperties": {}
+}

@@ -1,0 +1,29 @@
+{
+  "roomId": "tombstone_only",
+  "roomCode": "RM-tombstone_only",
+  "title": "Room tombstone_only",
+  "description": "",
+  "entityLinks": [],
+  "entityLinks_crdt": {
+    "items": {},
+    "tombstones": {
+      "X": {
+        "pt": 20,
+        "lc": 0,
+        "node": "b"
+      }
+    }
+  },
+  "containers": [],
+  "activeEncounter": [],
+  "activeEncounter_crdt": {
+    "items": {},
+    "tombstones": {}
+  },
+  "activeMinions": [],
+  "activeMinions_crdt": {
+    "items": {},
+    "tombstones": {}
+  },
+  "customProperties": {}
+}

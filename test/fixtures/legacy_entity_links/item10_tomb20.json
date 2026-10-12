@@ -1,0 +1,46 @@
+{
+  "roomId": "item10_tomb20",
+  "roomCode": "RM-item10_tomb20",
+  "title": "Room item10_tomb20",
+  "description": "",
+  "entityLinks": [],
+  "entityLinks_crdt": {
+    "items": {
+      "X": {
+        "v": {
+          "refType": "npc",
+          "entityId": "X",
+          "displayName": "Goblin",
+          "notes": null,
+          "position": null,
+          "isIsolatedClone": false,
+          "cloneRuntimeData": null
+        },
+        "ts": {
+          "pt": 10,
+          "lc": 0,
+          "node": "a"
+        }
+      }
+    },
+    "tombstones": {
+      "X": {
+        "pt": 20,
+        "lc": 0,
+        "node": "b"
+      }
+    }
+  },
+  "containers": [],
+  "activeEncounter": [],
+  "activeEncounter_crdt": {
+    "items": {},
+    "tombstones": {}
+  },
+  "activeMinions": [],
+  "activeMinions_crdt": {
+    "items": {},
+    "tombstones": {}
+  },
+  "customProperties": {}
+}
