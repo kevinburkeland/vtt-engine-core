@@ -20,11 +20,20 @@ abstract class ICampaignRepository {
   /// Retrieves the active campaign profile.
   Future<CampaignProfile?> getActiveProfile();
 
-  /// Debounced save of a campaign profile to persistent storage.
-  Future<void> saveProfile(CampaignProfile profile);
+  /// Atomically transforms a campaign profile by ID through a serialized update path.
+  ///
+  /// Updates to the same id are serialized: each transform receives the result of the previous one.
+  /// The in-memory cache is updated synchronously inside that serialized section, before any await
+  /// that lets another update read it. Persistence and stream emission occur after.
+  Future<CampaignProfile> updateProfile(
+    String id,
+    CampaignProfile Function(CampaignProfile current) transform,
+  );
 
-  /// Immediate save of a campaign profile to persistent storage.
-  Future<void> saveProfileImmediate(CampaignProfile profile);
+  /// Writes a whole campaign profile record to persistent storage.
+  ///
+  /// Used for create, restore, or import only; never for edits.
+  Future<void> putProfile(CampaignProfile profile);
 
   /// Deletes a campaign profile by ID from storage and cache.
   Future<void> deleteProfile(String id);
