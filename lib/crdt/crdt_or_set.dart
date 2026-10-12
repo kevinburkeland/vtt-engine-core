@@ -336,18 +336,20 @@ class CrdtOrSet<T> {
         if (val is! Map) {
           throw FormatException('CrdtOrSet.fromMap: item "$key" must be a Map.');
         }
-        if (!val.containsKey('v')) {
-          throw FormatException('CrdtOrSet.fromMap: item "$key" missing "v" field.');
+        final safeVal = Map<String, dynamic>.from(val);
+        if (!safeVal.containsKey('v') && !safeVal.containsKey('value')) {
+          throw FormatException('CrdtOrSet.fromMap: item "$key" missing "v" or "value" field.');
         }
-        if (!val.containsKey('ts')) {
-          throw FormatException('CrdtOrSet.fromMap: item "$key" missing "ts" field.');
+        if (!safeVal.containsKey('ts') && !safeVal.containsKey('timestamp')) {
+          throw FormatException('CrdtOrSet.fromMap: item "$key" missing "ts" or "timestamp" field.');
         }
-        final rawTs = val['ts'];
+        final rawTs = safeVal['ts'] ?? safeVal['timestamp'];
         if (rawTs is! Map) {
           throw FormatException('CrdtOrSet.fromMap: item "$key" "ts" field must be a Map.');
         }
-        final ts = HybridLogicalClock.fromMap(rawTs);
-        final decodedVal = valueDecoder(val['v']);
+        final ts = HybridLogicalClock.fromMap(Map<String, dynamic>.from(rawTs));
+        final rawVal = safeVal.containsKey('v') ? safeVal['v'] : safeVal['value'];
+        final decodedVal = valueDecoder(rawVal);
         newItems[key.toString()] =
             CrdtLwwRegister<T>(value: decodedVal, timestamp: ts);
       });

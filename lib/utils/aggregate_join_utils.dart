@@ -170,23 +170,9 @@ CrdtOrSet<String> joinPinnedRules(
 ///    preserving OR-set causal ordering.
 /// 4. Preserves commutativity, associativity, and idempotence across all valid states.
 EntityLinkCrdtSet joinEntityLinks(
-  dynamic a,
-  dynamic b,
-) {
-  final EntityLinkCrdtSet setA = a is EntityLinkCrdtSet
-      ? a
-      : (a is CrdtOrSet<RoomEntityLink>
-          ? EntityLinkCrdtSet.fromCrdtOrSet(a)
-          : throw ArgumentError(
-              'joinEntityLinks: expected EntityLinkCrdtSet or CrdtOrSet<RoomEntityLink>, got ${a.runtimeType}'));
-  final EntityLinkCrdtSet setB = b is EntityLinkCrdtSet
-      ? b
-      : (b is CrdtOrSet<RoomEntityLink>
-          ? EntityLinkCrdtSet.fromCrdtOrSet(b)
-          : throw ArgumentError(
-              'joinEntityLinks: expected EntityLinkCrdtSet or CrdtOrSet<RoomEntityLink>, got ${b.runtimeType}'));
-  return setA.merge(setB);
-}
+  EntityLinkCrdtSet a,
+  EntityLinkCrdtSet b,
+) => a.merge(b);
 
 /// Merges two lists of [EntityInstance] by ID, recursively joining instances
 /// with identical instanceId, and sorting deterministically by instanceId.

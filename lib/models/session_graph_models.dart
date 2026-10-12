@@ -1402,7 +1402,7 @@ class RoomNodeState {
     } else if (map.containsKey('entityLinks')) {
       final rawLinks = map['entityLinks'];
       if (rawLinks is Map) {
-        linksSet = EntityLinkCrdtSet.fromMap(
+        final legacyOrSet = CrdtOrSet<RoomEntityLink>.fromMap(
           Map<dynamic, dynamic>.from(rawLinks),
           (raw) {
             if (raw is! Map) {
@@ -1411,6 +1411,7 @@ class RoomNodeState {
             return RoomEntityLink.fromMap(Map<String, dynamic>.from(raw));
           },
         );
+        linksSet = EntityLinkCrdtSet.fromCrdtOrSet(legacyOrSet);
       } else if (rawLinks is List) {
         final Map<String, RoomEntityLink> deduplicated = {};
         for (final raw in rawLinks) {

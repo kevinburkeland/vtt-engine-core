@@ -590,12 +590,10 @@ class EntityLinkCrdtSet {
     final items = <String, CrdtLwwRegister<RoomEntityLink>>{};
     for (final entry in orSet.items.entries) {
       final link = entry.value.value;
-      final itemGen = link.incarnationTimestamp.physicalTime > 0
-          ? link.incarnationTimestamp
-          : entry.value.timestamp;
+      final outerTs = entry.value.timestamp;
       items[entry.key] = CrdtLwwRegister<RoomEntityLink>(
-        value: link.copyWith(incarnationTimestamp: itemGen),
-        timestamp: entry.value.timestamp,
+        value: link.copyWith(incarnationTimestamp: outerTs),
+        timestamp: outerTs,
       );
     }
     return EntityLinkCrdtSet(

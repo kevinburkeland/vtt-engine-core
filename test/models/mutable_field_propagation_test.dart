@@ -1004,14 +1004,14 @@ void main() {
           displayName: "Secret Door",
           displayNameTimestamp: ts2000,
         );
-        final setA = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", linkA, ts2000);
+        final setA = const EntityLinkCrdtSet.empty().add("link-door", linkA, ts2000);
 
         // Replica B edits notes
         final linkB = baseLink.copyWith(
           notes: "Trapped",
           notesTimestamp: ts3000,
         );
-        final setB = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", linkB, ts3000);
+        final setB = const EntityLinkCrdtSet.empty().add("link-door", linkB, ts3000);
 
         final mergedAB = joinEntityLinks(setA, setB);
         final mergedBA = joinEntityLinks(setB, setA);
@@ -1118,15 +1118,17 @@ void main() {
         final linkA = baseLink.copyWith(displayName: "Portcullis", displayNameTimestamp: ts2000);
         final linkB = baseLink.copyWith(notes: "Electrified", notesTimestamp: ts3000);
 
-        final setA = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", linkA, ts2000);
-        final setB = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", linkB, ts3000);
+        final legacySetA = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", linkA, ts2000);
+        final legacySetB = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", linkB, ts3000);
 
-        // Generic a.merge(b) would drop linkA.displayName because ts3000 > ts2000
-        final opaqueResult = setA.merge(setB);
+        // Generic CrdtOrSet a.merge(b) drops linkA.displayName because ts3000 > ts2000
+        final opaqueResult = legacySetA.merge(legacySetB);
         expect(opaqueResult.items["link-door"]!.value.displayName, equals("Door"),
             reason: "Generic merge erroneously drops nested field edit");
 
         // joinEntityLinks MUST preserve both
+        final setA = const EntityLinkCrdtSet.empty().add("link-door", linkA, ts2000);
+        final setB = const EntityLinkCrdtSet.empty().add("link-door", linkB, ts3000);
         final properResult = joinEntityLinks(setA, setB);
         expect(properResult.items["link-door"]!.value.displayName, equals("Portcullis"));
         expect(properResult.items["link-door"]!.value.notes, equals("Electrified"));
@@ -1159,15 +1161,15 @@ void main() {
 
       test('Associativity across old-incarnation -> removal -> re-add: all permutations converge without note resurrection', () {
         // State A: old incarnation @ ts10 with secret note
-        final setA = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", oldIncarnationLink, ts10);
+        final setA = const EntityLinkCrdtSet.empty().add("link-door", oldIncarnationLink, ts10);
 
         // State B: removal @ ts20
-        final setB = const CrdtOrSet<RoomEntityLink>.empty()
+        final setB = const EntityLinkCrdtSet.empty()
             .add("link-door", oldIncarnationLink, ts10)
             .remove("link-door", ts20);
 
         // State C: re-added link @ ts30 with null notes
-        final setC = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", readdedLink, ts30);
+        final setC = const EntityLinkCrdtSet.empty().add("link-door", readdedLink, ts30);
 
         // Permutation 1: (A + B) + C
         final abThenC = joinEntityLinks(joinEntityLinks(setA, setB), setC);
@@ -1204,14 +1206,14 @@ void main() {
 
       test('Stale replica reconnect: pre-removal payload cannot contaminate new incarnation', () {
         // Replica A goes offline with old incarnation @ ts10
-        final replicaA = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", oldIncarnationLink, ts10);
+        final replicaA = const EntityLinkCrdtSet.empty().add("link-door", oldIncarnationLink, ts10);
 
         // Replica B removes link @ ts20, re-adds @ ts30, and edits displayName @ ts35
         final linkB35 = readdedLink.copyWith(
           displayName: "Reinforced Portcullis",
           displayNameTimestamp: ts35,
         );
-        final replicaB = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", linkB35, ts35);
+        final replicaB = const EntityLinkCrdtSet.empty().add("link-door", oldIncarnationLink, ts10).remove("link-door", ts20).createOrReadd("link-door", readdedLink, ts30).update("link-door", linkB35, ts35);
 
         // Replica A reconnects and merges with Replica B in both directions
         final mergedAB = joinEntityLinks(replicaA, replicaB);
@@ -1232,14 +1234,14 @@ void main() {
           displayName: "Dungeon Portcullis",
           displayNameTimestamp: ts35,
         );
-        final setA = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", linkA, ts35);
+        final setA = const EntityLinkCrdtSet.empty().add("link-door", linkA, ts35);
 
         // Replica B edits notes
         final linkB = readdedLink.copyWith(
           notes: "Spike trap mechanism active",
           notesTimestamp: ts40,
         );
-        final setB = const CrdtOrSet<RoomEntityLink>.empty().add("link-door", linkB, ts40);
+        final setB = const EntityLinkCrdtSet.empty().add("link-door", linkB, ts40);
 
         final merged = joinEntityLinks(setA, setB);
         expect(merged, equals(joinEntityLinks(setB, setA)));

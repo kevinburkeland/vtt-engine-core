@@ -373,4 +373,163 @@ void main() {
       expect(restored.tombstones['e2']!.targetGeneration.physicalTime, 30);
     });
   });
+
+  group('Pass 4.2.6b - Collapse Legacy Entity-Link Migration to One-Time Explicit Upgrade Path', () {
+    test('1. outer @30 / payload incarnation @10 vs tombstone @20 => ACTIVE after independent migration + merge', () {
+      final linkA = makeLink('e1', name: 'Item @30', incarnation: makeHlc(10));
+      var orSetA = CrdtOrSet<RoomEntityLink>();
+      orSetA = orSetA.add('e1', linkA, makeHlc(30));
+      final migratedA = EntityLinkCrdtSet.fromCrdtOrSet(orSetA);
+
+      final legacyTombB = CrdtOrSet<RoomEntityLink>(
+        items: const {},
+        tombstones: {'e1': makeHlc(20)},
+      );
+      final migratedB = EntityLinkCrdtSet.fromCrdtOrSet(legacyTombB);
+
+      final mergedAB = migratedA.merge(migratedB);
+      final mergedBA = migratedB.merge(migratedA);
+
+      expect(mergedAB.items.containsKey('e1'), isTrue);
+      expect(mergedBA.items.containsKey('e1'), isTrue);
+      expect(mergedAB.items['e1']?.value.displayName, 'Item @30');
+      expect(mergedBA.items['e1']?.value.displayName, 'Item @30');
+      expect(mergedAB.items['e1']?.value.incarnationTimestamp.physicalTime, 30);
+    });
+
+    test('2. outer @10 / payload incarnation @30 vs tombstone @20 => REMOVED after independent migration + merge', () {
+      final linkA = makeLink('e1', name: 'Item @10', incarnation: makeHlc(30));
+      var orSetA = CrdtOrSet<RoomEntityLink>();
+      orSetA = orSetA.add('e1', linkA, makeHlc(10));
+      final migratedA = EntityLinkCrdtSet.fromCrdtOrSet(orSetA);
+
+      final legacyTombB = CrdtOrSet<RoomEntityLink>(
+        items: const {},
+        tombstones: {'e1': makeHlc(20)},
+      );
+      final migratedB = EntityLinkCrdtSet.fromCrdtOrSet(legacyTombB);
+
+      final mergedAB = migratedA.merge(migratedB);
+      final mergedBA = migratedB.merge(migratedA);
+
+      expect(mergedAB.items.containsKey('e1'), isFalse);
+      expect(mergedBA.items.containsKey('e1'), isFalse);
+      expect(mergedAB.tombstones.containsKey('e1'), isTrue);
+      expect(mergedBA.tombstones.containsKey('e1'), isTrue);
+      expect(mergedAB.tombstones['e1']!.targetGeneration.physicalTime, 20);
+    });
+
+    test('3. same cases through legacy serialized RoomNodeState.fromMap', () {
+      // Case 1: outer 30, payload incarnation 10 vs tombstone 20 => active
+      final mapA1 = {
+        'roomId': 'room-1',
+        'roomCode': 'RC1',
+        'entityLinks': {
+          'items': {
+            'e1': {
+              'v': makeLink('e1', name: 'Item', incarnation: makeHlc(10)).toMap(),
+              'ts': makeHlc(30).toMap(),
+            },
+          },
+          'tombstones': <String, dynamic>{},
+        },
+      };
+      final mapB1 = {
+        'roomId': 'room-1',
+        'roomCode': 'RC1',
+        'entityLinks': {
+          'items': <String, dynamic>{},
+          'tombstones': {
+            'e1': makeHlc(20).toMap(),
+          },
+        },
+      };
+      final stateA1 = RoomNodeState.fromMap(mapA1);
+      final stateB1 = RoomNodeState.fromMap(mapB1);
+      final merged1 = RoomNodeState.join(stateA1, stateB1);
+      expect(merged1.entityLinksCrdt.items.containsKey('e1'), isTrue);
+      expect(merged1.entityLinksCrdt.items['e1']?.value.incarnationTimestamp.physicalTime, 30);
+
+      // Case 2: outer 10, payload incarnation 30 vs tombstone 20 => removed
+      final mapA2 = {
+        'roomId': 'room-1',
+        'roomCode': 'RC1',
+        'entityLinks': {
+          'items': {
+            'e1': {
+              'v': makeLink('e1', name: 'Item', incarnation: makeHlc(30)).toMap(),
+              'ts': makeHlc(10).toMap(),
+            },
+          },
+          'tombstones': <String, dynamic>{},
+        },
+      };
+      final stateA2 = RoomNodeState.fromMap(mapA2);
+      final stateB2 = RoomNodeState.fromMap(mapB1);
+      final merged2 = RoomNodeState.join(stateA2, stateB2);
+      expect(merged2.entityLinksCrdt.items.containsKey('e1'), isFalse);
+      expect(merged2.entityLinksCrdt.tombstones.containsKey('e1'), isTrue);
+      expect(merged2.entityLinksCrdt.tombstones['e1']!.targetGeneration.physicalTime, 20);
+    });
+
+    test('4. equal-timestamp legacy add-wins remains active', () {
+      final ts = makeHlc(20);
+      final linkA = makeLink('e1', name: 'Item @20', incarnation: makeHlc(15));
+      var orSetA = CrdtOrSet<RoomEntityLink>();
+      orSetA = orSetA.add('e1', linkA, ts);
+      final migratedA = EntityLinkCrdtSet.fromCrdtOrSet(orSetA);
+
+      final legacyTombB = CrdtOrSet<RoomEntityLink>(
+        items: const {},
+        tombstones: {'e1': ts},
+      );
+      final migratedB = EntityLinkCrdtSet.fromCrdtOrSet(legacyTombB);
+
+      final merged = migratedA.merge(migratedB);
+      expect(merged.items.containsKey('e1'), isTrue);
+      expect(merged.items['e1']?.value.displayName, 'Item @20');
+      expect(merged.items['e1']?.value.incarnationTimestamp, ts);
+    });
+
+    test('5. upgraded state serializes and reloads as native state without needing legacy migration again', () {
+      final legacyMap = {
+        'roomId': 'room-1',
+        'roomCode': 'ROOM1',
+        'title': 'Room 1',
+        'entityLinks': {
+          'items': {
+            'e1': {
+              'v': makeLink('e1', name: 'Legacy Link', incarnation: makeHlc(10)).toMap(),
+              'ts': makeHlc(30).toMap(),
+            }
+          },
+          'tombstones': {
+            'e2': makeHlc(25).toMap(),
+          },
+        },
+      };
+
+      // 1. One-time upgrade from legacy format
+      final upgradedState = RoomNodeState.fromMap(legacyMap);
+      expect(upgradedState.entityLinksCrdt.items.containsKey('e1'), isTrue);
+      expect(upgradedState.entityLinksCrdt.items['e1']?.value.incarnationTimestamp.physicalTime, 30);
+      expect(upgradedState.entityLinksCrdt.tombstones.containsKey('e2'), isTrue);
+
+      // 2. Serializes as native state
+      final nativeSerializedMap = upgradedState.toMap();
+      expect(nativeSerializedMap.containsKey('entityLinks_crdt'), isTrue);
+      final rawCrdt = nativeSerializedMap['entityLinks_crdt'] as Map;
+      expect(rawCrdt.containsKey('items'), isTrue);
+      expect(rawCrdt.containsKey('tombstones'), isTrue);
+      final e2TombMap = (rawCrdt['tombstones'] as Map)['e2'] as Map;
+      expect(e2TombMap.containsKey('targetGeneration'), isTrue);
+
+      // 3. Reloads as native state without needing legacy migration
+      final reloadedState = RoomNodeState.fromMap(nativeSerializedMap);
+      expect(reloadedState.entityLinksCrdt.items.containsKey('e1'), isTrue);
+      expect(reloadedState.entityLinksCrdt.items['e1']?.value.displayName, 'Legacy Link');
+      expect(reloadedState.entityLinksCrdt.tombstones.containsKey('e2'), isTrue);
+      expect(reloadedState, equals(upgradedState));
+    });
+  });
 }
