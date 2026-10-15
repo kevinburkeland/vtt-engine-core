@@ -7,6 +7,8 @@ import 'package:vtt_engine_core/crdt/crdt_or_set.dart';
 import 'package:vtt_engine_core/crdt/hybrid_logical_clock.dart';
 import 'package:vtt_engine_core/models/session_graph_models.dart';
 
+dynamic _testMinionParser(Map<String, dynamic> m) => m;
+
 void main() {
   group('Legacy Entity Link Migration (Pass 4.2.7)', () {
     final fixturesDir = Directory('test/fixtures/legacy_entity_links');
@@ -19,7 +21,7 @@ void main() {
 
     test('1. Golden Fixture: item_only loads with incarnationTimestamp == outer ts and active', () {
       final json = loadFixtureJson('item_only.json');
-      final room = RoomNodeState.fromMap(json);
+      final room = RoomNodeState.fromMap(json, minionParser: _testMinionParser);
 
       expect(room.entityLinks.length, 1);
       final link = room.entityLinks.first;
@@ -32,7 +34,7 @@ void main() {
 
     test('2. Golden Fixture: tombstone_only loads with legacyAddWins tombstone and removed', () {
       final json = loadFixtureJson('tombstone_only.json');
-      final room = RoomNodeState.fromMap(json);
+      final room = RoomNodeState.fromMap(json, minionParser: _testMinionParser);
 
       expect(room.entityLinks.isEmpty, isTrue);
       expect(room.entityLinksCrdt.isRemoved('X'), isTrue);
@@ -44,7 +46,7 @@ void main() {
 
     test('3. Golden Fixture: item30_tomb20 raw map loads with item winning', () {
       final json = loadFixtureJson('item30_tomb20.json');
-      final room = RoomNodeState.fromMap(json);
+      final room = RoomNodeState.fromMap(json, minionParser: _testMinionParser);
 
       expect(room.entityLinks.length, 1);
       final link = room.entityLinks.first;
@@ -55,7 +57,7 @@ void main() {
 
     test('4. Golden Fixture: item20_tomb20 raw map loads with item winning on tie (Add-Wins)', () {
       final json = loadFixtureJson('item20_tomb20.json');
-      final room = RoomNodeState.fromMap(json);
+      final room = RoomNodeState.fromMap(json, minionParser: _testMinionParser);
 
       expect(room.entityLinks.length, 1);
       final link = room.entityLinks.first;
@@ -66,7 +68,7 @@ void main() {
 
     test('5. Golden Fixture: item10_tomb20 raw map loads with tombstone winning (removed)', () {
       final json = loadFixtureJson('item10_tomb20.json');
-      final room = RoomNodeState.fromMap(json);
+      final room = RoomNodeState.fromMap(json, minionParser: _testMinionParser);
 
       expect(room.entityLinks.isEmpty, isTrue);
       expect(room.entityLinksCrdt.isRemoved('X'), isTrue);
@@ -77,7 +79,7 @@ void main() {
 
     test('6. Golden Fixture: mixed.json correctly reconciles all IDs', () {
       final json = loadFixtureJson('mixed.json');
-      final room = RoomNodeState.fromMap(json);
+      final room = RoomNodeState.fromMap(json, minionParser: _testMinionParser);
 
       final activeIds = room.entityLinks.map((l) => l.entityId).toSet();
       expect(activeIds, contains('id_item_only'));
@@ -100,8 +102,8 @@ void main() {
         ..['roomCode'] = 'RM-common'
         ..['title'] = 'Common Room';
 
-      final repA30 = RoomNodeState.fromMap(item30Json);
-      final repB20 = RoomNodeState.fromMap(tomb20Json);
+      final repA30 = RoomNodeState.fromMap(item30Json, minionParser: _testMinionParser);
+      final repB20 = RoomNodeState.fromMap(tomb20Json, minionParser: _testMinionParser);
 
       // Replica A (@30) + Replica B (@20) -> Item wins
       final joined30_20 = RoomNodeState.join(repA30, repB20);
@@ -120,7 +122,7 @@ void main() {
           'tombstones': {},
         },
       };
-      final repA20 = RoomNodeState.fromMap(item20Json);
+      final repA20 = RoomNodeState.fromMap(item20Json, minionParser: _testMinionParser);
       final joined20_20 = RoomNodeState.join(repA20, repB20);
       expect(joined20_20.entityLinks.map((l) => l.entityId), contains('X'));
 
@@ -137,7 +139,7 @@ void main() {
           'tombstones': {},
         },
       };
-      final repA10 = RoomNodeState.fromMap(item10Json);
+      final repA10 = RoomNodeState.fromMap(item10Json, minionParser: _testMinionParser);
       final joined10_20 = RoomNodeState.join(repA10, repB20);
       expect(joined10_20.entityLinks.map((l) => l.entityId), isNot(contains('X')));
       expect(joined10_20.entityLinksCrdt.isRemoved('X'), isTrue);
@@ -145,12 +147,12 @@ void main() {
 
     test('8. Round trip: migrated record saves with format marker and reloads equal without migrating', () {
       final legacyJson = loadFixtureJson('mixed.json');
-      final migrated = RoomNodeState.fromMap(legacyJson);
+      final migrated = RoomNodeState.fromMap(legacyJson, minionParser: _testMinionParser);
 
       final savedMap = migrated.toMap();
       expect(savedMap['entityLinks_format'], 2);
 
-      final reloaded = RoomNodeState.fromMap(savedMap);
+      final reloaded = RoomNodeState.fromMap(savedMap, minionParser: _testMinionParser);
       expect(reloaded, equals(migrated));
       expect(reloaded.entityLinksCrdt, equals(migrated.entityLinksCrdt));
       expect(reloaded.entityLinks, equals(migrated.entityLinks));
@@ -158,7 +160,7 @@ void main() {
 
     test('9. Native records saved by starting head 9252069 still load unchanged', () {
       final nativeJson = loadFixtureJson('native_starting_head.json');
-      final room = RoomNodeState.fromMap(nativeJson);
+      final room = RoomNodeState.fromMap(nativeJson, minionParser: _testMinionParser);
 
       expect(room.entityLinks.length, 1);
       final link = room.entityLinks.first;
@@ -175,7 +177,7 @@ void main() {
 
     test('10. Malformed entityLinks_crdt fails loudly without silent fallback', () {
       expect(
-        () => RoomNodeState.fromMap({
+        () => RoomNodeState.fromMap(minionParser: _testMinionParser, {
           'roomId': 'r1',
           'roomCode': 'RM-1',
           'title': 'R1',
@@ -185,7 +187,7 @@ void main() {
       );
 
       expect(
-        () => RoomNodeState.fromMap({
+        () => RoomNodeState.fromMap(minionParser: _testMinionParser, {
           'roomId': 'r1',
           'roomCode': 'RM-1',
           'title': 'R1',
@@ -197,7 +199,7 @@ void main() {
       );
 
       expect(
-        () => RoomNodeState.fromMap({
+        () => RoomNodeState.fromMap(minionParser: _testMinionParser, {
           'roomId': 'r1',
           'roomCode': 'RM-1',
           'title': 'R1',
@@ -209,7 +211,7 @@ void main() {
       );
 
       expect(
-        () => RoomNodeState.fromMap({
+        () => RoomNodeState.fromMap(minionParser: _testMinionParser, {
           'roomId': 'r1',
           'roomCode': 'RM-1',
           'title': 'R1',
@@ -305,11 +307,11 @@ void main() {
         }
 
         const commonRoomId = 'common_law_room';
-        final roomA = RoomNodeState.fromMap(serializeLegacyRoom(commonRoomId, legacySetA));
-        final roomB = RoomNodeState.fromMap(serializeLegacyRoom(commonRoomId, legacySetB));
+        final roomA = RoomNodeState.fromMap(serializeLegacyRoom(commonRoomId, legacySetA), minionParser: _testMinionParser);
+        final roomB = RoomNodeState.fromMap(serializeLegacyRoom(commonRoomId, legacySetB), minionParser: _testMinionParser);
 
         final migratedJoined = RoomNodeState.join(roomA, roomB);
-        final legacyMergedLoaded = RoomNodeState.fromMap(serializeLegacyRoom(commonRoomId, legacyMerged));
+        final legacyMergedLoaded = RoomNodeState.fromMap(serializeLegacyRoom(commonRoomId, legacyMerged), minionParser: _testMinionParser);
 
         final visibleMigrated = migratedJoined.entityLinks.map((l) => l.entityId).toSet();
         final visibleLegacy = legacyMergedLoaded.entityLinks.map((l) => l.entityId).toSet();

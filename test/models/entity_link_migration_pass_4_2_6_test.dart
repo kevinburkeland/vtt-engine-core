@@ -1,6 +1,8 @@
 import 'package:test/test.dart';
 import 'package:vtt_engine_core/vtt_engine_core.dart';
 
+dynamic _testMinionParser(Map<String, dynamic> m) => m;
+
 void main() {
   HybridLogicalClock makeHlc(int pt, [String nodeId = 'node1', int lc = 0]) {
     return HybridLogicalClock(physicalTime: pt, logicalCounter: lc, nodeId: nodeId);
@@ -165,8 +167,8 @@ void main() {
         'entityLinks': [linkG20, linkG10],
       };
 
-      final state1 = RoomNodeState.fromMap(mapOrder1);
-      final state2 = RoomNodeState.fromMap(mapOrder2);
+      final state1 = RoomNodeState.fromMap(mapOrder1, minionParser: _testMinionParser);
+      final state2 = RoomNodeState.fromMap(mapOrder2, minionParser: _testMinionParser);
 
       expect(state1.entityLinksCrdt.items.containsKey('e1'), isTrue);
       expect(state2.entityLinksCrdt.items.containsKey('e1'), isTrue);
@@ -188,7 +190,7 @@ void main() {
         'entityLinks': [linkA, linkB],
       };
 
-      final state = RoomNodeState.fromMap(map);
+      final state = RoomNodeState.fromMap(map, minionParser: _testMinionParser);
       expect(state.entityLinksCrdt.items.containsKey('e1'), isTrue);
       expect(state.entityLinksCrdt.items['e1']?.value.displayName, 'Same');
     });
@@ -210,8 +212,8 @@ void main() {
         'entityLinks': [linkB, linkA],
       };
 
-      expect(() => RoomNodeState.fromMap(map1), throwsA(isA<FormatException>()));
-      expect(() => RoomNodeState.fromMap(map2), throwsA(isA<FormatException>()));
+      expect(() => RoomNodeState.fromMap(map1, minionParser: _testMinionParser), throwsA(isA<FormatException>()));
+      expect(() => RoomNodeState.fromMap(map2, minionParser: _testMinionParser), throwsA(isA<FormatException>()));
     });
   });
 
@@ -271,7 +273,7 @@ void main() {
         },
       };
 
-      final state = RoomNodeState.fromMap(legacyMap);
+      final state = RoomNodeState.fromMap(legacyMap, minionParser: _testMinionParser);
       expect(state.entityLinksCrdt, isA<EntityLinkCrdtSet>());
       expect(state.entityLinksCrdt.items.containsKey('e1'), isTrue);
       expect(state.entityLinksCrdt.items['e1']?.value.displayName, 'Serialized Legacy Link');
@@ -444,8 +446,8 @@ void main() {
           },
         },
       };
-      final stateA1 = RoomNodeState.fromMap(mapA1);
-      final stateB1 = RoomNodeState.fromMap(mapB1);
+      final stateA1 = RoomNodeState.fromMap(mapA1, minionParser: _testMinionParser);
+      final stateB1 = RoomNodeState.fromMap(mapB1, minionParser: _testMinionParser);
       final merged1 = RoomNodeState.join(stateA1, stateB1);
       expect(merged1.entityLinksCrdt.items.containsKey('e1'), isTrue);
       expect(merged1.entityLinksCrdt.items['e1']?.value.incarnationTimestamp.physicalTime, 30);
@@ -464,8 +466,8 @@ void main() {
           'tombstones': <String, dynamic>{},
         },
       };
-      final stateA2 = RoomNodeState.fromMap(mapA2);
-      final stateB2 = RoomNodeState.fromMap(mapB1);
+      final stateA2 = RoomNodeState.fromMap(mapA2, minionParser: _testMinionParser);
+      final stateB2 = RoomNodeState.fromMap(mapB1, minionParser: _testMinionParser);
       final merged2 = RoomNodeState.join(stateA2, stateB2);
       expect(merged2.entityLinksCrdt.items.containsKey('e1'), isFalse);
       expect(merged2.entityLinksCrdt.tombstones.containsKey('e1'), isTrue);
@@ -510,7 +512,7 @@ void main() {
       };
 
       // 1. One-time upgrade from legacy format
-      final upgradedState = RoomNodeState.fromMap(legacyMap);
+      final upgradedState = RoomNodeState.fromMap(legacyMap, minionParser: _testMinionParser);
       expect(upgradedState.entityLinksCrdt.items.containsKey('e1'), isTrue);
       expect(upgradedState.entityLinksCrdt.items['e1']?.value.incarnationTimestamp.physicalTime, 30);
       expect(upgradedState.entityLinksCrdt.tombstones.containsKey('e2'), isTrue);
@@ -525,7 +527,7 @@ void main() {
       expect(e2TombMap.containsKey('targetGeneration'), isTrue);
 
       // 3. Reloads as native state without needing legacy migration
-      final reloadedState = RoomNodeState.fromMap(nativeSerializedMap);
+      final reloadedState = RoomNodeState.fromMap(nativeSerializedMap, minionParser: _testMinionParser);
       expect(reloadedState.entityLinksCrdt.items.containsKey('e1'), isTrue);
       expect(reloadedState.entityLinksCrdt.items['e1']?.value.displayName, 'Legacy Link');
       expect(reloadedState.entityLinksCrdt.tombstones.containsKey('e2'), isTrue);

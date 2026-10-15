@@ -2,6 +2,8 @@ import 'dart:math';
 import 'package:test/test.dart';
 import 'package:vtt_engine_core/vtt_engine_core.dart';
 
+dynamic _testMinionParser(Map<String, dynamic> m) => m;
+
 void main() {
   group('Cold Iron Birdcage — Pass 3.1: CRDT Timestamp Authority & Reconstruction Closure', () {
     const defaultSeed = 0x1234ABCD;
@@ -100,9 +102,9 @@ void main() {
           ],
         };
 
-        final resultA = RoomNodeState.fromMap(legacyMap);
+        final resultA = RoomNodeState.fromMap(legacyMap, minionParser: _testMinionParser);
         await Future<void>.delayed(const Duration(milliseconds: 5));
-        final resultB = RoomNodeState.fromMap(legacyMap);
+        final resultB = RoomNodeState.fromMap(legacyMap, minionParser: _testMinionParser);
 
         expect(resultA == resultB, isTrue);
         expect(resultA.hashCode, equals(resultB.hashCode));
@@ -132,7 +134,7 @@ void main() {
           ],
         };
 
-        final room = RoomNodeState.fromMap(legacyMap);
+        final room = RoomNodeState.fromMap(legacyMap, minionParser: _testMinionParser);
         expect(room.activeMinions.length, equals(1));
         expect(room.activeMinions.items['min-1']!.value['name'], equals('Bat'));
       });
@@ -148,7 +150,7 @@ void main() {
           ],
         };
 
-        expect(() => RoomNodeState.fromMap(legacyMinionsMap), throwsA(isA<StateError>()));
+        expect(() => RoomNodeState.fromMap(legacyMinionsMap, minionParser: _testMinionParser), throwsA(isA<StateError>()));
 
         final legacyEncounterMap = <String, dynamic>{
           'roomId': 'room-divergent-2',
@@ -170,7 +172,7 @@ void main() {
           ],
         };
 
-        expect(() => RoomNodeState.fromMap(legacyEncounterMap), throwsA(isA<StateError>()));
+        expect(() => RoomNodeState.fromMap(legacyEncounterMap, minionParser: _testMinionParser), throwsA(isA<StateError>()));
       });
     });
 
@@ -255,8 +257,8 @@ void main() {
         );
 
         final mapA = roomA.toMap();
-        final reconstructedA = RoomNodeState.fromMap(mapA);
-        final reconstructedB = RoomNodeState.fromMap(mapA);
+        final reconstructedA = RoomNodeState.fromMap(mapA, minionParser: _testMinionParser);
+        final reconstructedB = RoomNodeState.fromMap(mapA, minionParser: _testMinionParser);
 
         expect(reconstructedA.activeMinions == reconstructedB.activeMinions, isTrue);
         final mergedMinions = reconstructedA.activeMinions.merge(reconstructedB.activeMinions);
@@ -713,7 +715,7 @@ void main() {
     group('J. RoomNodeState Strict Replicated Deserialization & Legacy Migration', () {
       test('1. malformed activeMinions_crdt throws FormatException', () {
         expect(
-          () => RoomNodeState.fromMap({
+          () => RoomNodeState.fromMap(minionParser: _testMinionParser, {
             'roomId': 'r1',
             'roomCode': 'RC1',
             'title': 'Test Room',
@@ -732,7 +734,7 @@ void main() {
 
       test('2. malformed activeEncounter_crdt throws FormatException', () {
         expect(
-          () => RoomNodeState.fromMap({
+          () => RoomNodeState.fromMap(minionParser: _testMinionParser, {
             'roomId': 'r1',
             'roomCode': 'RC1',
             'title': 'Test Room',
@@ -751,7 +753,7 @@ void main() {
 
       test('3. malformed map-shaped activeMinions CRDT throws FormatException', () {
         expect(
-          () => RoomNodeState.fromMap({
+          () => RoomNodeState.fromMap(minionParser: _testMinionParser, {
             'roomId': 'r1',
             'roomCode': 'RC1',
             'title': 'Test Room',
@@ -765,7 +767,7 @@ void main() {
 
       test('4. malformed map-shaped activeEncounter CRDT throws FormatException', () {
         expect(
-          () => RoomNodeState.fromMap({
+          () => RoomNodeState.fromMap(minionParser: _testMinionParser, {
             'roomId': 'r1',
             'roomCode': 'RC1',
             'title': 'Test Room',
@@ -779,7 +781,7 @@ void main() {
 
       test('5. CRDT field present but malformed does NOT fall back to legacy list', () {
         expect(
-          () => RoomNodeState.fromMap({
+          () => RoomNodeState.fromMap(minionParser: _testMinionParser, {
             'roomId': 'r1',
             'roomCode': 'RC1',
             'title': 'Test Room',
@@ -801,7 +803,7 @@ void main() {
 
       test('5a. activeMinions_crdt: null with valid legacy list throws FormatException', () {
         expect(
-          () => RoomNodeState.fromMap({
+          () => RoomNodeState.fromMap(minionParser: _testMinionParser, {
             'roomId': 'r1',
             'roomCode': 'RC1',
             'title': 'Test Room',
@@ -816,7 +818,7 @@ void main() {
 
       test('5b. activeEncounter_crdt: null with valid legacy list throws FormatException', () {
         expect(
-          () => RoomNodeState.fromMap({
+          () => RoomNodeState.fromMap(minionParser: _testMinionParser, {
             'roomId': 'r1',
             'roomCode': 'RC1',
             'title': 'Test Room',
@@ -835,7 +837,7 @@ void main() {
       });
 
       test('6. legacy list still migrates correctly when no CRDT field exists', () {
-        final state = RoomNodeState.fromMap({
+        final state = RoomNodeState.fromMap(minionParser: _testMinionParser, {
           'roomId': 'r1',
           'roomCode': 'RC1',
           'title': 'Test Room',
@@ -869,8 +871,8 @@ void main() {
           ],
         };
 
-        final a = RoomNodeState.fromMap(map);
-        final b = RoomNodeState.fromMap(map);
+        final a = RoomNodeState.fromMap(map, minionParser: _testMinionParser);
+        final b = RoomNodeState.fromMap(map, minionParser: _testMinionParser);
         expect(a, equals(b));
         expect(a.hashCode, equals(b.hashCode));
       });

@@ -51,8 +51,7 @@ class EntityReference<T extends DomainEntity> {
   final List<dynamic> grantedSkills;
   final Map<String, dynamic> customProperties;
 
-  /// Optional pluggable hook for external compendium lookups when resolving traits.
-  static ITraitDefinition? Function(String slug)? externalTraitResolver;
+
 
   EntityReference({
     required this.refType,
@@ -73,9 +72,10 @@ class EntityReference<T extends DomainEntity> {
         customProperties = const {};
 
   /// Converts this entity reference into an agnostic trait definition, resolving
-  /// metadata from available compendiums if needed.
-  ITraitDefinition toTraitDefinition() {
-    final externalDef = externalTraitResolver?.call(slug);
+  /// metadata using the required [resolver].
+  ITraitDefinition toTraitDefinition(
+      ITraitDefinition? Function(String slug) resolver) {
+    final externalDef = resolver(slug);
     final props = <String, dynamic>{
       if (externalDef?.properties['prerequisite'] != null)
         'prerequisite': externalDef!.properties['prerequisite'],

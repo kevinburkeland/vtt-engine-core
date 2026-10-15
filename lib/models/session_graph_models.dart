@@ -952,8 +952,7 @@ class RoomNodeState {
   final CrdtOrSet<dynamic> activeMinions;
   final Map<String, dynamic> customProperties;
 
-  /// Hook for modules to provide custom deserializer for active minions / summons.
-  static dynamic Function(Map<String, dynamic>)? defaultMinionParser;
+
 
   String get title => titleRegister.value;
   String get description => descriptionRegister.value;
@@ -1299,8 +1298,8 @@ class RoomNodeState {
       };
 
   factory RoomNodeState.fromMap(Map<String, dynamic> map,
-      {dynamic Function(Map<String, dynamic>)? minionParser}) {
-    final parser = minionParser ?? defaultMinionParser ?? (m) => m;
+      {required dynamic Function(Map<String, dynamic>) minionParser}) {
+    final parser = minionParser;
 
     final CrdtLwwRegister<String> titleReg;
     if (map.containsKey('titleRegister')) {

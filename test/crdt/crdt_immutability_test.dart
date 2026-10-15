@@ -692,7 +692,7 @@ void main() {
         };
 
         // Deserialize WITHOUT passing any custom minionParser
-        final room = RoomNodeState.fromMap(rawPayload);
+        final room = RoomNodeState.fromMap(rawPayload, minionParser: (m) => m);
 
         // Mutate original input raw map
         ((rawMinion['traits'] as Map)['resistances'] as List).clear();

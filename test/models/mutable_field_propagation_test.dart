@@ -10,6 +10,8 @@ import 'package:vtt_engine_core/crdt/crdt_or_set.dart';
 import 'package:vtt_engine_core/models/session_graph_models.dart';
 import 'package:vtt_engine_core/utils/aggregate_join_utils.dart';
 
+dynamic _testMinionParser(Map<String, dynamic> m) => m;
+
 void main() {
   group('Cold Iron Birdcage — Pass 4.2: Mutable Field Propagation & Single-Writer Law', () {
     late StatefulHlcClock clockA;
@@ -487,7 +489,7 @@ void main() {
         expect(map['titleRegister']['timestamp']['lc'], equals(2));
         expect(map['titleRegister']['timestamp']['node'], equals('n1'));
 
-        final restored = RoomNodeState.fromMap(map);
+        final restored = RoomNodeState.fromMap(map, minionParser: _testMinionParser);
         expect(restored, equals(room));
         expect(restored.titleRegister.timestamp, equals(tsTitle));
         expect(restored.descriptionRegister.timestamp, equals(tsDesc));
@@ -553,7 +555,7 @@ void main() {
       test('RoomNodeState.fromMap: titleRegister strict presence', () {
         // PRESENT wrong type throws FormatException, NEVER falls back to legacy title
         expect(
-          () => RoomNodeState.fromMap({
+          () => RoomNodeState.fromMap(minionParser: _testMinionParser, {
             "roomId": "r1",
             "titleRegister": "bad-string",
             "title": "Legacy Tavern",
@@ -563,7 +565,7 @@ void main() {
 
         // PRESENT null throws FormatException
         expect(
-          () => RoomNodeState.fromMap({
+          () => RoomNodeState.fromMap(minionParser: _testMinionParser, {
             "roomId": "r1",
             "titleRegister": null,
             "title": "Legacy Tavern",
@@ -573,7 +575,7 @@ void main() {
 
         // PRESENT map with malformed timestamp throws FormatException
         expect(
-          () => RoomNodeState.fromMap({
+          () => RoomNodeState.fromMap(minionParser: _testMinionParser, {
             "roomId": "r1",
             "titleRegister": {
               "value": "Valid Title",
@@ -585,7 +587,7 @@ void main() {
         );
 
         // PRESENT valid register + divergent legacy scalar: authoritative register wins
-        final validWithDivergentLegacy = RoomNodeState.fromMap({
+        final validWithDivergentLegacy = RoomNodeState.fromMap(minionParser: _testMinionParser, {
           "roomId": "r1",
           "titleRegister": {
             "value": "Authoritative Crypt",
@@ -597,7 +599,7 @@ void main() {
         expect(validWithDivergentLegacy.titleRegister.timestamp.physicalTime, equals(500));
 
         // ABSENT register: migrates legacy scalar at genesis HLC
-        final legacyAbsent = RoomNodeState.fromMap({
+        final legacyAbsent = RoomNodeState.fromMap(minionParser: _testMinionParser, {
           "roomId": "r1",
           "title": "Legacy Tavern",
         });
@@ -608,7 +610,7 @@ void main() {
 
       test('RoomNodeState.fromMap: descriptionRegister strict presence', () {
         expect(
-          () => RoomNodeState.fromMap({
+          () => RoomNodeState.fromMap(minionParser: _testMinionParser, {
             "roomId": "r1",
             "descriptionRegister": 12345,
             "description": "Legacy Desc",
@@ -617,7 +619,7 @@ void main() {
         );
 
         expect(
-          () => RoomNodeState.fromMap({
+          () => RoomNodeState.fromMap(minionParser: _testMinionParser, {
             "roomId": "r1",
             "descriptionRegister": null,
             "description": "Legacy Desc",
@@ -626,7 +628,7 @@ void main() {
         );
 
         expect(
-          () => RoomNodeState.fromMap({
+          () => RoomNodeState.fromMap(minionParser: _testMinionParser, {
             "roomId": "r1",
             "descriptionRegister": {
               "value": "Valid Desc",
@@ -637,7 +639,7 @@ void main() {
           throwsA(isA<FormatException>()),
         );
 
-        final validDesc = RoomNodeState.fromMap({
+        final validDesc = RoomNodeState.fromMap(minionParser: _testMinionParser, {
           "roomId": "r1",
           "descriptionRegister": {
             "value": "Authoritative Desc",
@@ -648,7 +650,7 @@ void main() {
         expect(validDesc.description, equals("Authoritative Desc"));
         expect(validDesc.descriptionRegister.timestamp.physicalTime, equals(600));
 
-        final absentDesc = RoomNodeState.fromMap({
+        final absentDesc = RoomNodeState.fromMap(minionParser: _testMinionParser, {
           "roomId": "r1",
           "description": "Legacy Desc",
         });
@@ -883,14 +885,14 @@ void main() {
 
       test('RoomNodeState.fromMap: titleRegister timestamp without value throws FormatException', () {
         expect(
-          () => RoomNodeState.fromMap({
+          () => RoomNodeState.fromMap(minionParser: _testMinionParser, {
             "roomId": "r1",
             "titleRegister": {"timestamp": validHlcMap},
           }),
           throwsA(isA<FormatException>()),
         );
         expect(
-          () => RoomNodeState.fromMap({
+          () => RoomNodeState.fromMap(minionParser: _testMinionParser, {
             "roomId": "r1",
             "titleRegister": {"timestamp": validHlcMap, "value": null},
           }),
@@ -900,14 +902,14 @@ void main() {
 
       test('RoomNodeState.fromMap: descriptionRegister timestamp without value throws FormatException', () {
         expect(
-          () => RoomNodeState.fromMap({
+          () => RoomNodeState.fromMap(minionParser: _testMinionParser, {
             "roomId": "r1",
             "descriptionRegister": {"timestamp": validHlcMap},
           }),
           throwsA(isA<FormatException>()),
         );
         expect(
-          () => RoomNodeState.fromMap({
+          () => RoomNodeState.fromMap(minionParser: _testMinionParser, {
             "roomId": "r1",
             "descriptionRegister": {"timestamp": validHlcMap, "value": null},
           }),

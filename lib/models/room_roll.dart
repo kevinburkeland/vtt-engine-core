@@ -14,8 +14,7 @@ class RoomRoll {
   final bool isCrit;
   final bool isFumble;
 
-  /// Optional pluggable encoder for Firestore Timestamp support in infrastructure.
-  static dynamic Function(DateTime)? firestoreTimestampEncoder;
+
 
   const RoomRoll({
     required this.id,
@@ -57,9 +56,9 @@ class RoomRoll {
     );
   }
 
-  Map<String, dynamic> toMap({
-    bool useFirestoreTimestamp = true,
-    dynamic Function(DateTime)? timestampEncoder,
+  Map<String, dynamic> _buildMap({
+    required dynamic encodedTs,
+    required dynamic encodedExpire,
   }) {
     final cleanCode = roomCode.trim().toUpperCase();
     final cleanPlayer =
@@ -69,15 +68,6 @@ class RoomRoll {
     final clampedFormula = formulaString.length > 200
         ? formulaString.substring(0, 200)
         : formulaString;
-    final expireDate = timestamp.add(const Duration(hours: 24));
-
-    final encoder = timestampEncoder ?? firestoreTimestampEncoder;
-    final encodedTs = (useFirestoreTimestamp && encoder != null)
-        ? encoder(timestamp)
-        : timestamp.millisecondsSinceEpoch;
-    final encodedExpire = (useFirestoreTimestamp && encoder != null)
-        ? encoder(expireDate)
-        : expireDate.millisecondsSinceEpoch;
 
     final map = <String, dynamic>{
       'id': id,
@@ -99,6 +89,22 @@ class RoomRoll {
       map['details'] = details!.take(50).toList();
     }
     return map;
+  }
+
+  /// Serializes roll to a JSON-compatible map with integer millisecond timestamps.
+  Map<String, dynamic> toJsonMap() {
+    return _buildMap(
+      encodedTs: timestamp.millisecondsSinceEpoch,
+      encodedExpire: timestamp.add(const Duration(hours: 24)).millisecondsSinceEpoch,
+    );
+  }
+
+  /// Serializes roll to a Firestore document map using the required timestamp [encodeTimestamp].
+  Map<String, dynamic> toFirestoreMap(Object Function(DateTime) encodeTimestamp) {
+    return _buildMap(
+      encodedTs: encodeTimestamp(timestamp),
+      encodedExpire: encodeTimestamp(timestamp.add(const Duration(hours: 24))),
+    );
   }
 
   factory RoomRoll.fromMap(Map<String, dynamic> map) {

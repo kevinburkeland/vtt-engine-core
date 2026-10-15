@@ -87,8 +87,6 @@ class UnknownSyncMessage extends IncomingRoomSyncMessage {
 
 /// Port defining synchronization payload parsing, hashing, and serialization.
 abstract interface class IRoomSyncPayloadPort {
-  /// Default provider hook configured during application initialization.
-  static IRoomSyncPayloadPort Function()? defaultProvider;
 
   /// Computes a deterministic SHA-256 hash string for payload deduplication.
   String computePayloadHash(String jsonPayload);
