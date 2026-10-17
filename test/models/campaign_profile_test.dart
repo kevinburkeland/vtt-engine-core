@@ -138,6 +138,15 @@ void main() {
       expect(profileA == modified, isFalse);
     });
 
+    test('detects differences in memberPurses despite same id', () {
+      final modified = profileA.copyWith(
+        memberPurses: {
+          'char-1': const PartyPurse.empty().setCoins(gp: 25, replicaId: ReplicaId('test-node')),
+        },
+      );
+      expect(profileA == modified, isFalse);
+    });
+
     test('RoomNodeState detects entityInstances and description differences', () {
       final room1 = RoomNodeState(
         roomId: 'r1',

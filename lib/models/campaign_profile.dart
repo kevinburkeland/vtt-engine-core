@@ -25,6 +25,7 @@ class CampaignProfile {
   final CrdtOrSet<String> pinnedRules;
   final CrdtLwwRegister<String> notesRegister;
   final PartyPurse partyPurse;
+  final Map<String, PartyPurse> memberPurses;
   final List<PartyEvent> changeLog;
 
   /// Identifier of the active ruleset module.
@@ -49,6 +50,7 @@ class CampaignProfile {
       List.unmodifiable(partyRoster.activeValues.toList()..sort());
 
   static const _listEventEquality = ListEquality<PartyEvent>();
+  static const _mapPurseEquality = MapEquality<String, PartyPurse>();
 
   CampaignProfile.raw({
     required this.id,
@@ -65,8 +67,9 @@ class CampaignProfile {
     CrdtOrSet<String>? pinnedRules,
     required this.notesRegister,
     this.partyPurse = const PartyPurse.empty(),
+    Map<String, PartyPurse> memberPurses = const {},
     List<PartyEvent> changeLog = const [],
-  })  : nameRegister = nameRegister ??
+  })  : memberPurses = Map.unmodifiable(memberPurses), nameRegister = nameRegister ??
             (nameTimestamp != null
                 ? CrdtLwwRegister<String>(
                     value: name ?? '',
@@ -140,6 +143,7 @@ class CampaignProfile {
     CrdtLwwRegister<String>? notesRegister,
     String? notesMarkdown,
     PartyPurse partyPurse = const PartyPurse.empty(),
+    Map<String, PartyPurse> memberPurses = const {},
     List<PartyEvent> changeLog = const [],
     required String nodeId,
   }) {
@@ -195,6 +199,7 @@ class CampaignProfile {
       pinnedRules: pinnedRules,
       notesRegister: effectiveNotesRegister,
       partyPurse: partyPurse,
+      memberPurses: memberPurses,
       changeLog: changeLog,
     );
   }
@@ -307,6 +312,7 @@ class CampaignProfile {
       pinnedRules: initialPinned,
       notesRegister: effectiveNotesRegister,
       partyPurse: const PartyPurse.empty(),
+      memberPurses: const {},
       changeLog: const [],
     );
   }
@@ -328,6 +334,7 @@ class CampaignProfile {
     String? notesMarkdown,
     CrdtLwwRegister<String>? notesRegister,
     PartyPurse? partyPurse,
+    Map<String, PartyPurse>? memberPurses,
     List<PartyEvent>? changeLog,
     HybridLogicalClock? notesTimestamp,
   }) {
@@ -386,6 +393,7 @@ class CampaignProfile {
       pinnedRules: effectivePinnedRules,
       notesRegister: resolvedNotesRegister,
       partyPurse: partyPurse ?? this.partyPurse,
+      memberPurses: memberPurses != null ? Map<String, PartyPurse>.from(memberPurses) : this.memberPurses,
       changeLog:
           changeLog != null ? List<PartyEvent>.from(changeLog) : this.changeLog,
     );
@@ -430,6 +438,19 @@ class CampaignProfile {
     // 2. Party Purse: pure PN-counter CvRDT lattice join across denominations
     final mergedPurse = a.partyPurse.merge(b.partyPurse);
 
+    // 2b. Member Purses: pure PN-counter CvRDT lattice join key by key
+    final mergedMemberPurses = <String, PartyPurse>{};
+    final allMemberKeys = {...a.memberPurses.keys, ...b.memberPurses.keys};
+    for (final key in allMemberKeys) {
+      final purseA = a.memberPurses[key];
+      final purseB = b.memberPurses[key];
+      if (purseA != null && purseB != null) {
+        mergedMemberPurses[key] = purseA.merge(purseB);
+      } else {
+        mergedMemberPurses[key] = purseA ?? purseB!;
+      }
+    }
+
     // 3. Pinned Rules: pure CRDT OR-Set join
     final mergedPinnedRules = joinPinnedRules(a.pinnedRules, b.pinnedRules);
 
@@ -453,6 +474,7 @@ class CampaignProfile {
       pinnedRules: mergedPinnedRules,
       notesRegister: mergedNotes,
       partyPurse: mergedPurse,
+      memberPurses: mergedMemberPurses,
       changeLog: mergedEvents,
     );
   }
@@ -475,6 +497,7 @@ class CampaignProfile {
           pinnedRules == other.pinnedRules &&
           notesRegister == other.notesRegister &&
           partyPurse == other.partyPurse &&
+          _mapPurseEquality.equals(memberPurses, other.memberPurses) &&
           _listEventEquality.equals(changeLog, other.changeLog);
 
   @override
@@ -489,6 +512,7 @@ class CampaignProfile {
         pinnedRules,
         notesRegister,
         partyPurse,
+        _mapPurseEquality.hash(memberPurses),
         _listEventEquality.hash(changeLog),
       );
 }

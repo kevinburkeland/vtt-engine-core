@@ -342,6 +342,9 @@ void main() {
             timestamp: HybridLogicalClock(physicalTime: 1000, logicalCounter: 0, nodeId: 'genesis'),
           ),
           partyPurse: const PartyPurse.empty(),
+          memberPurses: {
+            'c_base': const PartyPurse.empty().modifyDenomination('gold', 10, replicaId: ReplicaId('genesis')),
+          },
           partyCharacterIds: const ['c_base', 'c_extra'],
           pinnedRuleIds: const {'base_rule', 'unpin_target'},
         );
@@ -357,6 +360,10 @@ void main() {
           name: mutateNameA ? 'Campaign A ' : base.name,
           nameTimestamp: mutateNameA ? unpinHlc : base.nameRegister.timestamp,
           partyPurse: base.partyPurse.modifyDenomination('gold', subRng.nextInt(50) + 1, replicaId: repA),
+          memberPurses: {
+            'c_base': base.memberPurses['c_base']!.modifyDenomination('gold', subRng.nextInt(30) + 1, replicaId: repA),
+            'c_a_': const PartyPurse.empty().modifyDenomination('silver', 5, replicaId: repA),
+          },
           notesRegister: CrdtLwwRegister<String>(
             value: 'Notes A ',
             timestamp: unpinHlc,
@@ -384,6 +391,10 @@ void main() {
           name: mutateNameB ? 'Campaign B ' : base.name,
           nameTimestamp: mutateNameB ? hlcB : base.nameRegister.timestamp,
           partyPurse: base.partyPurse.modifyDenomination('silver', subRng.nextInt(50) + 1, replicaId: repB),
+          memberPurses: {
+            'c_base': base.memberPurses['c_base']!.modifyDenomination('gold', subRng.nextInt(30) + 1, replicaId: repB),
+            'c_b_': const PartyPurse.empty().modifyDenomination('copper', 12, replicaId: repB),
+          },
           notesRegister: CrdtLwwRegister<String>(
             value: 'Notes B ',
             timestamp: hlcB,
@@ -426,6 +437,10 @@ void main() {
           name: mutateNameC ? 'Campaign C ' : base.name,
           nameTimestamp: mutateNameC ? addHlc : base.nameRegister.timestamp,
           partyPurse: base.partyPurse.modifyDenomination('copper', subRng.nextInt(50) + 1, replicaId: repC),
+          memberPurses: {
+            'c_base': base.memberPurses['c_base']!.modifyDenomination('silver', subRng.nextInt(30) + 1, replicaId: repC),
+            'c_c_': const PartyPurse.empty().modifyDenomination('platinum', 2, replicaId: repC),
+          },
           notesRegister: CrdtLwwRegister<String>(
             value: 'Notes C ',
             timestamp: addHlc,
