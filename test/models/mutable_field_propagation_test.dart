@@ -1048,7 +1048,6 @@ void main() {
         // Replica B re-added at ts2000 (new generation ts2000)
         final readdedLink = baseLink.copyWith(
           incarnationTimestamp: ts2000,
-          displayNameTimestamp: ts2000,
         );
         final setB = const EntityLinkCrdtSet.empty().add("link-door", readdedLink, ts2000);
 

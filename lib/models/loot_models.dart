@@ -117,6 +117,10 @@ class LootContainer {
         value: name,
         timestamp: nameTimestamp,
       );
+    } else if (nameTimestamp != null) {
+      throw ArgumentError(
+        'Updating nameTimestamp via copyWith requires an authoritative name.',
+      );
     } else {
       resolvedNameRegister = this.nameRegister;
     }

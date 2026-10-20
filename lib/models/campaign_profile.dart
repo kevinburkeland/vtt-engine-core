@@ -351,6 +351,10 @@ class CampaignProfile {
         value: name,
         timestamp: nameTimestamp,
       );
+    } else if (nameTimestamp != null) {
+      throw ArgumentError(
+        'Updating nameTimestamp via copyWith requires an authoritative name.',
+      );
     } else {
       resolvedNameRegister = this.nameRegister;
     }
@@ -367,6 +371,10 @@ class CampaignProfile {
       resolvedNotesRegister = CrdtLwwRegister<String>(
         value: notesMarkdown,
         timestamp: notesTimestamp,
+      );
+    } else if (notesTimestamp != null) {
+      throw ArgumentError(
+        'Updating notesTimestamp via copyWith requires an authoritative notesMarkdown.',
       );
     } else {
       resolvedNotesRegister = this.notesRegister;

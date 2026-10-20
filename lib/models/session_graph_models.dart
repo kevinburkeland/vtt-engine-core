@@ -132,6 +132,10 @@ class EntityInstance {
         value: displayName,
         timestamp: displayNameTimestamp,
       );
+    } else if (displayNameTimestamp != null) {
+      throw ArgumentError(
+        'Updating displayNameTimestamp via copyWith requires an authoritative displayName.',
+      );
     } else {
       resolvedDisplayNameRegister = this.displayNameRegister;
     }
@@ -448,6 +452,10 @@ class RoomEntityLink {
         value: displayName,
         timestamp: displayNameTimestamp,
       );
+    } else if (displayNameTimestamp != null) {
+      throw ArgumentError(
+        'Updating displayNameTimestamp via copyWith requires an authoritative displayName.',
+      );
     } else {
       resolvedDisplayNameRegister = this.displayNameRegister;
     }
@@ -474,6 +482,10 @@ class RoomEntityLink {
       resolvedNotesRegister = CrdtLwwRegister<String?>(
         value: notes,
         timestamp: notesTimestamp,
+      );
+    } else if (notesTimestamp != null) {
+      throw ArgumentError(
+        'Updating notesTimestamp via copyWith requires authoritative notes or clearNotes: true.',
       );
     } else {
       resolvedNotesRegister = this.notesRegister;
@@ -1215,6 +1227,10 @@ class RoomNodeState {
         value: title,
         timestamp: titleTimestamp,
       );
+    } else if (titleTimestamp != null) {
+      throw ArgumentError(
+        'Updating titleTimestamp via copyWith requires an authoritative title.',
+      );
     } else {
       resolvedTitleRegister = this.titleRegister;
     }
@@ -1231,6 +1247,10 @@ class RoomNodeState {
       resolvedDescRegister = CrdtLwwRegister<String>(
         value: description,
         timestamp: descriptionTimestamp,
+      );
+    } else if (descriptionTimestamp != null) {
+      throw ArgumentError(
+        'Updating descriptionTimestamp via copyWith requires an authoritative description.',
       );
     } else {
       resolvedDescRegister = this.descriptionRegister;
