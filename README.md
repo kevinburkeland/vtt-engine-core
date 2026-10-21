@@ -107,7 +107,7 @@ See the [LICENSE](LICENSE) file for the complete license terms and conditions.
 
 We welcome community contributions under a decentralized copyright model:
 * **No Contributor License Agreement (CLA):** You retain 100% ownership of your code.
-* **Developer Certificate of Origin (DCO v1.1):** All contributions are certified via `git commit -s`.
+* **Developer Certificate of Origin (DCO v1.1):** All contributions are certified via `git commit -s`. Sign-off is checked by CI for every commit after baseline `7a7c1d5b057d3a4b1ba8994d2cf35108e923a270`; some earlier commits lack it.
 * **Inbound = Outbound:** All contributions are licensed under GNU AGPLv3.
 
 Please read our [Contributing Guide](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md) before submitting pull requests.

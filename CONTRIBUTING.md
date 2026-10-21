@@ -121,7 +121,7 @@ Every commit submitted to this project must be signed off with a `Signed-off-by:
 git commit -s -m "feat(crdt): add multi-value register primitive"
 ```
 
-This sign-off confirms that you agree to the DCO and assert your right to submit your contribution under the AGPLv3 license without transferring your copyright.
+This sign-off confirms that you agree to the DCO and assert your right to submit your contribution under the AGPLv3 license without transferring your copyright. Sign-off is checked by CI for every commit after baseline `7a7c1d5b057d3a4b1ba8994d2cf35108e923a270`; some earlier commits lack it.
 
 ---
 
