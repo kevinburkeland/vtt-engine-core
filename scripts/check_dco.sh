@@ -14,12 +14,12 @@ if [ -n "$baseline" ]; then
   rev_range="${baseline}..${head}"
   while IFS= read -r c; do
     [ -n "$c" ] && commits+=("$c")
-  done < <(git rev-list --no-merges "$rev_range")
+  done < <(git rev-list "$rev_range")
 else
-  rev_range="-1 ${head}"
+  rev_range="${head}"
   while IFS= read -r c; do
     [ -n "$c" ] && commits+=("$c")
-  done < <(git rev-list --no-merges -n 1 "$head")
+  done < <(git rev-list "$head")
 fi
 
 total=${#commits[@]}

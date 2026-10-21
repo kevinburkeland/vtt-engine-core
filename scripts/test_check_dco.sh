@@ -122,23 +122,57 @@ if [[ "$out7" == *"$sha7c"* ]]; then
   exit 1
 fi
 
-# Case 8: a multi-commit PR range where all commits are signed: pass
-base8=$(git rev-parse HEAD)
-git commit --allow-empty -m "PR Commit 1" -s
-git commit --allow-empty -m "PR Commit 2" -s
-git commit --allow-empty -m "PR Commit 3" -s
-"$CHECK_DCO" "$base8" HEAD >/dev/null
+# Case 8: empty baseline over a fully signed history of three commits passes
+CLEAN_REPO="$TMP_DIR/clean_repo"
+mkdir -p "$CLEAN_REPO"
+cd "$CLEAN_REPO"
+git init -b main
+git config user.name "Alice Smith"
+git config user.email "alice@example.com"
+git commit --allow-empty -m "Root commit" -s
+git commit --allow-empty -m "Second commit" -s
+git commit --allow-empty -m "Third commit" -s
+out8=$("$CHECK_DCO" "" HEAD)
+if [[ "$out8" != *"Checked 3 commit(s); all carry valid DCO sign-off."* ]]; then
+  echo "FAIL: Case 8 expected 3 checked commits: $out8" >&2
+  exit 1
+fi
 
-# Case 9: a merge commit in range without sign-off trailer is ignored: pass
+# Case 9: an unsigned merge commit in range fails, and the output names the merge commit's short SHA
 base9=$(git rev-parse HEAD)
 git checkout -b feature-branch
 git commit --allow-empty -m "Feature branch commit" -s
 git checkout main
 git commit --allow-empty -m "Main branch commit" -s
 git merge --no-ff --no-edit feature-branch
-"$CHECK_DCO" "$base9" HEAD >/dev/null
+merge9=$(git rev-parse --short HEAD)
+set +e
+out9=$("$CHECK_DCO" "$base9" HEAD 2>&1)
+rc9=$?
+set -e
+if [ "$rc9" -eq 0 ]; then
+  echo "FAIL: Case 9 expected failure for unsigned merge commit" >&2
+  exit 1
+fi
+if [[ "$out9" != *"$merge9"* ]]; then
+  echo "FAIL: Case 9 output did not name unsigned merge $merge9: $out9" >&2
+  exit 1
+fi
 
-# Case 10: push mode ("" HEAD) only checks the latest commit (-n 1), ignoring older unsigned commits in history
+# Case 9b: a merge commit made with --signoff by its author passes
+base9b=$(git rev-parse HEAD)
+git checkout -b feature-branch-signed
+git commit --allow-empty -m "Feature branch signed commit" -s
+git checkout main
+git commit --allow-empty -m "Main branch signed commit" -s
+git merge --no-ff --no-edit --signoff feature-branch-signed
+out9b=$("$CHECK_DCO" "$base9b" HEAD)
+if [[ "$out9b" != *"Checked 3 commit(s); all carry valid DCO sign-off."* ]]; then
+  echo "FAIL: Case 9b expected 3 commits including signed merge commit: $out9b" >&2
+  exit 1
+fi
+
+# Case 10: empty baseline with an unsigned older commit and a signed newest commit fails
 PUSH_REPO="$TMP_DIR/push_repo"
 mkdir -p "$PUSH_REPO"
 cd "$PUSH_REPO"
@@ -146,7 +180,19 @@ git init -b main
 git config user.name "Alice Smith"
 git config user.email "alice@example.com"
 git commit --allow-empty -m "Old unsigned root commit"
+bad10=$(git rev-parse --short HEAD)
 git commit --allow-empty -m "Pushed commit" -s
-"$CHECK_DCO" "" HEAD >/dev/null
+set +e
+out10=$("$CHECK_DCO" "" HEAD 2>&1)
+rc10=$?
+set -e
+if [ "$rc10" -eq 0 ]; then
+  echo "FAIL: Case 10 expected failure" >&2
+  exit 1
+fi
+if [[ "$out10" != *"$bad10"* ]]; then
+  echo "FAIL: Case 10 output did not name $bad10: $out10" >&2
+  exit 1
+fi
 
 echo "All DCO test cases passed successfully."
