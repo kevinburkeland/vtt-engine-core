@@ -21,7 +21,7 @@ vtt_engine_core/
 │   ├── ports/         # [Foundational Core] Abstract I/O, persistence & transport contracts
 │   │   ├── i_p2p_transport_port.dart   # Abstract peer-to-peer transport contract
 │   │   ├── i_network_time_port.dart    # Authoritative network time interface
-│   │   ├── i_room_sync_payload_port.dart # Encrypted frame & payload contracts
+│   │   ├── i_room_sync_payload_port.dart # Replicated frame & payload contracts
 │   │   ├── i_campaign_repository.dart  # Campaign persistence port
 │   │   ├── i_character_repository.dart # Character persistence port
 │   │   └── transport_state.dart        # Connection states
