@@ -122,16 +122,31 @@ if [[ "$out7" == *"$sha7c"* ]]; then
   exit 1
 fi
 
-# Case 8: empty baseline over a fully signed history: pass
-CLEAN_REPO="$TMP_DIR/clean_repo"
-mkdir -p "$CLEAN_REPO"
-cd "$CLEAN_REPO"
+# Case 8: a multi-commit PR range where all commits are signed: pass
+base8=$(git rev-parse HEAD)
+git commit --allow-empty -m "PR Commit 1" -s
+git commit --allow-empty -m "PR Commit 2" -s
+git commit --allow-empty -m "PR Commit 3" -s
+"$CHECK_DCO" "$base8" HEAD >/dev/null
+
+# Case 9: a merge commit in range without sign-off trailer is ignored: pass
+base9=$(git rev-parse HEAD)
+git checkout -b feature-branch
+git commit --allow-empty -m "Feature branch commit" -s
+git checkout main
+git commit --allow-empty -m "Main branch commit" -s
+git merge --no-ff --no-edit feature-branch
+"$CHECK_DCO" "$base9" HEAD >/dev/null
+
+# Case 10: push mode ("" HEAD) only checks the latest commit (-n 1), ignoring older unsigned commits in history
+PUSH_REPO="$TMP_DIR/push_repo"
+mkdir -p "$PUSH_REPO"
+cd "$PUSH_REPO"
 git init -b main
 git config user.name "Alice Smith"
 git config user.email "alice@example.com"
-git commit --allow-empty -m "Root commit" -s
-git commit --allow-empty -m "Second commit" -s
-git commit --allow-empty -m "Third commit" -s
+git commit --allow-empty -m "Old unsigned root commit"
+git commit --allow-empty -m "Pushed commit" -s
 "$CHECK_DCO" "" HEAD >/dev/null
 
 echo "All DCO test cases passed successfully."

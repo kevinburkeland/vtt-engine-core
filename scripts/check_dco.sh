@@ -4,21 +4,23 @@ set -euo pipefail
 baseline="${1:-}"
 head="${2:-HEAD}"
 
-if [ -n "$baseline" ]; then
-  rev_range="${baseline}..${head}"
-else
-  rev_range="${head}"
-fi
-
 if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "Error: Not inside a git repository." >&2
   exit 1
 fi
 
 commits=()
-while IFS= read -r c; do
-  [ -n "$c" ] && commits+=("$c")
-done < <(git rev-list "$rev_range")
+if [ -n "$baseline" ]; then
+  rev_range="${baseline}..${head}"
+  while IFS= read -r c; do
+    [ -n "$c" ] && commits+=("$c")
+  done < <(git rev-list --no-merges "$rev_range")
+else
+  rev_range="-1 ${head}"
+  while IFS= read -r c; do
+    [ -n "$c" ] && commits+=("$c")
+  done < <(git rev-list --no-merges -n 1 "$head")
+fi
 
 total=${#commits[@]}
 if [ "$total" -eq 0 ]; then
