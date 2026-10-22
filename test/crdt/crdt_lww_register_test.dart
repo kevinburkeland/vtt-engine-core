@@ -76,5 +76,59 @@ void main() {
       expect(reg1.hashCode, equals(reg2.hashCode));
       expect(reg1, isNot(equals(reg3)));
     });
+
+    group('Zero timestamp compatibility rules (Pass 9.1)', () {
+      const zeroTs = HybridLogicalClock(
+          physicalTime: 0, logicalCounter: 0, nodeId: 'genesis');
+
+      test('tie at zero timestamp with identical values is idempotent', () {
+        const r1 = CrdtLwwRegister<String>(value: 'Same', timestamp: zeroTs);
+        const r2 = CrdtLwwRegister<String>(value: 'Same', timestamp: zeroTs);
+
+        expect(r1.merge(r2), equals(r1));
+        expect(r2.merge(r1), equals(r2));
+      });
+
+      test(
+          'tie at zero timestamp with divergent values resolves by deterministic total order',
+          () {
+        const rA = CrdtLwwRegister<String>(value: 'Staging Area', timestamp: zeroTs);
+        const rB = CrdtLwwRegister<String>(
+            value: 'Campaign ABC Staging', timestamp: zeroTs);
+
+        final merged1 = rA.merge(rB);
+        final merged2 = rB.merge(rA);
+
+        expect(merged1, equals(merged2));
+        expect(merged1.timestamp, equals(zeroTs));
+        // Deterministic total order: 'Staging Area' > 'Campaign ABC Staging'
+        expect(merged1.value, equals('Staging Area'));
+      });
+
+      test('tie at non-zero timestamp with divergent values fails loudly with StateError',
+          () {
+        const realTs = HybridLogicalClock(
+            physicalTime: 1000, logicalCounter: 0, nodeId: 'genesis');
+        const rA = CrdtLwwRegister<String>(value: 'ValA', timestamp: realTs);
+        const rB = CrdtLwwRegister<String>(value: 'ValB', timestamp: realTs);
+
+        expect(() => rA.merge(rB), throwsA(isA<StateError>()));
+        expect(() => rB.merge(rA), throwsA(isA<StateError>()));
+      });
+
+      test('zero timestamp loses to any real write in any merge order', () {
+        const zeroReg =
+            CrdtLwwRegister<String>(value: 'Placeholder', timestamp: zeroTs);
+        const realTs = HybridLogicalClock(
+            physicalTime: 1000000, logicalCounter: 0, nodeId: 'dm_device');
+        const realReg =
+            CrdtLwwRegister<String>(value: 'Real DM Value', timestamp: realTs);
+
+        expect(zeroReg.merge(realReg).value, equals('Real DM Value'));
+        expect(realReg.merge(zeroReg).value, equals('Real DM Value'));
+        expect(zeroReg.merge(realReg).timestamp, equals(realTs));
+        expect(realReg.merge(zeroReg).timestamp, equals(realTs));
+      });
+    });
   });
 }
