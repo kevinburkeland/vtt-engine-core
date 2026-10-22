@@ -10,6 +10,14 @@ class HybridLogicalClock implements Comparable<HybridLogicalClock> {
   final int logicalCounter;
   final String nodeId;
 
+  /// Canonical zero ("no write yet") timestamp used for unauthored placeholders
+  /// and deterministic migrations.
+  static const genesis = HybridLogicalClock(
+    physicalTime: 0,
+    logicalCounter: 0,
+    nodeId: 'genesis',
+  );
+
   const HybridLogicalClock({
     required this.physicalTime,
     required this.logicalCounter,
