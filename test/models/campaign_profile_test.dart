@@ -1,6 +1,9 @@
 import 'package:vtt_engine_core/crdt/stateful_hlc_clock.dart';
 import 'package:vtt_engine_core/crdt/hybrid_logical_clock.dart';
 import 'package:vtt_engine_core/crdt/replica_id.dart';
+import 'package:vtt_engine_core/crdt/crdt_lww_register.dart';
+import 'package:vtt_engine_core/crdt/crdt_or_set.dart';
+import 'package:vtt_engine_core/rules/ruleset_edition.dart';
 import 'package:test/test.dart';
 import 'package:vtt_engine_core/models/campaign_profile.dart';
 import 'package:vtt_engine_core/models/party_event.dart';
@@ -251,6 +254,81 @@ void main() {
         expect(entry.timestamp.physicalTime, greaterThan(0));
         expect(entry.timestamp.nodeId, isNot(equals('genesis')));
       }
+    });
+
+    test('placeholder stamps all authored-text registers at HybridLogicalClock.genesis', () {
+      final p = CampaignProfile.placeholder(
+        id: 'camp_placeholder',
+        roomCode: 'ROOM1',
+        name: 'Lobby Name',
+        stagingTitle: 'Campaign ROOM1 Staging',
+      );
+
+      expect(p.nameRegister.value, equals('Lobby Name'));
+      expect(p.nameRegister.timestamp, equals(HybridLogicalClock.genesis));
+      expect(p.roomState.titleRegister.value, equals('Campaign ROOM1 Staging'));
+      expect(p.roomState.titleRegister.timestamp, equals(HybridLogicalClock.genesis));
+      expect(p.roomState.descriptionRegister.value, equals(''));
+      expect(p.roomState.descriptionRegister.timestamp, equals(HybridLogicalClock.genesis));
+      expect(p.notesRegister.value, equals(''));
+      expect(p.notesRegister.timestamp, equals(HybridLogicalClock.genesis));
+    });
+
+    test('placeholder loses to authored profile stamped at physical time 1 in both merge orders', () {
+      final placeholder = CampaignProfile.placeholder(
+        id: 'camp_1',
+        roomCode: 'ROOM1',
+        name: 'Placeholder Name',
+        stagingTitle: 'Placeholder Staging',
+      );
+
+      const t1 = HybridLogicalClock(
+        physicalTime: 1,
+        logicalCounter: 0,
+        nodeId: 'dm_device',
+      );
+      final authored = CampaignProfile.raw(
+        id: 'camp_1',
+        nameRegister: const CrdtLwwRegister<String>(
+          value: 'The Dragon Hunt',
+          timestamp: t1,
+        ),
+        edition: const RulesetIdentifier('generic_tabletop'),
+        createdAt: DateTime.utc(2026, 1, 1),
+        lastPlayedAt: DateTime.utc(2026, 1, 1),
+        roomState: RoomNodeState(
+          roomId: 'room_ROOM1',
+          roomCode: 'ROOM1',
+          title: 'Dragon Lair',
+          titleTimestamp: t1,
+          description: 'Real DM description',
+          descriptionTimestamp: t1,
+        ),
+        partyRoster: const CrdtOrSet<String>.empty(),
+        partyCharacterIds: const [],
+        pinnedRuleIds: const {},
+        pinnedRules: const CrdtOrSet<String>.empty(),
+        notesRegister: const CrdtLwwRegister<String>(
+          value: 'DM notes',
+          timestamp: t1,
+        ),
+        partyPurse: const PartyPurse.empty(),
+        memberPurses: const {},
+        changeLog: const [],
+      );
+
+      final merged1 = CampaignProfile.join(placeholder, authored);
+      final merged2 = CampaignProfile.join(authored, placeholder);
+
+      expect(merged1, equals(merged2));
+      expect(merged1.nameRegister.value, equals('The Dragon Hunt'));
+      expect(merged1.nameRegister.timestamp, equals(t1));
+      expect(merged1.roomState.titleRegister.value, equals('Dragon Lair'));
+      expect(merged1.roomState.titleRegister.timestamp, equals(t1));
+      expect(merged1.roomState.descriptionRegister.value, equals('Real DM description'));
+      expect(merged1.roomState.descriptionRegister.timestamp, equals(t1));
+      expect(merged1.notesRegister.value, equals('DM notes'));
+      expect(merged1.notesRegister.timestamp, equals(t1));
     });
   });
 }

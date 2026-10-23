@@ -317,6 +317,62 @@ class CampaignProfile {
     );
   }
 
+  /// Creates an unauthored placeholder profile for a joiner or unauthored room adoption.
+  ///
+  /// Invariant: All authored-text registers ([nameRegister], [roomState.titleRegister],
+  /// [roomState.descriptionRegister], [notesRegister]) are stamped with
+  /// [HybridLogicalClock.genesis] so they deterministically lose to any authored write.
+  /// Description and notes are initialized to empty strings.
+  /// This constructor intentionally accepts no clock or timestamp parameter.
+  factory CampaignProfile.placeholder({
+    required String id,
+    required String roomCode,
+    required String name,
+    required String stagingTitle,
+    dynamic edition = const RulesetIdentifier('generic_tabletop'),
+    String? rulesetId,
+    DateTime? createdAt,
+    DateTime? lastPlayedAt,
+    CrdtOrSet<String>? partyRoster,
+  }) {
+    final now = DateTime.now().toUtc();
+    final effectiveEdition =
+        rulesetId ?? edition ?? const RulesetIdentifier('generic_tabletop');
+    return CampaignProfile.raw(
+      id: id,
+      nameRegister: CrdtLwwRegister<String>(
+        value: name,
+        timestamp: HybridLogicalClock.genesis,
+      ),
+      edition: effectiveEdition,
+      createdAt: createdAt ?? now,
+      lastPlayedAt: lastPlayedAt ?? now,
+      roomState: RoomNodeState(
+        roomId: 'room_$roomCode',
+        roomCode: roomCode,
+        titleRegister: CrdtLwwRegister<String>(
+          value: stagingTitle,
+          timestamp: HybridLogicalClock.genesis,
+        ),
+        descriptionRegister: const CrdtLwwRegister<String>(
+          value: '',
+          timestamp: HybridLogicalClock.genesis,
+        ),
+      ),
+      partyRoster: partyRoster ?? const CrdtOrSet<String>.empty(),
+      partyCharacterIds: const [],
+      pinnedRuleIds: const {},
+      pinnedRules: const CrdtOrSet<String>.empty(),
+      notesRegister: const CrdtLwwRegister<String>(
+        value: '',
+        timestamp: HybridLogicalClock.genesis,
+      ),
+      partyPurse: const PartyPurse.empty(),
+      memberPurses: const {},
+      changeLog: const [],
+    );
+  }
+
   CampaignProfile copyWith({
     String? id,
     String? name,

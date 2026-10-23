@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:meta/meta.dart';
 import 'crdt_equality.dart';
 import 'hybrid_logical_clock.dart';
@@ -9,9 +8,12 @@ import 'hybrid_logical_clock.dart';
 ///
 /// Merges follow standard LWW lattice join. When two registers possess exact identical
 /// timestamps:
-/// - If values match (structurally for JSON-like payloads), the merge is idempotent and returns the value.
-/// - At the zero timestamp only (`timestamp.physicalTime == 0`), a tie between different values
-///   resolves by a deterministic total order on the encoded value.
+/// - If values match (structurally for JSON-like payloads), the merge is idempotent and returns this register.
+/// - At the zero timestamp only (`timestamp.physicalTime == 0`), a tie between divergent values
+///   resolves deterministically using a canonical, type-tagged total order.
+///   Two String values compare by plain string order, and null sorts above every String.
+///   If two divergent values produce identical canonical encodings, or a value cannot be
+///   canonically encoded, merge throws [StateError] symmetrically from both orders.
 /// - At any non-zero timestamp, divergent values represent an invariant violation/invalid collision
 ///   and fail loudly and symmetrically with a [StateError].
 ///
@@ -36,7 +38,8 @@ class CrdtLwwRegister<T> {
   /// is strictly after the local timestamp.
   ///
   /// Documented compatibility rule: At the zero timestamp only (`timestamp.physicalTime == 0`),
-  /// a tie between different values resolves by a deterministic total order on the encoded value.
+  /// a tie between divergent values resolves deterministically using a canonical type-tagged
+  /// total order on the encoded value.
   /// Ties at any non-zero timestamp keep throwing [StateError] on collision.
   CrdtLwwRegister<T> merge(CrdtLwwRegister<T> remote) {
     if (timestamp == remote.timestamp) {
@@ -46,6 +49,12 @@ class CrdtLwwRegister<T> {
       if (timestamp.physicalTime == 0) {
         final localEnc = _encodeValue(value);
         final remoteEnc = _encodeValue(remote.value);
+        if (localEnc == remoteEnc) {
+          throw StateError(
+            'CRDT Collision: CrdtLwwRegister merge detected identical canonical encoding '
+            'for divergent values at physical time 0: "$value" vs "${remote.value}".',
+          );
+        }
         final cmp = localEnc.compareTo(remoteEnc);
         if (cmp < 0) {
           return remote;
@@ -64,33 +73,66 @@ class CrdtLwwRegister<T> {
     return this;
   }
 
-  static String _encodeValue(dynamic val) {
-    if (val == null) return 'null';
-    if (val is String) return val;
-    if (val is num || val is bool) return val.toString();
+  static String _encodeValue(Object? val) {
     try {
-      return json.encode(_canonicalize(val));
-    } catch (_) {
-      return val.toString();
+      return _encodeCanonical(val);
+    } on StateError {
+      rethrow;
+    } catch (e) {
+      throw StateError(
+        'CRDT Collision: value cannot be canonically encoded for tie-breaking: $val ($e)',
+      );
     }
   }
 
-  static Object? _canonicalize(dynamic v) {
-    if (v == null || v is num || v is bool || v is String) return v;
-    if (v is List) return v.map(_canonicalize).toList();
-    if (v is Map) {
-      final sortedKeys = v.keys.map((k) => k.toString()).toList()..sort();
-      return {
-        for (final k in sortedKeys) k: _canonicalize(v[k]),
-      };
+  static String _encodeCanonical(Object? val) {
+    if (val == null) return 'z:null';
+    if (val is String) return 's:$val';
+    if (val is bool) return 'b:$val';
+    if (val is num) {
+      if (val.isNaN) {
+        throw StateError(
+          'CRDT Collision: NaN cannot be canonically encoded for tie-breaking.',
+        );
+      }
+      return 'n:$val';
     }
+    if (val is List) {
+      final b = StringBuffer('l:');
+      for (final item in val) {
+        final enc = _encodeCanonical(item);
+        b.write('${enc.length}:$enc;');
+      }
+      return b.toString();
+    }
+    if (val is Map) {
+      final b = StringBuffer('m:');
+      final sortedKeys = val.keys.map((k) => k.toString()).toList()..sort();
+      for (final k in sortedKeys) {
+        final enc = _encodeCanonical(val[k]);
+        b.write('${k.length}:$k=${enc.length}:$enc;');
+      }
+      return b.toString();
+    }
+    // Attempt object-via-toMap
     try {
       // ignore: avoid_dynamic_calls
-      final dynamic m = (v as dynamic).toMap();
-      return _canonicalize(m);
+      final dynamic m = (val as dynamic).toMap();
+      if (m is Map) {
+        final b = StringBuffer('o:');
+        final sortedKeys = m.keys.map((k) => k.toString()).toList()..sort();
+        for (final k in sortedKeys) {
+          final enc = _encodeCanonical(m[k]);
+          b.write('${k.length}:$k=${enc.length}:$enc;');
+        }
+        return b.toString();
+      }
     } catch (_) {
-      return v.toString();
+      // Fall through to throw StateError
     }
+    throw StateError(
+      'CRDT Collision: Type ${val.runtimeType} cannot be canonically encoded for tie-breaking.',
+    );
   }
 
   @override
