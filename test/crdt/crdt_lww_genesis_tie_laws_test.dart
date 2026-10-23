@@ -205,12 +205,12 @@ void main() {
     });
 
     test('Control: tie at genesis with structurally equal values (keys in different order) returns without throwing', () {
-      final r1 = CrdtLwwRegister<Map<String, dynamic>>(
-        value: const {'a': 1, 'b': 2},
+      const r1 = CrdtLwwRegister<Map<String, dynamic>>(
+        value: {'a': 1, 'b': 2},
         timestamp: genesis,
       );
-      final r2 = CrdtLwwRegister<Map<String, dynamic>>(
-        value: const {'b': 2, 'a': 1},
+      const r2 = CrdtLwwRegister<Map<String, dynamic>>(
+        value: {'b': 2, 'a': 1},
         timestamp: genesis,
       );
 
