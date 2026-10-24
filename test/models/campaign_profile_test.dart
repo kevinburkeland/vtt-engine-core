@@ -31,7 +31,7 @@ void main() {
     final profileA = CampaignProfile(
       id: 'camp-1',
       name: 'Dragon Hunt',
-      edition: 'dnd5e_2024',
+      edition: const RulesetIdentifier('dnd5e_2024'),
       createdAt: baseDate,
       lastPlayedAt: baseDate,
       roomState: room,
@@ -47,7 +47,7 @@ void main() {
       final profileB = CampaignProfile(
         id: 'camp-1',
         name: 'Dragon Hunt',
-        edition: 'dnd5e_2024',
+        edition: const RulesetIdentifier('dnd5e_2024'),
         createdAt: baseDate,
         lastPlayedAt: baseDate,
         roomState: room,
@@ -101,7 +101,7 @@ void main() {
     });
 
     test('detects differences in edition despite same id', () {
-      final modified = profileA.copyWith(edition: 'dnd5e_2014');
+      final modified = profileA.copyWith(edition: const RulesetIdentifier('dnd5e_2014'));
       expect(profileA == modified, isFalse);
     });
 

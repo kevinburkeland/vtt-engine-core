@@ -215,7 +215,7 @@ void main() {
       final pB = CampaignProfile.initial(
         id: 'camp_1',
         name: 'Expedition',
-        edition: 'dnd5e_2024',
+        edition: const RulesetIdentifier('dnd5e_2024'),
         nodeId: 'n1',
       );
 

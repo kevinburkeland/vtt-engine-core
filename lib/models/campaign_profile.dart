@@ -17,7 +17,7 @@ import 'party_purse.dart';
 class CampaignProfile {
   final String id;
   final CrdtLwwRegister<String> nameRegister;
-  final dynamic edition;
+  final RulesetRef edition;
   final DateTime createdAt;
   final DateTime lastPlayedAt;
   final RoomNodeState roomState;
@@ -29,15 +29,7 @@ class CampaignProfile {
   final List<PartyEvent> changeLog;
 
   /// Identifier of the active ruleset module.
-  String get rulesetId {
-    if (edition is IRulesetModule) return (edition as IRulesetModule).moduleId;
-    if (edition is RulesetIdentifier) return (edition as RulesetIdentifier).rulesetId;
-    if (edition is Enum) return (edition as Enum).name;
-    return edition?.toString() ?? 'generic_tabletop';
-  }
-
-  /// Legacy alias for compatibility.
-  dynamic get rulesEdition => edition;
+  String get rulesetId => edition.rulesetId;
 
   String get name => nameRegister.value;
   String get notesMarkdown => notesRegister.value;
@@ -57,7 +49,7 @@ class CampaignProfile {
     CrdtLwwRegister<String>? nameRegister,
     String? name,
     HybridLogicalClock? nameTimestamp,
-    this.edition = const RulesetIdentifier('generic_tabletop'),
+    RulesetRef? edition = const RulesetIdentifier('generic_tabletop'),
     required this.createdAt,
     required this.lastPlayedAt,
     required this.roomState,
@@ -69,7 +61,9 @@ class CampaignProfile {
     this.partyPurse = const PartyPurse.empty(),
     Map<String, PartyPurse> memberPurses = const {},
     List<PartyEvent> changeLog = const [],
-  })  : memberPurses = Map.unmodifiable(memberPurses), nameRegister = nameRegister ??
+  })  : edition = edition ?? const RulesetIdentifier('generic_tabletop'),
+        memberPurses = Map.unmodifiable(memberPurses),
+        nameRegister = nameRegister ??
             (nameTimestamp != null
                 ? CrdtLwwRegister<String>(
                     value: name ?? '',
@@ -131,7 +125,7 @@ class CampaignProfile {
     required String id,
     String? name,
     CrdtLwwRegister<String>? nameRegister,
-    dynamic edition = const RulesetIdentifier('generic_tabletop'),
+    RulesetRef? edition = const RulesetIdentifier('generic_tabletop'),
     String? rulesetId,
     required DateTime createdAt,
     required DateTime lastPlayedAt,
@@ -148,7 +142,9 @@ class CampaignProfile {
     required String nodeId,
   }) {
     final effectiveEdition =
-        rulesetId ?? edition ?? const RulesetIdentifier('generic_tabletop');
+        (rulesetId != null ? RulesetIdentifier(rulesetId) : null) ??
+            edition ??
+            const RulesetIdentifier('generic_tabletop');
     final effectiveNameRegister = nameRegister ??
         (name != null
             ? CrdtLwwRegister<String>(
@@ -209,7 +205,7 @@ class CampaignProfile {
     required String id,
     required String name,
     CrdtLwwRegister<String>? nameRegister,
-    dynamic edition,
+    RulesetRef? edition,
     String? rulesetId,
     required String nodeId,
     DateTime? now,
@@ -219,7 +215,7 @@ class CampaignProfile {
       id: id,
       name: name,
       nameRegister: nameRegister,
-      edition: rulesetId ??
+      edition: (rulesetId != null ? RulesetIdentifier(rulesetId) : null) ??
           edition ??
           const RulesetIdentifier('generic_tabletop'),
       createdAt: timestamp,
@@ -233,7 +229,7 @@ class CampaignProfile {
     );
   }
 
-  static dynamic defaultRulesetEdition =
+  static RulesetRef defaultRulesetEdition =
       const RulesetIdentifier('generic_tabletop');
   static Set<String> defaultPinnedRulesFallback = const {};
 
@@ -242,7 +238,7 @@ class CampaignProfile {
     String? id,
     String? name,
     CrdtLwwRegister<String>? nameRegister,
-    dynamic edition,
+    RulesetRef? edition,
     String? rulesetId,
     Set<String> defaultPinnedRules = const {},
     IRulesetModule? rulesetModule,
@@ -271,9 +267,10 @@ class CampaignProfile {
     final now = DateTime.now();
     final profileId = id ?? 'campaign_${now.millisecondsSinceEpoch}';
     final campaignName = name ?? 'My Campaign';
-    final effectiveEdition = rulesetId ??
-        edition ??
-        defaultRulesetEdition;
+    final effectiveEdition =
+        (rulesetId != null ? RulesetIdentifier(rulesetId) : null) ??
+            edition ??
+            defaultRulesetEdition;
     final effectivePinned = defaultPinnedRules.isNotEmpty
         ? defaultPinnedRules
         : (rulesetModule?.defaultPinnedRules ?? defaultPinnedRulesFallback);
@@ -329,7 +326,7 @@ class CampaignProfile {
     required String roomCode,
     required String name,
     required String stagingTitle,
-    dynamic edition = const RulesetIdentifier('generic_tabletop'),
+    RulesetRef? edition = const RulesetIdentifier('generic_tabletop'),
     String? rulesetId,
     DateTime? createdAt,
     DateTime? lastPlayedAt,
@@ -337,7 +334,9 @@ class CampaignProfile {
   }) {
     final now = DateTime.now().toUtc();
     final effectiveEdition =
-        rulesetId ?? edition ?? const RulesetIdentifier('generic_tabletop');
+        (rulesetId != null ? RulesetIdentifier(rulesetId) : null) ??
+            edition ??
+            const RulesetIdentifier('generic_tabletop');
     return CampaignProfile.raw(
       id: id,
       nameRegister: CrdtLwwRegister<String>(
@@ -378,7 +377,7 @@ class CampaignProfile {
     String? name,
     CrdtLwwRegister<String>? nameRegister,
     HybridLogicalClock? nameTimestamp,
-    dynamic edition,
+    RulesetRef? edition,
     String? rulesetId,
     DateTime? createdAt,
     DateTime? lastPlayedAt,
@@ -449,7 +448,9 @@ class CampaignProfile {
     return CampaignProfile.raw(
       id: id ?? this.id,
       nameRegister: resolvedNameRegister,
-      edition: edition ?? rulesetId ?? this.edition,
+      edition: edition ??
+          (rulesetId != null ? RulesetIdentifier(rulesetId) : null) ??
+          this.edition,
       createdAt: createdAt ?? this.createdAt,
       lastPlayedAt: lastPlayedAt ?? this.lastPlayedAt,
       roomState: roomState ?? this.roomState,
