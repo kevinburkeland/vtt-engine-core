@@ -36,6 +36,7 @@ export 'models/party_purse.dart';
 export 'models/room_roll.dart';
 export 'models/session_graph_models.dart';
 export 'models/spell_monster_equipment.dart';
+export 'models/value_objects/blob_ref.dart';
 export 'models/value_objects/hit_points.dart';
 
 // Domain Ports

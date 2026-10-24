@@ -8,6 +8,7 @@ import '../rules/i_ruleset_module.dart';
 import '../rules/ruleset_edition.dart';
 import '../utils/aggregate_join_utils.dart';
 import 'session_graph_models.dart';
+import 'value_objects/blob_ref.dart';
 import 'party_event.dart';
 import 'party_purse.dart';
 
@@ -24,6 +25,7 @@ class CampaignProfile {
   final CrdtOrSet<String> partyRoster;
   final CrdtOrSet<String> pinnedRules;
   final CrdtLwwRegister<String> notesRegister;
+  final CrdtLwwRegister<BlobRef?> activeMapRegister;
   final PartyPurse partyPurse;
   final Map<String, PartyPurse> memberPurses;
   final List<PartyEvent> changeLog;
@@ -33,6 +35,12 @@ class CampaignProfile {
 
   String get name => nameRegister.value;
   String get notesMarkdown => notesRegister.value;
+  BlobRef? get activeMap => activeMapRegister.value;
+
+  static const CrdtLwwRegister<BlobRef?> noActiveMap = CrdtLwwRegister<BlobRef?>(
+    value: null,
+    timestamp: HybridLogicalClock.genesis,
+  );
 
   /// Derived view of currently active pinned rule identifiers.
   Set<String> get pinnedRuleIds => Set.unmodifiable(pinnedRules.activeValues.toSet());
@@ -58,6 +66,7 @@ class CampaignProfile {
     Set<String>? pinnedRuleIds,
     CrdtOrSet<String>? pinnedRules,
     required this.notesRegister,
+    CrdtLwwRegister<BlobRef?>? activeMapRegister,
     this.partyPurse = const PartyPurse.empty(),
     Map<String, PartyPurse> memberPurses = const {},
     List<PartyEvent> changeLog = const [],
@@ -85,6 +94,7 @@ class CampaignProfile {
             (pinnedRuleIds != null && pinnedRuleIds.isNotEmpty
                 ? _buildInitialPinnedRules(pinnedRuleIds)
                 : const CrdtOrSet<String>.empty()),
+        activeMapRegister = activeMapRegister ?? noActiveMap,
         changeLog = List.unmodifiable(changeLog);
 
   static CrdtOrSet<String> _buildInitialPartyRoster(Iterable<String> ids) {
@@ -388,6 +398,7 @@ class CampaignProfile {
     CrdtOrSet<String>? pinnedRules,
     String? notesMarkdown,
     CrdtLwwRegister<String>? notesRegister,
+    CrdtLwwRegister<BlobRef?>? activeMapRegister,
     PartyPurse? partyPurse,
     Map<String, PartyPurse>? memberPurses,
     List<PartyEvent>? changeLog,
@@ -457,10 +468,26 @@ class CampaignProfile {
       partyRoster: effectivePartyRoster,
       pinnedRules: effectivePinnedRules,
       notesRegister: resolvedNotesRegister,
+      activeMapRegister: activeMapRegister ?? this.activeMapRegister,
       partyPurse: partyPurse ?? this.partyPurse,
       memberPurses: memberPurses != null ? Map<String, PartyPurse>.from(memberPurses) : this.memberPurses,
       changeLog:
           changeLog != null ? List<PartyEvent>.from(changeLog) : this.changeLog,
+    );
+  }
+
+  CampaignProfile withActiveMap(BlobRef? map, HybridLogicalClock timestamp) {
+    if (timestamp.physicalTime == 0 || timestamp.nodeId == 'genesis') {
+      throw ArgumentError(
+        'CampaignProfile.withActiveMap requires an authoritative timestamp '
+        'with physicalTime > 0 and nodeId != "genesis".',
+      );
+    }
+    return copyWith(
+      activeMapRegister: CrdtLwwRegister<BlobRef?>(
+        value: map,
+        timestamp: timestamp,
+      ),
     );
   }
 
@@ -500,6 +527,9 @@ class CampaignProfile {
     // 1. Notes: pure LWW CRDT register merge
     final mergedNotes = a.notesRegister.merge(b.notesRegister);
 
+    // 1b. Active Map: pure LWW CRDT register merge
+    final mergedActiveMapRegister = a.activeMapRegister.merge(b.activeMapRegister);
+
     // 2. Party Purse: pure PN-counter CvRDT lattice join across denominations
     final mergedPurse = a.partyPurse.merge(b.partyPurse);
 
@@ -538,6 +568,7 @@ class CampaignProfile {
       partyRoster: mergedPartyRoster,
       pinnedRules: mergedPinnedRules,
       notesRegister: mergedNotes,
+      activeMapRegister: mergedActiveMapRegister,
       partyPurse: mergedPurse,
       memberPurses: mergedMemberPurses,
       changeLog: mergedEvents,
@@ -561,6 +592,7 @@ class CampaignProfile {
           partyRoster == other.partyRoster &&
           pinnedRules == other.pinnedRules &&
           notesRegister == other.notesRegister &&
+          activeMapRegister == other.activeMapRegister &&
           partyPurse == other.partyPurse &&
           _mapPurseEquality.equals(memberPurses, other.memberPurses) &&
           _listEventEquality.equals(changeLog, other.changeLog);
@@ -576,6 +608,7 @@ class CampaignProfile {
         partyRoster,
         pinnedRules,
         notesRegister,
+        activeMapRegister,
         partyPurse,
         _mapPurseEquality.hash(memberPurses),
         _listEventEquality.hash(changeLog),

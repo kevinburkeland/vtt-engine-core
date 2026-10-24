@@ -8,6 +8,19 @@ import 'package:vtt_engine_core/models/party_purse.dart';
 import 'package:vtt_engine_core/models/session_graph_models.dart';
 import 'package:vtt_engine_core/rules/ruleset_edition.dart';
 import 'package:test/test.dart';
+import 'package:vtt_engine_core/models/value_objects/blob_ref.dart';
+
+BlobRef _randomValidRef(Random rng) {
+  const hexChars = '0123456789abcdef';
+  final sha = List.generate(64, (_) => hexChars[rng.nextInt(16)]).join();
+  return BlobRef(
+    sha256Hex: sha,
+    byteSize: rng.nextInt(BlobRef.maxByteSize) + 1,
+    width: rng.nextInt(BlobRef.maxLongestSidePx) + 1,
+    height: rng.nextInt(BlobRef.maxLongestSidePx) + 1,
+    format: rng.nextBool() ? BlobFormat.webp : BlobFormat.jpeg,
+  );
+}
 
 void main() {
   group('Cold Iron Birdcage — Pass 4.1: Canonical Aggregate Join Laws', () {
@@ -356,6 +369,15 @@ void main() {
         final mutateTitleA = subRng.nextBool();
         final mutateDescA = subRng.nextBool();
 
+        ({BlobRef? ref, HybridLogicalClock timestamp})? latestMapWrite;
+
+        void recordWrite(BlobRef? ref, HybridLogicalClock ts) {
+          final current = latestMapWrite;
+          if (current == null || ts.isAfter(current.timestamp)) {
+            latestMapWrite = (ref: ref, timestamp: ts);
+          }
+        }
+
         var branchA = base.copyWith(
           name: mutateNameA ? 'Campaign A ' : base.name,
           nameTimestamp: mutateNameA ? unpinHlc : base.nameRegister.timestamp,
@@ -379,6 +401,22 @@ void main() {
             customProperties: {'seed': seed, 'a_prop': iter},
           ),
         );
+
+        final mapActionA = subRng.nextInt(3);
+        if (mapActionA == 1) {
+          final refA = _randomValidRef(subRng);
+          branchA = branchA.withActiveMap(refA, unpinHlc);
+          recordWrite(refA, unpinHlc);
+        } else if (mapActionA == 2) {
+          final refA = _randomValidRef(subRng);
+          final clearHlcA = HybridLogicalClock(
+            physicalTime: unpinHlc.physicalTime + 10,
+            logicalCounter: 1,
+            nodeId: repA.value,
+          );
+          branchA = branchA.withActiveMap(refA, unpinHlc).withActiveMap(null, clearHlcA);
+          recordWrite(null, clearHlcA);
+        }
 
         // Replica B removes 'c_extra' via changelog, may mutate name, title, description
         final repB = ReplicaId('rep_b_');
@@ -420,6 +458,22 @@ void main() {
           ),
         );
 
+        final mapActionB = subRng.nextInt(3);
+        if (mapActionB == 1) {
+          final refB = _randomValidRef(subRng);
+          branchB = branchB.withActiveMap(refB, hlcB);
+          recordWrite(refB, hlcB);
+        } else if (mapActionB == 2) {
+          final refB = _randomValidRef(subRng);
+          final clearHlcB = HybridLogicalClock(
+            physicalTime: hlcB.physicalTime + 10,
+            logicalCounter: 1,
+            nodeId: repB.value,
+          );
+          branchB = branchB.withActiveMap(refB, hlcB).withActiveMap(null, clearHlcB);
+          recordWrite(null, clearHlcB);
+        }
+
         // Replica C adds a new rule and link, may mutate name, title, description
         final repC = ReplicaId('rep_c_');
         final addHlc = HybridLogicalClock(physicalTime: 1300 + iter, logicalCounter: 1, nodeId: repC.value);
@@ -456,6 +510,22 @@ void main() {
             customProperties: {'seed': seed, 'c_prop': iter},
           ),
         );
+
+        final mapActionC = subRng.nextInt(3);
+        if (mapActionC == 1) {
+          final refC = _randomValidRef(subRng);
+          branchC = branchC.withActiveMap(refC, addHlc);
+          recordWrite(refC, addHlc);
+        } else if (mapActionC == 2) {
+          final refC = _randomValidRef(subRng);
+          final clearHlcC = HybridLogicalClock(
+            physicalTime: addHlc.physicalTime + 10,
+            logicalCounter: 1,
+            nodeId: repC.value,
+          );
+          branchC = branchC.withActiveMap(refC, addHlc).withActiveMap(null, clearHlcC);
+          recordWrite(null, clearHlcC);
+        }
 
         // 1. Idempotence: join(A, A) == A
         final idempA = CampaignProfile.join(branchA, branchA);
@@ -518,6 +588,9 @@ void main() {
         expect(joinAbThenC.pinnedRuleIds.contains('unpin_target'), isFalse);
         expect(joinAbThenC.partyCharacterIds.contains('c_extra'), isFalse);
         expect(joinAbThenC.roomState.entityLinks.map((l) => l.entityId).contains('link_base'), isFalse);
+
+        // L1: assert joined map equals branch write with greatest timestamp (or null if none wrote)
+        expect(joinAbThenC.activeMap, equals(latestMapWrite?.ref));
       }
     });
   });
