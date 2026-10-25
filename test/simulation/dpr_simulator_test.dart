@@ -58,7 +58,7 @@ void main() {
       expect(lowAcResult.hitRate, closeTo(0.95, 0.015));
     });
 
-    test('executes in background Isolate without throwing', () async {
+    test('executes in background Isolate without throwing', testOn: 'vm', () async {
       const simulator = DprSimulator();
       final result = await simulator.runInIsolate(
         attack: testAttack,
@@ -171,6 +171,7 @@ void main() {
 
     test(
         'runInIsolate with identical seed produces bit-identical DprSimulationResult',
+        testOn: 'vm',
         () async {
       const simulator = DprSimulator();
       final result1 = await simulator.runInIsolate(

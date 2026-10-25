@@ -19,7 +19,7 @@ void main() {
       return jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
     }
 
-    test('1. Golden Fixture: item_only loads with incarnationTimestamp == outer ts and active', () {
+    test('1. Golden Fixture: item_only loads with incarnationTimestamp == outer ts and active', testOn: 'vm', () {
       final json = loadFixtureJson('item_only.json');
       final room = RoomNodeState.fromMap(json, minionParser: _testMinionParser);
 
@@ -32,7 +32,7 @@ void main() {
       expect(room.entityLinksCrdt.tombstones.containsKey('X'), isFalse);
     });
 
-    test('2. Golden Fixture: tombstone_only loads with legacyAddWins tombstone and removed', () {
+    test('2. Golden Fixture: tombstone_only loads with legacyAddWins tombstone and removed', testOn: 'vm', () {
       final json = loadFixtureJson('tombstone_only.json');
       final room = RoomNodeState.fromMap(json, minionParser: _testMinionParser);
 
@@ -44,7 +44,7 @@ void main() {
       expect(tomb.legacyAddWins, isTrue);
     });
 
-    test('3. Golden Fixture: item30_tomb20 raw map loads with item winning', () {
+    test('3. Golden Fixture: item30_tomb20 raw map loads with item winning', testOn: 'vm', () {
       final json = loadFixtureJson('item30_tomb20.json');
       final room = RoomNodeState.fromMap(json, minionParser: _testMinionParser);
 
@@ -55,7 +55,7 @@ void main() {
       expect(room.entityLinksCrdt.items.containsKey('X'), isTrue);
     });
 
-    test('4. Golden Fixture: item20_tomb20 raw map loads with item winning on tie (Add-Wins)', () {
+    test('4. Golden Fixture: item20_tomb20 raw map loads with item winning on tie (Add-Wins)', testOn: 'vm', () {
       final json = loadFixtureJson('item20_tomb20.json');
       final room = RoomNodeState.fromMap(json, minionParser: _testMinionParser);
 
@@ -66,7 +66,7 @@ void main() {
       expect(room.entityLinksCrdt.items.containsKey('X'), isTrue);
     });
 
-    test('5. Golden Fixture: item10_tomb20 raw map loads with tombstone winning (removed)', () {
+    test('5. Golden Fixture: item10_tomb20 raw map loads with tombstone winning (removed)', testOn: 'vm', () {
       final json = loadFixtureJson('item10_tomb20.json');
       final room = RoomNodeState.fromMap(json, minionParser: _testMinionParser);
 
@@ -77,7 +77,7 @@ void main() {
       expect(tomb.legacyAddWins, isTrue);
     });
 
-    test('6. Golden Fixture: mixed.json correctly reconciles all IDs', () {
+    test('6. Golden Fixture: mixed.json correctly reconciles all IDs', testOn: 'vm', () {
       final json = loadFixtureJson('mixed.json');
       final room = RoomNodeState.fromMap(json, minionParser: _testMinionParser);
 
@@ -92,7 +92,7 @@ void main() {
       expect(room.entityLinksCrdt.isRemoved('id_item10_tomb20'), isTrue);
     });
 
-    test('7. Cross-replica merge of loaded fixtures matches expected semantics', () {
+    test('7. Cross-replica merge of loaded fixtures matches expected semantics', testOn: 'vm', () {
       final item30Json = Map<String, dynamic>.from(loadFixtureJson('item_only.json'))
         ..['roomId'] = 'common_room'
         ..['roomCode'] = 'RM-common'
@@ -145,7 +145,7 @@ void main() {
       expect(joined10_20.entityLinksCrdt.isRemoved('X'), isTrue);
     });
 
-    test('8. Round trip: migrated record saves with format marker and reloads equal without migrating', () {
+    test('8. Round trip: migrated record saves with format marker and reloads equal without migrating', testOn: 'vm', () {
       final legacyJson = loadFixtureJson('mixed.json');
       final migrated = RoomNodeState.fromMap(legacyJson, minionParser: _testMinionParser);
 
@@ -158,7 +158,7 @@ void main() {
       expect(reloaded.entityLinks, equals(migrated.entityLinks));
     });
 
-    test('9. Native records saved by starting head 9252069 still load unchanged', () {
+    test('9. Native records saved by starting head 9252069 still load unchanged', testOn: 'vm', () {
       final nativeJson = loadFixtureJson('native_starting_head.json');
       final room = RoomNodeState.fromMap(nativeJson, minionParser: _testMinionParser);
 

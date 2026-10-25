@@ -42,7 +42,7 @@ void main() {
       );
     });
 
-    test('C2 (source bar): lib/models/campaign_profile.dart contains zero dynamic tokens', () {
+    test('C2 (source bar): lib/models/campaign_profile.dart contains zero dynamic tokens', testOn: 'vm', () {
       final file = File('lib/models/campaign_profile.dart');
       expect(file.existsSync(), isTrue, reason: 'lib/models/campaign_profile.dart must exist');
       final lines = file.readAsLinesSync();

@@ -87,17 +87,17 @@ final class BlobRef {
     }
 
     final rawByteSize = map['byteSize'];
-    if (rawByteSize is! int || rawByteSize is double) {
+    if (rawByteSize is! int) {
       throw const FormatException('BlobRef.fromMap: "byteSize" must be an int.');
     }
 
     final rawWidth = map['width'];
-    if (rawWidth is! int || rawWidth is double) {
+    if (rawWidth is! int) {
       throw const FormatException('BlobRef.fromMap: "width" must be an int.');
     }
 
     final rawHeight = map['height'];
-    if (rawHeight is! int || rawHeight is double) {
+    if (rawHeight is! int) {
       throw const FormatException('BlobRef.fromMap: "height" must be an int.');
     }
 

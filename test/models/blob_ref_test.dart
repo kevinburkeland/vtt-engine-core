@@ -116,11 +116,23 @@ void main() {
         reason: 'fromMap must reject extra key',
       );
 
-      // byteSize: 10.0
+      // byteSize: 10.5
       expect(
-        () => BlobRef.fromMap({...map, 'byteSize': 10.0}),
+        () => BlobRef.fromMap({...map, 'byteSize': 10.5}),
         throwsA(isA<FormatException>()),
       );
+
+      // byteSize: 10.0
+      const bool onWeb = identical(0, 0.0);
+      if (onWeb) {
+        final refFromWeb = BlobRef.fromMap({...map, 'byteSize': 10.0});
+        expect(refFromWeb.byteSize, equals(10));
+      } else {
+        expect(
+          () => BlobRef.fromMap({...map, 'byteSize': 10.0}),
+          throwsA(isA<FormatException>()),
+        );
+      }
 
       // width: "10"
       expect(
@@ -223,7 +235,7 @@ void main() {
       }
     });
 
-    test('B3 (source bar): no image bytes in blob_ref.dart', () {
+    test('B3 (source bar): no image bytes in blob_ref.dart', testOn: 'vm', () {
       final file = File('lib/models/value_objects/blob_ref.dart');
       expect(file.existsSync(), isTrue, reason: 'blob_ref.dart must exist');
       final lines = file.readAsLinesSync();
