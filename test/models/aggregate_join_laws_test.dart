@@ -9,6 +9,25 @@ import 'package:vtt_engine_core/models/session_graph_models.dart';
 import 'package:vtt_engine_core/rules/ruleset_edition.dart';
 import 'package:test/test.dart';
 import 'package:vtt_engine_core/models/value_objects/blob_ref.dart';
+import 'package:vtt_engine_core/models/value_objects/map_grid.dart';
+
+MapGrid _randomValidGrid(Random rng) {
+  const hexChars = '0123456789abcdef';
+  final sha = List.generate(64, (_) => hexChars[rng.nextInt(16)]).join();
+  final cell = 1000 + rng.nextInt(51200 - 1000 + 1);
+  final offX = rng.nextInt(cell);
+  final offY = rng.nextInt(cell);
+  final feet = 1 + rng.nextInt(100);
+  final vis = rng.nextBool();
+  return MapGrid(
+    mapSha256Hex: sha,
+    cellCentiPx: cell,
+    offsetXCentiPx: offX,
+    offsetYCentiPx: offY,
+    feetPerCell: feet,
+    visible: vis,
+  );
+}
 
 BlobRef _randomValidRef(Random rng) {
   const hexChars = '0123456789abcdef';
@@ -378,6 +397,15 @@ void main() {
           }
         }
 
+        ({MapGrid? grid, HybridLogicalClock timestamp})? latestGridWrite;
+
+        void recordGridWrite(MapGrid? grid, HybridLogicalClock ts) {
+          final current = latestGridWrite;
+          if (current == null || ts.isAfter(current.timestamp)) {
+            latestGridWrite = (grid: grid, timestamp: ts);
+          }
+        }
+
         var branchA = base.copyWith(
           name: mutateNameA ? 'Campaign A ' : base.name,
           nameTimestamp: mutateNameA ? unpinHlc : base.nameRegister.timestamp,
@@ -416,6 +444,22 @@ void main() {
           );
           branchA = branchA.withActiveMap(refA, unpinHlc).withActiveMap(null, clearHlcA);
           recordWrite(null, clearHlcA);
+        }
+
+        final gridActionA = subRng.nextInt(3);
+        if (gridActionA == 1) {
+          final gridA = _randomValidGrid(subRng);
+          branchA = branchA.withMapGrid(gridA, unpinHlc);
+          recordGridWrite(gridA, unpinHlc);
+        } else if (gridActionA == 2) {
+          final gridA = _randomValidGrid(subRng);
+          final clearGridHlcA = HybridLogicalClock(
+            physicalTime: unpinHlc.physicalTime + 20,
+            logicalCounter: 1,
+            nodeId: repA.value,
+          );
+          branchA = branchA.withMapGrid(gridA, unpinHlc).withMapGrid(null, clearGridHlcA);
+          recordGridWrite(null, clearGridHlcA);
         }
 
         // Replica B removes 'c_extra' via changelog, may mutate name, title, description
@@ -474,6 +518,22 @@ void main() {
           recordWrite(null, clearHlcB);
         }
 
+        final gridActionB = subRng.nextInt(3);
+        if (gridActionB == 1) {
+          final gridB = _randomValidGrid(subRng);
+          branchB = branchB.withMapGrid(gridB, hlcB);
+          recordGridWrite(gridB, hlcB);
+        } else if (gridActionB == 2) {
+          final gridB = _randomValidGrid(subRng);
+          final clearGridHlcB = HybridLogicalClock(
+            physicalTime: hlcB.physicalTime + 20,
+            logicalCounter: 1,
+            nodeId: repB.value,
+          );
+          branchB = branchB.withMapGrid(gridB, hlcB).withMapGrid(null, clearGridHlcB);
+          recordGridWrite(null, clearGridHlcB);
+        }
+
         // Replica C adds a new rule and link, may mutate name, title, description
         final repC = ReplicaId('rep_c_');
         final addHlc = HybridLogicalClock(physicalTime: 1300 + iter, logicalCounter: 1, nodeId: repC.value);
@@ -525,6 +585,22 @@ void main() {
           );
           branchC = branchC.withActiveMap(refC, addHlc).withActiveMap(null, clearHlcC);
           recordWrite(null, clearHlcC);
+        }
+
+        final gridActionC = subRng.nextInt(3);
+        if (gridActionC == 1) {
+          final gridC = _randomValidGrid(subRng);
+          branchC = branchC.withMapGrid(gridC, addHlc);
+          recordGridWrite(gridC, addHlc);
+        } else if (gridActionC == 2) {
+          final gridC = _randomValidGrid(subRng);
+          final clearGridHlcC = HybridLogicalClock(
+            physicalTime: addHlc.physicalTime + 20,
+            logicalCounter: 1,
+            nodeId: repC.value,
+          );
+          branchC = branchC.withMapGrid(gridC, addHlc).withMapGrid(null, clearGridHlcC);
+          recordGridWrite(null, clearGridHlcC);
         }
 
         // 1. Idempotence: join(A, A) == A
@@ -591,6 +667,7 @@ void main() {
 
         // L1: assert joined map equals branch write with greatest timestamp (or null if none wrote)
         expect(joinAbThenC.activeMap, equals(latestMapWrite?.ref));
+        expect(joinAbThenC.mapGrid, equals(latestGridWrite?.grid));
       }
     });
   });

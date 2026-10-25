@@ -15,6 +15,9 @@ List<HybridLogicalClock> extractCampaignProfileTimestamps(CampaignProfile profil
   if (profile.activeMapRegister.timestamp.physicalTime > 0) {
     result.add(profile.activeMapRegister.timestamp);
   }
+  if (profile.mapGridRegister.timestamp.physicalTime > 0) {
+    result.add(profile.mapGridRegister.timestamp);
+  }
   result.addAll(profile.pinnedRules.extractTimestamps());
   result.addAll(profile.partyRoster.extractTimestamps());
   result.addAll(extractRoomNodeTimestamps(profile.roomState));

@@ -9,6 +9,7 @@ import '../rules/ruleset_edition.dart';
 import '../utils/aggregate_join_utils.dart';
 import 'session_graph_models.dart';
 import 'value_objects/blob_ref.dart';
+import 'value_objects/map_grid.dart';
 import 'party_event.dart';
 import 'party_purse.dart';
 
@@ -26,6 +27,7 @@ class CampaignProfile {
   final CrdtOrSet<String> pinnedRules;
   final CrdtLwwRegister<String> notesRegister;
   final CrdtLwwRegister<BlobRef?> activeMapRegister;
+  final CrdtLwwRegister<MapGrid?> mapGridRegister;
   final PartyPurse partyPurse;
   final Map<String, PartyPurse> memberPurses;
   final List<PartyEvent> changeLog;
@@ -36,8 +38,14 @@ class CampaignProfile {
   String get name => nameRegister.value;
   String get notesMarkdown => notesRegister.value;
   BlobRef? get activeMap => activeMapRegister.value;
+  MapGrid? get mapGrid => mapGridRegister.value;
 
   static const CrdtLwwRegister<BlobRef?> noActiveMap = CrdtLwwRegister<BlobRef?>(
+    value: null,
+    timestamp: HybridLogicalClock.genesis,
+  );
+
+  static const CrdtLwwRegister<MapGrid?> noMapGrid = CrdtLwwRegister<MapGrid?>(
     value: null,
     timestamp: HybridLogicalClock.genesis,
   );
@@ -67,6 +75,7 @@ class CampaignProfile {
     CrdtOrSet<String>? pinnedRules,
     required this.notesRegister,
     CrdtLwwRegister<BlobRef?>? activeMapRegister,
+    CrdtLwwRegister<MapGrid?>? mapGridRegister,
     this.partyPurse = const PartyPurse.empty(),
     Map<String, PartyPurse> memberPurses = const {},
     List<PartyEvent> changeLog = const [],
@@ -95,6 +104,7 @@ class CampaignProfile {
                 ? _buildInitialPinnedRules(pinnedRuleIds)
                 : const CrdtOrSet<String>.empty()),
         activeMapRegister = activeMapRegister ?? noActiveMap,
+        mapGridRegister = mapGridRegister ?? noMapGrid,
         changeLog = List.unmodifiable(changeLog);
 
   static CrdtOrSet<String> _buildInitialPartyRoster(Iterable<String> ids) {
@@ -399,6 +409,7 @@ class CampaignProfile {
     String? notesMarkdown,
     CrdtLwwRegister<String>? notesRegister,
     CrdtLwwRegister<BlobRef?>? activeMapRegister,
+    CrdtLwwRegister<MapGrid?>? mapGridRegister,
     PartyPurse? partyPurse,
     Map<String, PartyPurse>? memberPurses,
     List<PartyEvent>? changeLog,
@@ -469,6 +480,7 @@ class CampaignProfile {
       pinnedRules: effectivePinnedRules,
       notesRegister: resolvedNotesRegister,
       activeMapRegister: activeMapRegister ?? this.activeMapRegister,
+      mapGridRegister: mapGridRegister ?? this.mapGridRegister,
       partyPurse: partyPurse ?? this.partyPurse,
       memberPurses: memberPurses != null ? Map<String, PartyPurse>.from(memberPurses) : this.memberPurses,
       changeLog:
@@ -486,6 +498,21 @@ class CampaignProfile {
     return copyWith(
       activeMapRegister: CrdtLwwRegister<BlobRef?>(
         value: map,
+        timestamp: timestamp,
+      ),
+    );
+  }
+
+  CampaignProfile withMapGrid(MapGrid? grid, HybridLogicalClock timestamp) {
+    if (timestamp.physicalTime == 0 || timestamp.nodeId == 'genesis') {
+      throw ArgumentError(
+        'CampaignProfile.withMapGrid requires an authoritative timestamp '
+        'with physicalTime > 0 and nodeId != "genesis".',
+      );
+    }
+    return copyWith(
+      mapGridRegister: CrdtLwwRegister<MapGrid?>(
+        value: grid,
         timestamp: timestamp,
       ),
     );
@@ -530,6 +557,9 @@ class CampaignProfile {
     // 1b. Active Map: pure LWW CRDT register merge
     final mergedActiveMapRegister = a.activeMapRegister.merge(b.activeMapRegister);
 
+    // 1c. Map Grid: pure LWW CRDT register merge
+    final mergedMapGridRegister = a.mapGridRegister.merge(b.mapGridRegister);
+
     // 2. Party Purse: pure PN-counter CvRDT lattice join across denominations
     final mergedPurse = a.partyPurse.merge(b.partyPurse);
 
@@ -569,6 +599,7 @@ class CampaignProfile {
       pinnedRules: mergedPinnedRules,
       notesRegister: mergedNotes,
       activeMapRegister: mergedActiveMapRegister,
+      mapGridRegister: mergedMapGridRegister,
       partyPurse: mergedPurse,
       memberPurses: mergedMemberPurses,
       changeLog: mergedEvents,
@@ -593,6 +624,7 @@ class CampaignProfile {
           pinnedRules == other.pinnedRules &&
           notesRegister == other.notesRegister &&
           activeMapRegister == other.activeMapRegister &&
+          mapGridRegister == other.mapGridRegister &&
           partyPurse == other.partyPurse &&
           _mapPurseEquality.equals(memberPurses, other.memberPurses) &&
           _listEventEquality.equals(changeLog, other.changeLog);
