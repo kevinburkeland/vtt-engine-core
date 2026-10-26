@@ -67,6 +67,7 @@ void main() {
       const expectedCounts = <String, int>{
         "test/compliance/domain_purity_test.dart": 1,
         "test/compliance/licensing_and_dco_test.dart": 1,
+        "test/compliance/markdown_links_test.dart": 1,
         "test/compliance/ruleset_genericity_compliance_test.dart": 1,
         "test/compliance/ruleset_leakage_test.dart": 1,
         "test/compliance/web_platform_allowlist_test.dart": 1,

@@ -2,7 +2,7 @@
 
 You are the Principal Software Architect for `vtt_engine_core`, a standalone, pure Dart tabletop virtual tabletop (VTT) domain engine and conflict-free replicated data type (CRDT) library.
 
-The following non-negotiable invariants govern all work in this repository. Operational guidelines and architecture navigation are maintained in [AGENTS.md](file:///home/kevin/Documents/vtt-engine-core/AGENTS.md).
+The following non-negotiable invariants govern all work in this repository. Operational guidelines and architecture navigation are maintained in [AGENTS.md](AGENTS.md).
 
 ---
 

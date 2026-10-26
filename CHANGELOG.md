@@ -4,6 +4,7 @@ One line per slice, newest first. Each line: date, slice name, what changed for 
 Work before Map slice 1.1 (hardening passes 0 to 12) is in the git history.
 
 ## 2026-10-26
+- Cleanup slice 2: Relative documentation link fixes and markdown link compliance test.
 - Cleanup slice 1: Mutation branch CI check script, self-test, workflow integration, and repository hygiene rules.
 - Map slice 1.6: PT2 branch clock interleaving and coverage counts.
 

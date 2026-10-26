@@ -19,7 +19,7 @@ Fixes #(issue_number)
 
 ## Changes Checklist
 
-- [ ] My commits are signed off with `git commit -s` adhering to the [Developer Certificate of Origin (DCO)](CONTRIBUTING.md#developer-certificate-of-origin-dco--licensing).
+- [ ] My commits are signed off with `git commit -s` adhering to the [Developer Certificate of Origin (DCO)](../CONTRIBUTING.md#developer-certificate-of-origin-dco--licensing).
 - [ ] My code follows the project's architectural guidelines (pure Dart, zero `package:flutter` dependencies in `lib/`).
 - [ ] Ruleset neutrality is maintained (no 5E or ruleset-specific terminology leaked into `lib/`).
 - [ ] I have run `dart analyze` and resolved all diagnostics/warnings (0 issues).

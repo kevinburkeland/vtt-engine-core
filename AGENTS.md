@@ -1,6 +1,6 @@
 # vtt_engine_core: Operating Manual & Architecture Map
 
-Welcome, AI Agent / Core Architect. This document is the operating manual and architecture map for `vtt_engine_core`. All non-negotiable constitutional invariants are codified in [.antigravityrules](file:///home/kevin/Documents/vtt-engine-core/.antigravityrules). This manual guides repository navigation, code placement, invariant preservation, testing, and cross-repository workflows.
+Welcome, AI Agent / Core Architect. This document is the operating manual and architecture map for `vtt_engine_core`. All non-negotiable constitutional invariants are codified in [.antigravityrules](.antigravityrules). This manual guides repository navigation, code placement, invariant preservation, testing, and cross-repository workflows.
 
 ---
 
@@ -134,10 +134,10 @@ The repository uses automated compliance tests under `test/compliance/` to enfor
 
 | Test File | Scope & Enforcement Type | Notes |
 |:---|:---|:---|
-| [domain_purity_test.dart](file:///home/kevin/Documents/vtt-engine-core/test/compliance/domain_purity_test.dart) | **Lexical:** Verifies 0 `package:flutter/...` imports across all files in `lib/`. | Guarantees engine is pure Dart (`meta` package allowed). |
-| [ruleset_leakage_test.dart](file:///home/kevin/Documents/vtt-engine-core/test/compliance/ruleset_leakage_test.dart) | **Lexical:** Scans `lib/` for 15 banned 5e tokens (`dnd`, `5e`, `srd5`, `strength`, `dexterity`, `constitution`, `wisdom`, `charisma`, `armorClass`, `challengeRating`, `spellSlot`, `weaponMastery`, `bonusAction`, `shortRest`, `longRest`). | **Does NOT prove semantic neutrality.** Lexical compliance is a baseline safeguard, not proof of generic design. |
-| [ruleset_genericity_compliance_test.dart](file:///home/kevin/Documents/vtt-engine-core/test/compliance/ruleset_genericity_compliance_test.dart) | **Structural:** Verifies absence of banned D&D progression types (`ClassLevelProgression`, `CharacterProgression`, `SessionRefType`, `MinionInstance`, `ArenaCondition`, `FeatureGrant`), absence of level-to-PB formulas, nullable combat stats in session models, and zero package dependencies on ruleset toolkits. | Enforces structural decoupling of extracted mechanics. |
-| [licensing_and_dco_test.dart](file:///home/kevin/Documents/vtt-engine-core/test/compliance/licensing_and_dco_test.dart) | **Policy:** Verifies AGPLv3 license terms, retroactive copyright scope (Kevin Burkeland), DCO 1.1 sign-off requirements, and PR template checks. | Enforces legal and contribution requirements. |
+| [domain_purity_test.dart](test/compliance/domain_purity_test.dart) | **Lexical:** Verifies 0 `package:flutter/...` imports across all files in `lib/`. | Guarantees engine is pure Dart (`meta` package allowed). |
+| [ruleset_leakage_test.dart](test/compliance/ruleset_leakage_test.dart) | **Lexical:** Scans `lib/` for 15 banned 5e tokens (`dnd`, `5e`, `srd5`, `strength`, `dexterity`, `constitution`, `wisdom`, `charisma`, `armorClass`, `challengeRating`, `spellSlot`, `weaponMastery`, `bonusAction`, `shortRest`, `longRest`). | **Does NOT prove semantic neutrality.** Lexical compliance is a baseline safeguard, not proof of generic design. |
+| [ruleset_genericity_compliance_test.dart](test/compliance/ruleset_genericity_compliance_test.dart) | **Structural:** Verifies absence of banned D&D progression types (`ClassLevelProgression`, `CharacterProgression`, `SessionRefType`, `MinionInstance`, `ArenaCondition`, `FeatureGrant`), absence of level-to-PB formulas, nullable combat stats in session models, and zero package dependencies on ruleset toolkits. | Enforces structural decoupling of extracted mechanics. |
+| [licensing_and_dco_test.dart](test/compliance/licensing_and_dco_test.dart) | **Policy:** Verifies AGPLv3 license terms, retroactive copyright scope (Kevin Burkeland), DCO 1.1 sign-off requirements, and PR template checks. | Enforces legal and contribution requirements. |
 
 ### Verification Commands
 ```bash
