@@ -74,6 +74,7 @@ void main() {
         "test/models/campaign_profile_edition_type_test.dart": 1,
         "test/models/legacy_entity_links_migration_test.dart": 9,
         "test/models/map_grid_test.dart": 1,
+        "test/models/map_token_test.dart": 1,
         "test/simulation/dpr_simulator_test.dart": 2,
       };
 

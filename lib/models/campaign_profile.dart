@@ -10,6 +10,7 @@ import '../utils/aggregate_join_utils.dart';
 import 'session_graph_models.dart';
 import 'value_objects/blob_ref.dart';
 import 'value_objects/map_grid.dart';
+import 'value_objects/map_token.dart';
 import 'party_event.dart';
 import 'party_purse.dart';
 
@@ -28,6 +29,9 @@ class CampaignProfile {
   final CrdtLwwRegister<String> notesRegister;
   final CrdtLwwRegister<BlobRef?> activeMapRegister;
   final CrdtLwwRegister<MapGrid?> mapGridRegister;
+  final CrdtOrSet<MapToken> mapTokens;
+  final CrdtOrSet<MapTokenCell> mapTokenCells;
+  final CrdtOrSet<String> minionOwners;
   final PartyPurse partyPurse;
   final Map<String, PartyPurse> memberPurses;
   final List<PartyEvent> changeLog;
@@ -76,6 +80,9 @@ class CampaignProfile {
     required this.notesRegister,
     CrdtLwwRegister<BlobRef?>? activeMapRegister,
     CrdtLwwRegister<MapGrid?>? mapGridRegister,
+    CrdtOrSet<MapToken>? mapTokens,
+    CrdtOrSet<MapTokenCell>? mapTokenCells,
+    CrdtOrSet<String>? minionOwners,
     this.partyPurse = const PartyPurse.empty(),
     Map<String, PartyPurse> memberPurses = const {},
     List<PartyEvent> changeLog = const [],
@@ -105,6 +112,9 @@ class CampaignProfile {
                 : const CrdtOrSet<String>.empty()),
         activeMapRegister = activeMapRegister ?? noActiveMap,
         mapGridRegister = mapGridRegister ?? noMapGrid,
+        mapTokens = mapTokens ?? const CrdtOrSet<MapToken>.empty(),
+        mapTokenCells = mapTokenCells ?? const CrdtOrSet<MapTokenCell>.empty(),
+        minionOwners = minionOwners ?? const CrdtOrSet<String>.empty(),
         changeLog = List.unmodifiable(changeLog);
 
   static CrdtOrSet<String> _buildInitialPartyRoster(Iterable<String> ids) {
@@ -410,6 +420,9 @@ class CampaignProfile {
     CrdtLwwRegister<String>? notesRegister,
     CrdtLwwRegister<BlobRef?>? activeMapRegister,
     CrdtLwwRegister<MapGrid?>? mapGridRegister,
+    CrdtOrSet<MapToken>? mapTokens,
+    CrdtOrSet<MapTokenCell>? mapTokenCells,
+    CrdtOrSet<String>? minionOwners,
     PartyPurse? partyPurse,
     Map<String, PartyPurse>? memberPurses,
     List<PartyEvent>? changeLog,
@@ -481,6 +494,9 @@ class CampaignProfile {
       notesRegister: resolvedNotesRegister,
       activeMapRegister: activeMapRegister ?? this.activeMapRegister,
       mapGridRegister: mapGridRegister ?? this.mapGridRegister,
+      mapTokens: mapTokens ?? this.mapTokens,
+      mapTokenCells: mapTokenCells ?? this.mapTokenCells,
+      minionOwners: minionOwners ?? this.minionOwners,
       partyPurse: partyPurse ?? this.partyPurse,
       memberPurses: memberPurses != null ? Map<String, PartyPurse>.from(memberPurses) : this.memberPurses,
       changeLog:
@@ -517,6 +533,97 @@ class CampaignProfile {
       ),
     );
   }
+
+  CampaignProfile withTokenPlaced(MapToken token, MapTokenCell cell, HybridLogicalClock ts) {
+    if (ts.physicalTime == 0 || ts.nodeId == 'genesis') {
+      throw ArgumentError(
+        'CampaignProfile.withTokenPlaced requires an authoritative timestamp '
+        'with physicalTime > 0 and nodeId != "genesis".',
+      );
+    }
+    if (mapTokens.items.containsKey(token.id) || mapTokens.tombstones.containsKey(token.id)) {
+      throw StateError('Cannot place token: ID "${token.id}" has already been used.');
+    }
+    return copyWith(
+      mapTokens: mapTokens.add(token.id, token, ts),
+      mapTokenCells: mapTokenCells.add(token.id, cell, ts),
+    );
+  }
+
+  CampaignProfile withTokenMoved(String tokenId, MapTokenCell cell, HybridLogicalClock ts) {
+    if (ts.physicalTime == 0 || ts.nodeId == 'genesis') {
+      throw ArgumentError(
+        'CampaignProfile.withTokenMoved requires an authoritative timestamp '
+        'with physicalTime > 0 and nodeId != "genesis".',
+      );
+    }
+    if (!mapTokens.items.containsKey(tokenId)) {
+      return this;
+    }
+    return copyWith(
+      mapTokenCells: mapTokenCells.add(tokenId, cell, ts),
+    );
+  }
+
+  CampaignProfile withTokenRemoved(String tokenId, HybridLogicalClock ts) {
+    if (ts.physicalTime == 0 || ts.nodeId == 'genesis') {
+      throw ArgumentError(
+        'CampaignProfile.withTokenRemoved requires an authoritative timestamp '
+        'with physicalTime > 0 and nodeId != "genesis".',
+      );
+    }
+    return copyWith(
+      mapTokens: mapTokens.remove(tokenId, ts),
+    );
+  }
+
+  CampaignProfile withMinionOwner(String minionId, String? ownerSlug, HybridLogicalClock ts) {
+    if (ts.physicalTime == 0 || ts.nodeId == 'genesis') {
+      throw ArgumentError(
+        'CampaignProfile.withMinionOwner requires an authoritative timestamp '
+        'with physicalTime > 0 and nodeId != "genesis".',
+      );
+    }
+    if (minionId.isEmpty) {
+      throw ArgumentError('minionId cannot be empty');
+    }
+    if (ownerSlug != null && ownerSlug.isEmpty) {
+      throw ArgumentError('ownerSlug cannot be empty');
+    }
+    return copyWith(
+      minionOwners: ownerSlug != null
+          ? minionOwners.add(minionId, ownerSlug, ts)
+          : minionOwners.remove(minionId, ts),
+    );
+  }
+
+  List<PlacedMapToken> tokensOnMap(String mapSha256Hex) {
+    final result = <({PlacedMapToken placed, HybridLogicalClock timestamp})>[];
+    for (final reg in mapTokens.items.values) {
+      final tok = reg.value;
+      if (tok.mapSha256Hex == mapSha256Hex) {
+        final cellReg = mapTokenCells.items[tok.id];
+        if (cellReg != null) {
+          result.add((
+            placed: PlacedMapToken(token: tok, cell: cellReg.value),
+            timestamp: reg.timestamp,
+          ));
+        }
+      }
+    }
+    result.sort((a, b) {
+      final cmp = a.timestamp.compareTo(b.timestamp);
+      if (cmp != 0) return cmp;
+      return a.placed.token.id.compareTo(b.placed.token.id);
+    });
+    return List.unmodifiable(result.map((e) => e.placed));
+  }
+
+  MapToken? activeToken(String tokenId) => mapTokens.items[tokenId]?.value;
+
+  MapTokenCell? tokenCell(String tokenId) => mapTokenCells.items[tokenId]?.value;
+
+  String? minionOwner(String minionId) => minionOwners.items[minionId]?.value;
 
   /// Pure canonical aggregate join of two [CampaignProfile] instances.
   ///
@@ -560,6 +667,15 @@ class CampaignProfile {
     // 1c. Map Grid: pure LWW CRDT register merge
     final mergedMapGridRegister = a.mapGridRegister.merge(b.mapGridRegister);
 
+    // 1d. Map Tokens: pure CRDT OR-Set join
+    final mergedMapTokens = a.mapTokens.merge(b.mapTokens);
+
+    // 1e. Map Token Cells: pure CRDT OR-Set join
+    final mergedMapTokenCells = a.mapTokenCells.merge(b.mapTokenCells);
+
+    // 1f. Minion Owners: pure CRDT OR-Set join
+    final mergedMinionOwners = a.minionOwners.merge(b.minionOwners);
+
     // 2. Party Purse: pure PN-counter CvRDT lattice join across denominations
     final mergedPurse = a.partyPurse.merge(b.partyPurse);
 
@@ -600,6 +716,9 @@ class CampaignProfile {
       notesRegister: mergedNotes,
       activeMapRegister: mergedActiveMapRegister,
       mapGridRegister: mergedMapGridRegister,
+      mapTokens: mergedMapTokens,
+      mapTokenCells: mergedMapTokenCells,
+      minionOwners: mergedMinionOwners,
       partyPurse: mergedPurse,
       memberPurses: mergedMemberPurses,
       changeLog: mergedEvents,
@@ -625,6 +744,9 @@ class CampaignProfile {
           notesRegister == other.notesRegister &&
           activeMapRegister == other.activeMapRegister &&
           mapGridRegister == other.mapGridRegister &&
+          mapTokens == other.mapTokens &&
+          mapTokenCells == other.mapTokenCells &&
+          minionOwners == other.minionOwners &&
           partyPurse == other.partyPurse &&
           _mapPurseEquality.equals(memberPurses, other.memberPurses) &&
           _listEventEquality.equals(changeLog, other.changeLog);
@@ -642,6 +764,9 @@ class CampaignProfile {
         notesRegister,
         activeMapRegister,
         mapGridRegister,
+        mapTokens,
+        mapTokenCells,
+        minionOwners,
         partyPurse,
         _mapPurseEquality.hash(memberPurses),
         _listEventEquality.hash(changeLog),

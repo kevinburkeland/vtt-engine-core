@@ -10,6 +10,7 @@ import 'package:vtt_engine_core/rules/ruleset_edition.dart';
 import 'package:test/test.dart';
 import 'package:vtt_engine_core/models/value_objects/blob_ref.dart';
 import 'package:vtt_engine_core/models/value_objects/map_grid.dart';
+import 'package:vtt_engine_core/models/value_objects/map_token.dart';
 
 MapGrid _randomValidGrid(Random rng) {
   const hexChars = '0123456789abcdef';
@@ -261,7 +262,7 @@ void main() {
 
     test('Three-replica delete and reconnect scenario converges with all deletions preserved', () {
       final link1 = RoomEntityLink(entityId: 'goblin-1', displayName: 'Goblin');
-      final base = CampaignProfile.raw(
+      var base = CampaignProfile.raw(
         id: 'camp_multi',
         name: 'Dungeon Run',
         edition: const RulesetIdentifier('generic_tabletop'),
@@ -352,7 +353,7 @@ void main() {
           notes: 'Genesis Link Notes',
           notesTimestamp: const HybridLogicalClock(physicalTime: 1000, logicalCounter: 0, nodeId: 'genesis'),
         );
-        final base = CampaignProfile.raw(
+        var base = CampaignProfile.raw(
           id: 'camp_test',
           name: 'Randomized Campaign',
           nameTimestamp: const HybridLogicalClock(physicalTime: 1000, logicalCounter: 0, nodeId: 'genesis'),
@@ -405,6 +406,16 @@ void main() {
             latestGridWrite = (grid: grid, timestamp: ts);
           }
         }
+
+        final baseHlc = HybridLogicalClock(physicalTime: 1000 + iter, logicalCounter: 0, nodeId: 'rep_base');
+        final baseToken = MapToken(
+          id: 'tok_${iter.toRadixString(16).padLeft(32, '0')}',
+          mapSha256Hex: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+          kind: MapTokenKind.character,
+          refId: 'c_base',
+          label: 'BA',
+        );
+        base = base.withTokenPlaced(baseToken, MapTokenCell(col: 0, row: 0), baseHlc);
 
         var branchA = base.copyWith(
           name: mutateNameA ? 'Campaign A ' : base.name,
@@ -460,6 +471,24 @@ void main() {
           );
           branchA = branchA.withMapGrid(gridA, unpinHlc).withMapGrid(null, clearGridHlcA);
           recordGridWrite(null, clearGridHlcA);
+        }
+
+        final tokenActionA = subRng.nextInt(5);
+        if (tokenActionA == 1) {
+          final tokA = MapToken(
+            id: 'tok_${(0x10000 + iter).toRadixString(16).padLeft(32, '0')}',
+            mapSha256Hex: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+            kind: MapTokenKind.character,
+            refId: 'c_a_',
+            label: 'A',
+          );
+          branchA = branchA.withTokenPlaced(tokA, MapTokenCell(col: 1, row: 1), unpinHlc);
+        } else if (tokenActionA == 2) {
+          branchA = branchA.withTokenMoved(baseToken.id, MapTokenCell(col: 5, row: 5), unpinHlc);
+        } else if (tokenActionA == 3) {
+          branchA = branchA.withTokenRemoved(baseToken.id, unpinHlc);
+        } else if (tokenActionA == 4) {
+          branchA = branchA.withMinionOwner('minion_base', 'c_a_', unpinHlc);
         }
 
         // Replica B removes 'c_extra' via changelog, may mutate name, title, description
@@ -534,6 +563,24 @@ void main() {
           recordGridWrite(null, clearGridHlcB);
         }
 
+        final tokenActionB = subRng.nextInt(5);
+        if (tokenActionB == 1) {
+          final tokB = MapToken(
+            id: 'tok_${(0x20000 + iter).toRadixString(16).padLeft(32, '0')}',
+            mapSha256Hex: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+            kind: MapTokenKind.monster,
+            refId: 'c_b_',
+            label: 'B',
+          );
+          branchB = branchB.withTokenPlaced(tokB, MapTokenCell(col: 2, row: 2), hlcB);
+        } else if (tokenActionB == 2) {
+          branchB = branchB.withTokenMoved(baseToken.id, MapTokenCell(col: 10, row: 10), hlcB);
+        } else if (tokenActionB == 3) {
+          branchB = branchB.withTokenRemoved(baseToken.id, hlcB);
+        } else if (tokenActionB == 4) {
+          branchB = branchB.withMinionOwner('minion_base', null, hlcB);
+        }
+
         // Replica C adds a new rule and link, may mutate name, title, description
         final repC = ReplicaId('rep_c_');
         final addHlc = HybridLogicalClock(physicalTime: 1300 + iter, logicalCounter: 1, nodeId: repC.value);
@@ -601,6 +648,24 @@ void main() {
           );
           branchC = branchC.withMapGrid(gridC, addHlc).withMapGrid(null, clearGridHlcC);
           recordGridWrite(null, clearGridHlcC);
+        }
+
+        final tokenActionC = subRng.nextInt(5);
+        if (tokenActionC == 1) {
+          final tokC = MapToken(
+            id: 'tok_${(0x30000 + iter).toRadixString(16).padLeft(32, '0')}',
+            mapSha256Hex: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+            kind: MapTokenKind.minion,
+            refId: 'c_c_',
+            label: 'C',
+          );
+          branchC = branchC.withTokenPlaced(tokC, MapTokenCell(col: 3, row: 3), addHlc);
+        } else if (tokenActionC == 2) {
+          branchC = branchC.withTokenMoved(baseToken.id, MapTokenCell(col: 15, row: 15), addHlc);
+        } else if (tokenActionC == 3) {
+          branchC = branchC.withTokenRemoved(baseToken.id, addHlc);
+        } else if (tokenActionC == 4) {
+          branchC = branchC.withMinionOwner('minion_base', 'c_c_', addHlc);
         }
 
         // 1. Idempotence: join(A, A) == A

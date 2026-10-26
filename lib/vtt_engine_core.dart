@@ -39,6 +39,7 @@ export 'models/spell_monster_equipment.dart';
 export 'models/value_objects/blob_ref.dart';
 export 'models/value_objects/hit_points.dart';
 export 'models/value_objects/map_grid.dart';
+export 'models/value_objects/map_token.dart';
 
 // Domain Ports
 export 'ports/i_campaign_repository.dart';

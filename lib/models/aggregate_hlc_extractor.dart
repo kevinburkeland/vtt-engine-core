@@ -20,6 +20,9 @@ List<HybridLogicalClock> extractCampaignProfileTimestamps(CampaignProfile profil
   }
   result.addAll(profile.pinnedRules.extractTimestamps());
   result.addAll(profile.partyRoster.extractTimestamps());
+  result.addAll(profile.mapTokens.extractTimestamps());
+  result.addAll(profile.mapTokenCells.extractTimestamps());
+  result.addAll(profile.minionOwners.extractTimestamps());
   result.addAll(extractRoomNodeTimestamps(profile.roomState));
   return result;
 }
