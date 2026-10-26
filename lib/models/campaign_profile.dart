@@ -641,6 +641,7 @@ class CampaignProfile {
         pinnedRules,
         notesRegister,
         activeMapRegister,
+        mapGridRegister,
         partyPurse,
         _mapPurseEquality.hash(memberPurses),
         _listEventEquality.hash(changeLog),

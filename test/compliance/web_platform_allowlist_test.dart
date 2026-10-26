@@ -73,6 +73,7 @@ void main() {
         "test/models/blob_ref_test.dart": 1,
         "test/models/campaign_profile_edition_type_test.dart": 1,
         "test/models/legacy_entity_links_migration_test.dart": 9,
+        "test/models/map_grid_test.dart": 1,
         "test/simulation/dpr_simulator_test.dart": 2,
       };
 
@@ -130,6 +131,40 @@ void main() {
             "$filePath marker count mismatch: actual $actualCount, expected 0",
           );
         }
+      }
+
+            // Bar for the whole class: every file under test/ that imports dart:io must be in expectedCounts
+      final dartIoPattern = RegExp(r"import\s+[\x27\x22]dart:io[\x27\x22]");
+
+      // Control: run check on in-memory list holding one file name and one source string that imports dart:io, with an empty allowlist, expect a hit
+      const controlIoName = "test/in_memory_fake_io_test.dart";
+      const controlIoSource = "import 'dart:io';\nvoid main() {}";
+      final controlOffenders = <String>[];
+      if (dartIoPattern.hasMatch(controlIoSource) && !const <String, int>{}.containsKey(controlIoName)) {
+        controlOffenders.add(controlIoName);
+      }
+      expect(
+        controlOffenders,
+        equals([controlIoName]),
+        reason: "Control check failed: dart:io check must detect unregistered dart:io import",
+      );
+
+      final unregisteredDartIoFiles = <String>[];
+      for (final file in dartFiles) {
+        final normalizedPath = file.path.replaceAll(r"\\", "/");
+        final relativePath = normalizedPath.startsWith("./")
+            ? normalizedPath.substring(2)
+            : normalizedPath;
+        final fileContent = file.readAsStringSync();
+        if (dartIoPattern.hasMatch(fileContent) && !expectedCounts.containsKey(relativePath)) {
+          unregisteredDartIoFiles.add(relativePath);
+        }
+      }
+      if (unregisteredDartIoFiles.isNotEmpty) {
+        failures.add(
+          "Files importing dart:io must have a VM platform selector registered in expectedCounts: "
+          "${unregisteredDartIoFiles.join(", ")}",
+        );
       }
 
       expect(failures, isEmpty, reason: failures.join("\n"));

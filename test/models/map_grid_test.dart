@@ -354,7 +354,7 @@ void main() {
       }
     });
 
-    test('G3 (source bar): map_grid.dart contains no double, num, List, Map field declarations and declares final class MapGrid', () {
+    test('G3 (source bar): map_grid.dart contains no double, num, List, Map field declarations and declares final class MapGrid', testOn: 'vm', () {
       final file = File('lib/models/value_objects/map_grid.dart');
       expect(file.existsSync(), isTrue);
       final lines = file.readAsLinesSync();

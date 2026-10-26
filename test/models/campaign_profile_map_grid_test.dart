@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:test/test.dart';
 import 'package:vtt_engine_core/vtt_engine_core.dart';
 
@@ -337,6 +338,57 @@ void main() {
       // 6. Two profiles that differ only in mapGridRegister are not ==
       expect(pSetT1 == pDefault, isFalse);
       expect(pSetT1 == pSetT2, isFalse);
+    });
+
+    test("G6 (hashCode): mapGridRegister contributes to hashCode across 200 random valid grids", () {
+      final base = CampaignProfile.initial(
+        id: "base_hash_test",
+        name: "Hash Test Campaign",
+        nodeId: "node_base",
+        now: DateTime.utc(2026, 1, 1),
+      );
+
+      final rng = math.Random(1337);
+      final hashes = <int>{};
+      const stamp = HybridLogicalClock(physicalTime: 1000000, logicalCounter: 1, nodeId: "node_hash");
+
+      for (var i = 0; i < 200; i++) {
+        final cell = 1000 + rng.nextInt(50201);
+        final offX = rng.nextInt(cell);
+        final offY = rng.nextInt(cell);
+        final feet = 1 + rng.nextInt(100);
+        final vis = rng.nextBool();
+        final sha = "a" * 60 + i.toRadixString(16).padLeft(4, "0");
+
+        final grid = MapGrid(
+          mapSha256Hex: sha,
+          cellCentiPx: cell,
+          offsetXCentiPx: offX,
+          offsetYCentiPx: offY,
+          feetPerCell: feet,
+          visible: vis,
+        );
+
+        final p = base.withMapGrid(grid, stamp);
+        hashes.add(p.hashCode);
+      }
+
+      // Expect at least 2 distinct hashCode values among them
+      expect(hashes.length, greaterThanOrEqualTo(2));
+
+      // Check that two profiles with the same grid and timestamp have the same hashCode
+      final fixedGrid = MapGrid(
+        mapSha256Hex: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        cellCentiPx: 4000,
+        offsetXCentiPx: 100,
+        offsetYCentiPx: 200,
+        feetPerCell: 5,
+        visible: true,
+      );
+      final p1 = base.withMapGrid(fixedGrid, stamp);
+      final p2 = base.withMapGrid(fixedGrid, stamp);
+      expect(p1.hashCode, equals(p2.hashCode));
+      expect(p1, equals(p2));
     });
   });
 }
