@@ -259,6 +259,10 @@ void main() {
     });
 
     test('PT2 (law: removal is final, at least 300 seeds)', () {
+      int moveOlderThanRemovalCount = 0;
+      int moveNewerThanRemovalCount = 0;
+      int winningCellNotLastBranchCount = 0;
+
       for (var seed = 0; seed < 300; seed++) {
         final rng = Random(seed * 31337 + 7);
         const mapSha = validSha1;
@@ -302,6 +306,10 @@ void main() {
         final expectedLatestCell = <String, ({MapTokenCell cell, HybridLogicalClock ts})>{};
         final expectedMinionOwner = <String, ({String? owner, HybridLogicalClock ts})>{};
 
+        final moves = <String, List<({int branch, HybridLogicalClock ts})>>{};
+        final removals = <String, List<({int branch, HybridLogicalClock ts})>>{};
+        final cellWrites = <String, List<({int branch, HybridLogicalClock ts})>>{};
+
         for (final tok in base.mapTokens.items.values) {
           expectedActiveTokens[tok.value.id] = true;
           final cell = base.mapTokenCells.items[tok.value.id]!;
@@ -314,13 +322,18 @@ void main() {
         var globalTokenCounter = 0;
 
         for (var b = 0; b < branchCount; b++) {
-          final branchClock = StatefulHlcClock(replicaId: ReplicaId('branch_${seed}_$b'));
+          var branchPhysical = 2000 + rng.nextInt(1001); // 2000 to 3000
           var branchProfile = base;
           final stepCount = rng.nextInt(11) + 5; // 5 to 15 steps
 
           for (var s = 0; s < stepCount; s++) {
             final action = rng.nextInt(4);
-            final ts = branchClock.nextTimestamp();
+            branchPhysical += rng.nextInt(200) + 1; // adds 1 to 200 ms per step
+            final ts = HybridLogicalClock(
+              physicalTime: branchPhysical,
+              logicalCounter: 0,
+              nodeId: 'branch_${seed}_$b',
+            );
 
             switch (action) {
               case 0: // place new token
@@ -342,17 +355,23 @@ void main() {
                 if (curCell == null || ts.isAfter(curCell.ts)) {
                   expectedLatestCell[tokId] = (cell: cell, ts: ts);
                 }
+                cellWrites.putIfAbsent(tokId, () => []).add((branch: b, ts: ts));
 
               case 1: // move any token the branch knows about
                 final activeForMove = branchProfile.mapTokens.items.keys.toList();
                 if (activeForMove.isNotEmpty) {
-                  final targetId = activeForMove[rng.nextInt(activeForMove.length)];
+                  final baseInActive = activeForMove.where((id) => knownTokens[id]?.kind == MapTokenKind.character).toList();
+                  final targetId = (baseInActive.isNotEmpty && rng.nextBool())
+                      ? baseInActive[rng.nextInt(baseInActive.length)]
+                      : activeForMove[rng.nextInt(activeForMove.length)];
                   final cell = MapTokenCell(col: rng.nextInt(100), row: rng.nextInt(100));
                   branchProfile = branchProfile.withTokenMoved(targetId, cell, ts);
                   final curCell = expectedLatestCell[targetId];
                   if (curCell == null || ts.isAfter(curCell.ts)) {
                     expectedLatestCell[targetId] = (cell: cell, ts: ts);
                   }
+                  moves.putIfAbsent(targetId, () => []).add((branch: b, ts: ts));
+                  cellWrites.putIfAbsent(targetId, () => []).add((branch: b, ts: ts));
                 }
 
               case 2: // remove one
@@ -361,6 +380,7 @@ void main() {
                   final targetId = activeForRemove[rng.nextInt(activeForRemove.length)];
                   branchProfile = branchProfile.withTokenRemoved(targetId, ts);
                   expectedActiveTokens[targetId] = false;
+                  removals.putIfAbsent(targetId, () => []).add((branch: b, ts: ts));
                 }
 
               case 3: // set or clear minion owner
@@ -434,7 +454,55 @@ void main() {
             reason: 'Minion $minionId owner mismatch at seed $seed: expected $expOwner, got $actualOwner',
           );
         }
+
+        bool seedHadMoveOlder = false;
+        bool seedHadMoveNewer = false;
+        for (final tokId in moves.keys) {
+          final mList = moves[tokId]!;
+          final rList = removals[tokId] ?? const [];
+          for (final m in mList) {
+            for (final r in rList) {
+              if (m.branch != r.branch) {
+                if (m.ts.compareTo(r.ts) < 0) seedHadMoveOlder = true;
+                if (m.ts.compareTo(r.ts) > 0) seedHadMoveNewer = true;
+              }
+            }
+          }
+        }
+        if (seedHadMoveOlder) moveOlderThanRemovalCount++;
+        if (seedHadMoveNewer) moveNewerThanRemovalCount++;
+
+        bool seedHadWinningNotLast = false;
+        for (final entry in cellWrites.entries) {
+          final list = entry.value;
+          if (list.length >= 2) {
+            var winBranch = list.first.branch;
+            var maxTs = list.first.ts;
+            var lastBranch = list.first.branch;
+            for (var k = 1; k < list.length; k++) {
+              final item = list[k];
+              if (item.ts.compareTo(maxTs) > 0) {
+                maxTs = item.ts;
+                winBranch = item.branch;
+              }
+              if (item.branch > lastBranch) {
+                lastBranch = item.branch;
+              }
+            }
+            if (winBranch != lastBranch) {
+              seedHadWinningNotLast = true;
+              break;
+            }
+          }
+        }
+        if (seedHadWinningNotLast) winningCellNotLastBranchCount++;
       }
+
+      // ignore: avoid_print
+      print('PT2 coverage counts: moveOlderThanRemoval=$moveOlderThanRemovalCount, moveNewerThanRemoval=$moveNewerThanRemovalCount, winningCellNotLastBranch=$winningCellNotLastBranchCount');
+      expect(moveOlderThanRemovalCount, greaterThanOrEqualTo(50));
+      expect(moveNewerThanRemovalCount, greaterThanOrEqualTo(50));
+      expect(winningCellNotLastBranchCount, greaterThanOrEqualTo(50));
     });
   });
 }
