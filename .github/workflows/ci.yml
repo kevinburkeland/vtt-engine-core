@@ -98,5 +98,8 @@ jobs:
       - name: 🧪 Run Mutation Branch Script Self-Tests
         run: ./scripts/test_check_mutation_branches.sh
 
+      - name: 🧪 Run Retire Mutation Branches Script Self-Tests
+        run: ./scripts/test_retire_mutation_branches.sh
+
       - name: 🔒 Check Mutation Branches Limit
         run: ./scripts/check_mutation_branches.sh 20

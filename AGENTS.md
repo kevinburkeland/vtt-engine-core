@@ -182,3 +182,8 @@ Never consider repositories integrated merely because local working trees are co
 4. Remove any local `pubspec_overrides.yaml` or `dependency_overrides` from the consuming repository.
 5. Run `flutter pub get` in the consuming repository so the pinned Git commit is actually fetched into the pub cache and locked in `pubspec.lock`.
 6. Execute the consuming application's static analysis (`flutter analyze`) and test suites (`flutter test`) against the fetched Git dependency before considering work complete.
+
+---
+
+## 🧹 Mutation Branch Retirement Protocol
+Mutation branches are retired with `scripts/retire_mutation_branches.sh <slice-id>` at the start of the next slice, after the review closes. Never delete them by hand.
