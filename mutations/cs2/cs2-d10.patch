@@ -1,0 +1,28 @@
+From f49091278a96e0187e9d772b6d3ce084c82cf5c8 Mon Sep 17 00:00:00 2001
+From: Kevin Burkeland <kevin@burke.land>
+Date: Mon, 26 Oct 2026 16:19:50 -0700
+Subject: [PATCH] =?UTF-8?q?MUTATION=20=E2=80=94=20do=20not=20merge:=20D10?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Kevin Burkeland <kevin@burke.land>
+---
+ test/compliance/markdown_links_test.dart | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/test/compliance/markdown_links_test.dart b/test/compliance/markdown_links_test.dart
+index f0f8f2f..f4996f2 100644
+--- a/test/compliance/markdown_links_test.dart
++++ b/test/compliance/markdown_links_test.dart
+@@ -110,7 +110,6 @@ List<String> markdownLinkProblems(String markdown, String fileDir) {
+ 
+     final lower = t.toLowerCase();
+     if (lower.startsWith('file:')) {
+-      problems.add('$label($t): file: scheme is forbidden');
+       return;
+     }
+     if (lower.startsWith('http:') || lower.startsWith('https:') || lower.startsWith('mailto:')) {
+-- 
+2.55.0
+
