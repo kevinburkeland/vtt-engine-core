@@ -30,6 +30,9 @@ jobs:
       - name: 🔍 Static Analysis (Fatal Infos)
         run: dart analyze --fatal-infos
 
+      - name: 🔒 Verify Strict Analysis Canary
+        run: ./scripts/check_strict_analysis.sh
+
       - name: 🧪 Execute Unit Tests
         run: dart test
 

@@ -10,10 +10,10 @@ import 'party_purse.dart';
 import 'generic_tabletop_primitives.dart';
 
 bool _listEquals<T>(List<T>? a, List<T>? b) =>
-    const ListEquality().equals(a, b);
+    ListEquality<T>().equals(a, b);
 bool _mapEquals<K, V>(Map<K, V>? a, Map<K, V>? b) =>
-    const MapEquality().equals(a, b);
-bool _setEquals<T>(Set<T>? a, Set<T>? b) => const SetEquality().equals(a, b);
+    MapEquality<K, V>().equals(a, b);
+bool _setEquals<T>(Set<T>? a, Set<T>? b) => SetEquality<T>().equals(a, b);
 
 /// Starting Equipment Preset Item Request
 @immutable
@@ -744,7 +744,7 @@ class Character extends DomainEntity {
           .whereType<String>()
           .toList(),
       inventory: (map['inventory'] as List? ?? [])
-          .whereType<Map>()
+          .whereType<Map<dynamic, dynamic>>()
           .map((i) =>
               InventoryItemInstance.fromMap(Map<String, dynamic>.from(i)))
           .toList(),
@@ -753,7 +753,7 @@ class Character extends DomainEntity {
               Map<String, dynamic>.from(map['purse'] as Map? ?? {}))
           : const PartyPurse.empty(),
       feats: (map['feats'] as List? ?? [])
-          .whereType<Map>()
+          .whereType<Map<dynamic, dynamic>>()
           .map((f) => EntityReference<DomainEntity>.fromMap(
               Map<String, dynamic>.from(f)))
           .toList(),
@@ -766,7 +766,7 @@ class Character extends DomainEntity {
                   if (map['tempHp'] != null) 'tempHp': map['tempHp'],
                 }),
       conditions: (map['conditions'] as List? ?? [])
-          .whereType<Map>()
+          .whereType<Map<dynamic, dynamic>>()
           .map((c) => CharacterCondition.fromMap(Map<String, dynamic>.from(c)))
           .toList(),
       baseSpeed: (map['baseSpeed'] as num?)?.toInt(),

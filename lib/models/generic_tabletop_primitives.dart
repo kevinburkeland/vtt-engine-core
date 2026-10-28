@@ -2,7 +2,7 @@ import 'package:collection/collection.dart';
 import 'package:meta/meta.dart';
 
 bool _mapEquals<K, V>(Map<K, V>? a, Map<K, V>? b) =>
-    const MapEquality().equals(a, b);
+    MapEquality<K, V>().equals(a, b);
 
 /// Attribute definition and scoring rules for an agnostic tabletop system.
 abstract interface class IAttributeSystem {

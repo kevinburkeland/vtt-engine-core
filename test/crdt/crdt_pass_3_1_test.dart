@@ -630,14 +630,14 @@ void main() {
 
       test('items is not a Map (e.g. List) throws FormatException', () {
         expect(
-          () => CrdtOrSet<String>.fromMap({'items': []}, (v) => v.toString()),
+          () => CrdtOrSet<String>.fromMap({'items': <dynamic>[]}, (v) => v.toString()),
           throwsA(isA<FormatException>()),
         );
       });
 
       test('tombstones is not a Map (e.g. List) throws FormatException', () {
         expect(
-          () => CrdtOrSet<String>.fromMap({'tombstones': []}, (v) => v.toString()),
+          () => CrdtOrSet<String>.fromMap({'tombstones': <dynamic>[]}, (v) => v.toString()),
           throwsA(isA<FormatException>()),
         );
       });

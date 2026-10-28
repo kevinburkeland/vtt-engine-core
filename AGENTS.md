@@ -152,6 +152,7 @@ dart test
 ```
 
 ### Repository Hygiene & Mutation Branches
+- `strict-casts`, `strict-raw-types` and `strict-inference` are on. Never turn them off, never add an `errors:` override, never add an `ignore` comment. `scripts/check_strict_analysis.sh` proves the options work. A strict fix must keep runtime behaviour: never narrow a type test, never add a default or a catch.
 - Mutation branches are named `mutation/<slice-id>-<id>` and exist only while their slice is under review. Don't delete them yourself. After the review closes, the reviewer archives them as patches and a later prompt deletes them by exact SHA. CI fails above 20 per repo.
 - READMEs and docs never state test counts or hand-typed status; use generated badges.
 

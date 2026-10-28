@@ -119,7 +119,7 @@ void main() {
               'ts': {'pt': 20, 'lc': 0, 'node': 'b'},
             },
           },
-          'tombstones': {},
+          'tombstones': <String, dynamic>{},
         },
       };
       final repA20 = RoomNodeState.fromMap(item20Json, minionParser: _testMinionParser);
@@ -136,7 +136,7 @@ void main() {
               'ts': {'pt': 10, 'lc': 0, 'node': 'a'},
             },
           },
-          'tombstones': {},
+          'tombstones': <String, dynamic>{},
         },
       };
       final repA10 = RoomNodeState.fromMap(item10Json, minionParser: _testMinionParser);

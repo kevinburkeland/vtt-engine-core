@@ -4,8 +4,8 @@ import 'package:meta/meta.dart';
 import '../models/generic_tabletop_primitives.dart';
 
 bool _mapEquals<K, V>(Map<K, V>? a, Map<K, V>? b) =>
-    const MapEquality().equals(a, b);
-bool _setEquals<T>(Set<T>? a, Set<T>? b) => const SetEquality().equals(a, b);
+    MapEquality<K, V>().equals(a, b);
+bool _setEquals<T>(Set<T>? a, Set<T>? b) => SetEquality<T>().equals(a, b);
 
 /// Abstract attack declaration decoupled from system-specific calculations.
 @immutable

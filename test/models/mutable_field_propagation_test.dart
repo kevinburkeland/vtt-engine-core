@@ -1263,7 +1263,7 @@ void main() {
         );
 
         final map = link.toMap();
-        expect(map["incarnationTimestamp"], isA<Map>());
+        expect(map["incarnationTimestamp"], isA<Map<dynamic, dynamic>>());
 
         final restored = RoomEntityLink.fromMap(map);
         expect(restored.incarnationTimestamp, equals(ts30));
@@ -1440,8 +1440,8 @@ void main() {
             .remove("dead-1", ts35);
 
         final map = set.toMap();
-        expect(map["items"], isA<Map>());
-        expect(map["tombstones"], isA<Map>());
+        expect(map["items"], isA<Map<dynamic, dynamic>>());
+        expect(map["tombstones"], isA<Map<dynamic, dynamic>>());
 
         final restored = EntityLinkCrdtSet.fromMap(map);
         expect(restored, equals(set));

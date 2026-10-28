@@ -214,7 +214,7 @@ class LootContainer {
       isLocked: map['isLocked'] == true,
       capacityWeightLbs: (map['capacityWeightLbs'] as num?)?.toDouble(),
       items: (map['items'] as List? ?? [])
-          .whereType<Map>()
+          .whereType<Map<dynamic, dynamic>>()
           .map((i) =>
               InventoryItemInstance.fromMap(Map<String, dynamic>.from(i)))
           .toList(),

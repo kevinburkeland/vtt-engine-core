@@ -3,7 +3,7 @@ import 'package:collection/collection.dart';
 import 'package:meta/meta.dart';
 
 bool _listEquals<T>(List<T>? a, List<T>? b) =>
-    const ListEquality().equals(a, b);
+    ListEquality<T>().equals(a, b);
 
 /// Structured outcome of a single simulation iteration step.
 @immutable

@@ -1608,7 +1608,7 @@ class RoomNodeState {
       entityLinksCrdt: linksSet,
       entityInstances: entityInstances,
       containers: (map['containers'] as List? ?? [])
-          .whereType<Map>()
+          .whereType<Map<dynamic, dynamic>>()
           .map((c) => LootContainer.fromMap(Map<String, dynamic>.from(c)))
           .toList(),
       activeEncounter: encounterSet,
