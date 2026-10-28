@@ -1,0 +1,29 @@
+From 64c89110fa857259b10b535ebdc46d51421b4971 Mon Sep 17 00:00:00 2001
+From: Kevin Burkeland <kevin@burke.land>
+Date: Tue, 27 Oct 2026 22:04:22 -0700
+Subject: [PATCH] =?UTF-8?q?MUTATION=20=E2=80=94=20do=20not=20merge:=20S2?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Kevin Burkeland <kevin@burke.land>
+---
+ analysis_options.yaml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/analysis_options.yaml b/analysis_options.yaml
+index 4db9132..f4735d7 100644
+--- a/analysis_options.yaml
++++ b/analysis_options.yaml
+@@ -2,7 +2,7 @@ include: package:lints/recommended.yaml
+ 
+ analyzer:
+   language:
+-    strict-casts: true
++    strict-casts: false
+     strict-raw-types: true
+     strict-inference: true
+   exclude:
+-- 
+2.55.0
+
