@@ -3,6 +3,9 @@
 One line per slice, newest first. Each line: date, slice name, what changed for a user or a developer.
 Work before Map slice 1.1 (hardening passes 0 to 12) is in the git history.
 
+## 2026-10-28
+- Cleanup slice 5: Test-name ratchet script, self-test suite, and CI workflow integration.
+
 ## 2026-10-27
 - Cleanup slice 4.1: Enable strict-casts, strict-raw-types, and strict-inference with canary verification script and map-flavour round-trip law.
 

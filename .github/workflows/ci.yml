@@ -98,6 +98,12 @@ jobs:
         # Baseline 7a7c1d5b057d3a4b1ba8994d2cf35108e923a270 is the newest unsigned commit in repository history.
         run: ./scripts/check_dco.sh 7a7c1d5b057d3a4b1ba8994d2cf35108e923a270 HEAD
 
+      - name: 🧪 Run Test Name Ratchet Script Self-Tests
+        run: ./scripts/test_check_test_names.sh
+
+      - name: 🔒 Verify Test Names Ratchet
+        run: python3 -I scripts/check_test_names.py 59d7178dea6527a18a2cac3b7fe0f110fb93717a HEAD
+
       - name: 🧪 Run Mutation Branch Script Self-Tests
         run: ./scripts/test_check_mutation_branches.sh
 
