@@ -295,4 +295,93 @@ EOF
   fi
 )
 
-echo "All test name ratchet self-tests passed (TN1 - TN8)."
+# TN9: a commit that renames test/a_test.dart to test/a_tst.dart fails, naming the test.
+(
+  repo="$TMP_DIR/repo_tn9"
+  setup_repo "$repo"
+  mkdir -p test
+  cat << 'EOF' > test/a_test.dart
+void main() {
+  test('rename to non-test', () {});
+}
+EOF
+  git add test/a_test.dart
+  git commit -m "add test" >/dev/null
+
+  git mv test/a_test.dart test/a_tst.dart
+  git commit -m "rename to non-test file" >/dev/null
+
+  set +e
+  out=$(python3 -I "$CHECK_SCRIPT" HEAD~1 HEAD 2>&1)
+  rc=$?
+  set -e
+  if [ "$rc" -eq 0 ]; then
+    echo "FAIL: TN9 expected failure when renaming test file to non-test" >&2
+    exit 1
+  fi
+  if [[ "$out" != *"rename to non-test"* ]]; then
+    echo "FAIL: TN9 expected output to name 'rename to non-test', got: $out" >&2
+    exit 1
+  fi
+)
+
+# TN10: a commit that moves test/a_test.dart to old/a_test.dart fails, naming the test.
+(
+  repo="$TMP_DIR/repo_tn10"
+  setup_repo "$repo"
+  mkdir -p test
+  cat << 'EOF' > test/a_test.dart
+void main() {
+  test('move outside test dir', () {});
+}
+EOF
+  git add test/a_test.dart
+  git commit -m "add test" >/dev/null
+
+  mkdir -p old
+  git mv test/a_test.dart old/a_test.dart
+  git commit -m "move to old dir" >/dev/null
+
+  set +e
+  out=$(python3 -I "$CHECK_SCRIPT" HEAD~1 HEAD 2>&1)
+  rc=$?
+  set -e
+  if [ "$rc" -eq 0 ]; then
+    echo "FAIL: TN10 expected failure when moving test file outside test dir" >&2
+    exit 1
+  fi
+  if [[ "$out" != *"move outside test dir"* ]]; then
+    echo "FAIL: TN10 expected output to name 'move outside test dir', got: $out" >&2
+    exit 1
+  fi
+)
+
+# TN11: a rename from test/a_test.dart to test/sub/a_test.dart passes.
+(
+  repo="$TMP_DIR/repo_tn11"
+  setup_repo "$repo"
+  mkdir -p test
+  cat << 'EOF' > test/a_test.dart
+void main() {
+  test('rename within test dir', () {});
+}
+EOF
+  git add test/a_test.dart
+  git commit -m "add test" >/dev/null
+
+  mkdir -p test/sub
+  git mv test/a_test.dart test/sub/a_test.dart
+  git commit -m "rename within test dir" >/dev/null
+
+  set +e
+  out=$(python3 -I "$CHECK_SCRIPT" HEAD~1 HEAD 2>&1)
+  rc=$?
+  set -e
+  if [ "$rc" -ne 0 ]; then
+    echo "FAIL: TN11 expected pass when renaming within test dir, got rc $rc: $out" >&2
+    exit 1
+  fi
+)
+
+echo "All test name ratchet self-tests passed (TN1 - TN11)."
+

@@ -3,6 +3,9 @@
 One line per slice, newest first. Each line: date, slice name, what changed for a user or a developer.
 Work before Map slice 1.1 (hardening passes 0 to 12) is in the git history.
 
+## 2026-11-03
+- Cleanup slice 6: Ratchet sees renamed and moved test files with --no-renames and self-tests TN9-TN11.
+
 ## 2026-10-28
 - Cleanup slice 5: Test-name ratchet script, self-test suite, and CI workflow integration.
 

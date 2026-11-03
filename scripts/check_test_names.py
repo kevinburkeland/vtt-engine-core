@@ -237,7 +237,7 @@ def main():
         short_c = c[:7]
         # Parent commit is first parent c^1
         p = f"{c}^1"
-        diff_res = subprocess.run(['git', 'diff', '--name-only', p, c], capture_output=True, text=True)
+        diff_res = subprocess.run(['git', 'diff', '--no-renames', '--name-only', p, c], capture_output=True, text=True)
         if diff_res.returncode != 0:
             problems.append(f"{short_c}: failed to diff against parent {p}")
             continue
@@ -294,3 +294,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
