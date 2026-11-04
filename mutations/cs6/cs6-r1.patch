@@ -1,0 +1,21 @@
+From 3a138215014ba52013804c57dfe08f67043d5859 Mon Sep 17 00:00:00 2001
+From: Kevin Burkeland <kevin@burke.land>
+Date: Tue, 3 Nov 2026 17:50:35 -0800
+Subject: [PATCH] =?UTF-8?q?MUTATION=20=E2=80=94=20do=20not=20merge:=20R1?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Kevin Burkeland <kevin@burke.land>
+---
+ ...dt_reduction_test.dart => party_purse_crdt_reduction_tst.dart} | 0
+ 1 file changed, 0 insertions(+), 0 deletions(-)
+ rename test/currency/{party_purse_crdt_reduction_test.dart => party_purse_crdt_reduction_tst.dart} (100%)
+
+diff --git a/test/currency/party_purse_crdt_reduction_test.dart b/test/currency/party_purse_crdt_reduction_tst.dart
+similarity index 100%
+rename from test/currency/party_purse_crdt_reduction_test.dart
+rename to test/currency/party_purse_crdt_reduction_tst.dart
+-- 
+2.55.0
+
