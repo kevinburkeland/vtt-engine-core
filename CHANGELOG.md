@@ -3,6 +3,9 @@
 One line per slice, newest first. Each line: date, slice name, what changed for a user or a developer.
 Work before Map slice 1.1 (hardening passes 0 to 12) is in the git history.
 
+## 2026-11-04
+- Cleanup slice 8: Enforce single root analysis_options.yaml in check_strict_analysis.sh.
+
 ## 2026-11-03
 - Cleanup slice 6: Ratchet sees renamed and moved test files with --no-renames and self-tests TN9-TN11.
 
