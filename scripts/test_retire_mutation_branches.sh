@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # scripts/test_retire_mutation_branches.sh
-# Self-test suite for scripts/retire_mutation_branches.sh (RM1 - RM12).
+# Self-test suite for scripts/retire_mutation_branches.sh (RM1 - RM15).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RETIRE_SCRIPT="$SCRIPT_DIR/retire_mutation_branches.sh"
@@ -70,6 +70,9 @@ bare1="$env1/origin.git"
 create_branch "$repo1" "cs2-a"
 create_branch "$repo1" "cs2-b"
 
+head_a1=$(git -C "$bare1" rev-parse refs/heads/mutation/cs2-a)
+head_b1=$(git -C "$bare1" rev-parse refs/heads/mutation/cs2-b)
+
 (
   cd "$repo1"
   ./scripts/retire_mutation_branches.sh cs2
@@ -93,6 +96,12 @@ done
 # Remote branches must be gone
 rem_branches=$(git -C "$bare1" branch -l 'mutation/cs2-*')
 [ -z "$rem_branches" ] || { echo "FAIL RM1: branches not deleted on remote: $rem_branches"; exit 1; }
+
+# RM1 extended: archive/cs2-a and archive/cs2-b exist on bare origin and point at the two old branch heads
+tag_a1=$(git -C "$bare1" rev-parse refs/tags/archive/cs2-a 2>/dev/null || true)
+tag_b1=$(git -C "$bare1" rev-parse refs/tags/archive/cs2-b 2>/dev/null || true)
+[ "$tag_a1" = "$head_a1" ] || { echo "FAIL RM1: archive/cs2-a missing or mismatch on remote"; exit 1; }
+[ "$tag_b1" = "$head_b1" ] || { echo "FAIL RM1: archive/cs2-b missing or mismatch on remote"; exit 1; }
 
 # ------------------------------------------------------------------------------
 # RM2: one of two branches has two commits. Fails; both branches still exist;
@@ -199,6 +208,7 @@ set -e
 
 # ------------------------------------------------------------------------------
 # RM7: --dry-run. Exit 0, no local commit, remote unchanged, working tree clean.
+# RM7 extended: the dry run prints both tag names and creates no tag.
 # ------------------------------------------------------------------------------
 echo "Running RM7..."
 env7=$(setup_test_env "rm7")
@@ -219,6 +229,9 @@ remote_main_after=$(git -C "$bare7" rev-parse main)
 [ -z "$(git -C "$repo7" status --porcelain)" ] || { echo "FAIL RM7: working tree dirty"; exit 1; }
 [ -n "$(git -C "$bare7" branch -l 'mutation/cs2-a')" ] || { echo "FAIL RM7: cs2-a was deleted"; exit 1; }
 [ -n "$(git -C "$bare7" branch -l 'mutation/cs2-b')" ] || { echo "FAIL RM7: cs2-b was deleted"; exit 1; }
+echo "$out7" | grep -q "archive/cs2-a" || { echo "FAIL RM7: dry-run did not mention archive/cs2-a"; exit 1; }
+echo "$out7" | grep -q "archive/cs2-b" || { echo "FAIL RM7: dry-run did not mention archive/cs2-b"; exit 1; }
+[ -z "$(git -C "$bare7" tag -l 'archive/*')" ] || { echo "FAIL RM7: tags created during dry run"; exit 1; }
 
 # ------------------------------------------------------------------------------
 # RM8: the archive push is rejected (pre-receive hook on bare origin rejects main).
@@ -329,4 +342,86 @@ set -e
 [[ "$out12" == *"Signed-off-by"* ]] || { echo "FAIL RM12: unexpected error message: $out12"; exit 1; }
 [ -n "$(git -C "$bare12" branch -l 'mutation/cs2-unsigned')" ] || { echo "FAIL RM12: unsigned branch was deleted"; exit 1; }
 
-echo "All retire mutation branch self-tests passed (RM1 - RM12)."
+# ------------------------------------------------------------------------------
+# RM13: a pre-receive hook on bare origin refuses any ref under refs/tags/.
+# Run fails, both branches still exist, and no tag exists.
+# ------------------------------------------------------------------------------
+echo "Running RM13..."
+env13=$(setup_test_env "rm13")
+repo13="$env13/local"
+bare13="$env13/origin.git"
+create_branch "$repo13" "cs2-a"
+create_branch "$repo13" "cs2-b"
+
+cat << 'HOOK' > "$bare13/hooks/pre-receive"
+#!/usr/bin/env bash
+while read oldrev newrev refname; do
+  if [[ "$refname" == refs/tags/* ]]; then
+    echo "Push of tag rejected by test hook: $refname" >&2
+    exit 1
+  fi
+done
+HOOK
+chmod +x "$bare13/hooks/pre-receive"
+
+set +e
+out13=$(cd "$repo13" && ./scripts/retire_mutation_branches.sh cs2 2>&1)
+rc13=$?
+set -e
+[ "$rc13" -ne 0 ] || { echo "FAIL RM13: expected failure when tags rejected"; exit 1; }
+[ -n "$(git -C "$bare13" branch -l 'mutation/cs2-a')" ] || { echo "FAIL RM13: cs2-a deleted despite failed push"; exit 1; }
+[ -n "$(git -C "$bare13" branch -l 'mutation/cs2-b')" ] || { echo "FAIL RM13: cs2-b deleted despite failed push"; exit 1; }
+[ -z "$(git -C "$bare13" tag -l 'archive/*')" ] || { echo "FAIL RM13: archive tag created despite failure"; exit 1; }
+
+# ------------------------------------------------------------------------------
+# RM14: archive/cs2-a already exists on origin pointing at some other commit.
+# Run fails naming the tag; no archive commit was pushed, no branch deleted.
+# ------------------------------------------------------------------------------
+echo "Running RM14..."
+env14=$(setup_test_env "rm14")
+repo14="$env14/local"
+bare14="$env14/origin.git"
+create_branch "$repo14" "cs2-a"
+create_branch "$repo14" "cs2-b"
+
+remote_main_before=$(git -C "$bare14" rev-parse main)
+git -C "$bare14" tag "archive/cs2-a" main
+
+set +e
+out14=$(cd "$repo14" && ./scripts/retire_mutation_branches.sh cs2 2>&1)
+rc14=$?
+set -e
+[ "$rc14" -ne 0 ] || { echo "FAIL RM14: expected failure when archive tag points to other commit"; exit 1; }
+echo "$out14" | grep -q "archive/cs2-a" || { echo "FAIL RM14: error message does not name archive/cs2-a: $out14"; exit 1; }
+remote_main_after=$(git -C "$bare14" rev-parse main)
+[ "$remote_main_before" = "$remote_main_after" ] || { echo "FAIL RM14: archive commit was pushed to main"; exit 1; }
+[ -n "$(git -C "$bare14" branch -l 'mutation/cs2-a')" ] || { echo "FAIL RM14: cs2-a deleted"; exit 1; }
+[ -n "$(git -C "$bare14" branch -l 'mutation/cs2-b')" ] || { echo "FAIL RM14: cs2-b deleted"; exit 1; }
+
+# ------------------------------------------------------------------------------
+# RM15: archive/cs2-a already exists pointing at mutation/cs2-a's head.
+# Run succeeds, deletes both branches, and creates only archive/cs2-b.
+# ------------------------------------------------------------------------------
+echo "Running RM15..."
+env15=$(setup_test_env "rm15")
+repo15="$env15/local"
+bare15="$env15/origin.git"
+create_branch "$repo15" "cs2-a"
+create_branch "$repo15" "cs2-b"
+
+head_a15=$(git -C "$bare15" rev-parse refs/heads/mutation/cs2-a)
+head_b15=$(git -C "$bare15" rev-parse refs/heads/mutation/cs2-b)
+git -C "$bare15" tag "archive/cs2-a" "$head_a15"
+
+(
+  cd "$repo15"
+  ./scripts/retire_mutation_branches.sh cs2
+)
+
+[ -z "$(git -C "$bare15" branch -l 'mutation/cs2-*')" ] || { echo "FAIL RM15: branches not deleted"; exit 1; }
+tag_a15=$(git -C "$bare15" rev-parse refs/tags/archive/cs2-a)
+tag_b15=$(git -C "$bare15" rev-parse refs/tags/archive/cs2-b 2>/dev/null || true)
+[ "$tag_a15" = "$head_a15" ] || { echo "FAIL RM15: archive/cs2-a mismatch"; exit 1; }
+[ "$tag_b15" = "$head_b15" ] || { echo "FAIL RM15: archive/cs2-b missing or mismatch"; exit 1; }
+
+echo "All retire mutation branch self-tests passed (RM1 - RM15)."

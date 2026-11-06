@@ -120,6 +120,7 @@ patch_dir="$run_root/mutations/$slice_id"
 declare -A branch_needs_archive
 declare -A branch_base_sha
 declare -A branch_patch_sha
+declare -A branch_needs_tag
 
 # 3. Check every branch before writing anything
 for i in "${!matched_branches[@]}"; do
@@ -127,6 +128,19 @@ for i in "${!matched_branches[@]}"; do
   head_sha="${matched_heads[$i]}"
   leaf="${b#mutation/}"
   patch_file="$patch_dir/$leaf.patch"
+
+  # Check archive tag on origin
+  tag_remote=$(git ls-remote origin "refs/tags/archive/$leaf" | awk '{print $1}' | head -n 1)
+  if [ -n "$tag_remote" ]; then
+    if [ "$tag_remote" = "$head_sha" ]; then
+      branch_needs_tag["$b"]=0
+    else
+      echo "Error: Tag 'archive/$leaf' already exists on origin pointing at $tag_remote, but branch '$b' head is $head_sha." >&2
+      exit 1
+    fi
+  else
+    branch_needs_tag["$b"]=1
+  fi
 
   # Step 10 check: if patch and manifest row already exist and match
   already_archived=0
@@ -270,6 +284,14 @@ if [ "$dry_run" -eq 1 ]; then
   else
     echo "  (All branches already archived in MANIFEST.tsv; no new commit needed)"
   fi
+  echo "Would create archive tags:"
+  for i in "${!matched_branches[@]}"; do
+    b="${matched_branches[$i]}"
+    if [ "${branch_needs_tag[$b]}" -eq 1 ]; then
+      leaf="${b#mutation/}"
+      echo "  refs/tags/archive/$leaf -> ${matched_heads[$i]}"
+    fi
+  done
   echo "Would delete remote branches with leases:"
   for i in "${!matched_branches[@]}"; do
     echo "  ${matched_branches[$i]} (lease head: ${matched_heads[$i]})"
@@ -299,21 +321,28 @@ if [ -n "${RETIRE_TEST_POST_ARCHIVE_HOOK:-}" ]; then
   eval "$RETIRE_TEST_POST_ARCHIVE_HOOK"
 fi
 
-# 8. Delete remote branches with atomic push & lease per branch
-delete_args=()
+# 8. Delete remote branches and create archive tags with atomic push & lease per branch and tag
+push_args=()
 for i in "${!matched_branches[@]}"; do
   b="${matched_branches[$i]}"
   head_sha="${matched_heads[$i]}"
-  delete_args+=("--force-with-lease=refs/heads/$b:$head_sha" ":refs/heads/$b")
+  push_args+=("--force-with-lease=refs/heads/$b:$head_sha" ":refs/heads/$b")
+  if [ "${branch_needs_tag[$b]}" -eq 1 ]; then
+    leaf="${b#mutation/}"
+    push_args+=("--force-with-lease=refs/tags/archive/$leaf:" "$head_sha:refs/tags/archive/$leaf")
+  fi
 done
 
-if ! git push --atomic origin "${delete_args[@]}"; then
-  echo "Error: Atomic leased deletion push failed. One or more branch leases were refused." >&2
+if ! git push --atomic origin "${push_args[@]}"; then
+  echo "Error: Atomic leased deletion and tag creation push failed." >&2
   exit 1
 fi
 
 # 9. Print ls-remote after retirement
 echo "Remote mutation branches matching slice '$slice_id' after retirement:"
 git ls-remote --heads origin "refs/heads/mutation/${slice_id}-*" || true
+
+echo "Remote archive tags matching slice '$slice_id' after retirement:"
+git ls-remote origin "refs/tags/archive/${slice_id}-*" || true
 
 echo "Successfully retired ${#matched_branches[@]} mutation branch(es) for slice '$slice_id'."
