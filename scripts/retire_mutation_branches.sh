@@ -322,20 +322,28 @@ if [ -n "${RETIRE_TEST_POST_ARCHIVE_HOOK:-}" ]; then
 fi
 
 # 8. Delete remote branches and create archive tags with atomic push & lease per branch and tag
-push_args=()
+push_deletes=()
+push_tags=()
 for i in "${!matched_branches[@]}"; do
   b="${matched_branches[$i]}"
   head_sha="${matched_heads[$i]}"
-  push_args+=("--force-with-lease=refs/heads/$b:$head_sha" ":refs/heads/$b")
+  push_deletes+=("--force-with-lease=refs/heads/$b:$head_sha" ":refs/heads/$b")
   if [ "${branch_needs_tag[$b]}" -eq 1 ]; then
     leaf="${b#mutation/}"
-    push_args+=("--force-with-lease=refs/tags/archive/$leaf:" "$head_sha:refs/tags/archive/$leaf")
+    push_tags+=("--force-with-lease=refs/tags/archive/$leaf:" "$head_sha:refs/tags/archive/$leaf")
   fi
 done
 
-if ! git push --atomic origin "${push_args[@]}"; then
-  echo "Error: Atomic leased deletion and tag creation push failed." >&2
+if ! git push --atomic origin "${push_deletes[@]}"; then
+  echo "Error: Leased deletion push failed." >&2
   exit 1
+fi
+
+if [ "${#push_tags[@]}" -gt 0 ]; then
+  if ! git push --atomic origin "${push_tags[@]}"; then
+    echo "Error: Leased tag push failed." >&2
+    exit 1
+  fi
 fi
 
 # 9. Print ls-remote after retirement
