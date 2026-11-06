@@ -1,0 +1,56 @@
+From 601c487add4e6d043dc4579f5432218273d9e8dd Mon Sep 17 00:00:00 2001
+From: Kevin Burkeland <kevin@burke.land>
+Date: Thu, 5 Nov 2026 20:37:37 -0800
+Subject: [PATCH] =?UTF-8?q?MUTATION=20=E2=80=94=20do=20not=20merge:=20r2?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Kevin Burkeland <kevin@burke.land>
+---
+ scripts/retire_mutation_branches.sh | 18 +++++++++++++-----
+ 1 file changed, 13 insertions(+), 5 deletions(-)
+
+diff --git a/scripts/retire_mutation_branches.sh b/scripts/retire_mutation_branches.sh
+index fc20bb3..1be7e1d 100755
+--- a/scripts/retire_mutation_branches.sh
++++ b/scripts/retire_mutation_branches.sh
+@@ -322,22 +322,30 @@ if [ -n "${RETIRE_TEST_POST_ARCHIVE_HOOK:-}" ]; then
+ fi
+ 
+ # 8. Delete remote branches and create archive tags with atomic push & lease per branch and tag
+-push_args=()
++push_deletes=()
++push_tags=()
+ for i in "${!matched_branches[@]}"; do
+   b="${matched_branches[$i]}"
+   head_sha="${matched_heads[$i]}"
+-  push_args+=("--force-with-lease=refs/heads/$b:$head_sha" ":refs/heads/$b")
++  push_deletes+=("--force-with-lease=refs/heads/$b:$head_sha" ":refs/heads/$b")
+   if [ "${branch_needs_tag[$b]}" -eq 1 ]; then
+     leaf="${b#mutation/}"
+-    push_args+=("--force-with-lease=refs/tags/archive/$leaf:" "$head_sha:refs/tags/archive/$leaf")
++    push_tags+=("--force-with-lease=refs/tags/archive/$leaf:" "$head_sha:refs/tags/archive/$leaf")
+   fi
+ done
+ 
+-if ! git push --atomic origin "${push_args[@]}"; then
+-  echo "Error: Atomic leased deletion and tag creation push failed." >&2
++if ! git push --atomic origin "${push_deletes[@]}"; then
++  echo "Error: Leased deletion push failed." >&2
+   exit 1
+ fi
+ 
++if [ "${#push_tags[@]}" -gt 0 ]; then
++  if ! git push --atomic origin "${push_tags[@]}"; then
++    echo "Error: Leased tag push failed." >&2
++    exit 1
++  fi
++fi
++
+ # 9. Print ls-remote after retirement
+ echo "Remote mutation branches matching slice '$slice_id' after retirement:"
+ git ls-remote --heads origin "refs/heads/mutation/${slice_id}-*" || true
+-- 
+2.55.0
+
