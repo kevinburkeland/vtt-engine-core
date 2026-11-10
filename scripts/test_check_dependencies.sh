@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Ensure GITHUB_ACTIONS is unset for self-test fixture runs (DC35 sets it explicitly)
+unset GITHUB_ACTIONS || true
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CHECK_SCRIPT="$SCRIPT_DIR/check_dependencies.py"
 
