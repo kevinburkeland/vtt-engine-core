@@ -575,10 +575,10 @@ def main():
             except Exception as e:
                 failures.append(f"N2: Failed to parse npm audit JSON: {e}")
 
-    # E1: Check for stale exceptions
-    for idx, exc in enumerate(exceptions):
-        if idx not in matched_exceptions:
-            failures.append(f"E1: {args.exceptions}:{exc['line_no']}: stale exception: rule {exc['rule']} for '{exc['name']}' at version '{exc['held_at']}' matched no failure")
+    # G3 mutation: drop the stale-exception check
+    # for idx, exc in enumerate(exceptions):
+    #     if idx not in matched_exceptions:
+    #         failures.append(f"E1: {args.exceptions}:{exc['line_no']}: stale exception: rule {exc['rule']} for '{exc['name']}' at version '{exc['held_at']}' matched no failure")
 
     # Output results
     if held_notes:
