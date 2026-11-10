@@ -360,8 +360,9 @@ def main():
             if not check_exception('D2', pkg_name, curr_v):
                 failures.append(f"D2: Package '{pkg_name}' at version {curr_v} is affected by security advisory ({advisory_id or 'reported by pub outdated'})")
 
-        # D1: graph current
-        if res_v and curr_v != res_v:
+        # D1: graph current (G4 mutation: compare against upgradable instead of resolvable)
+        upg_v = (pkg_item.get('upgradable') or {}).get('version')
+        if upg_v and curr_v != upg_v:
             # Current is behind resolvable
             pkg_info = get_pub_package_info(pkg_name)
             # Find publish date of resolvable version
