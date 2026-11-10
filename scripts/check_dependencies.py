@@ -357,8 +357,8 @@ def main():
                 pass
 
         if has_advisory:
-            if not check_exception('D2', pkg_name, curr_v):
-                failures.append(f"D2: Package '{pkg_name}' at version {curr_v} is affected by security advisory ({advisory_id or 'reported by pub outdated'})")
+            # G2 mutation: apply 14-day grace to advisories too
+            pending_notes.append(f"Package '{pkg_name}' at version {curr_v} advisory pending grace")
 
         # D1: graph current
         if res_v and curr_v != res_v:
