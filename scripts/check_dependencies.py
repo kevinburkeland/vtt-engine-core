@@ -48,8 +48,8 @@ def fetch_json(url, headers=None, retries=3):
             last_err = e
             if attempt < retries - 1:
                 time.sleep(0.2 * (attempt + 1))
-    print(f"Error: Network failure fetching URL '{url}': {last_err}", file=sys.stderr)
-    sys.exit(1)
+    # G1 mutation: a registry error returns empty dict instead of failing
+    return {}
 
 def semver_tuple(v_str):
     cleaned = re.sub(r'^[v\^~>=<]+', '', v_str.strip())
