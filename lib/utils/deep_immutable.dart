@@ -4,9 +4,9 @@
 /// Recursively handles:
 /// - [Map]: returns an unmodifiable Map with recursively deep-frozen entries.
 /// - [List]: returns an unmodifiable List with recursively deep-frozen elements,
-///   preserving common element types (e.g. List<String>) when possible.
+///   preserving common element types (e.g. `List<String>`) when possible.
 /// - [Set]: returns an unmodifiable Set with recursively deep-frozen elements,
-///   preserving common element types (e.g. Set<String>) when possible.
+///   preserving common element types (e.g. `Set<String>`) when possible.
 ///
 /// Leaves (primitives, strings, numbers, booleans, enums, null, and immutable value objects)
 /// are returned as-is.

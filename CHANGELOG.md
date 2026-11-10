@@ -3,6 +3,9 @@
 One line per slice, newest first. Each line: date, slice name, what changed for a user or a developer.
 Work before Map slice 1.1 (hardening passes 0 to 12) is in the git history.
 
+## 2026-11-10
+- Bonus slice 1: Bring dependencies, Dart SDK, and CI actions up to date, and wire dependency currency checks in CI.
+
 ## 2026-11-05
 - Cleanup slice 10: Retire cs9 mutation branch.
 - Cleanup slice 9: Retire script pushes archive tags atomically with leased branch deletions.

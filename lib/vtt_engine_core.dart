@@ -2,7 +2,7 @@
 ///
 /// Provides CRDT distributed state synchronization primitives, pure domain entities,
 /// pluggable multi-ruleset architecture, and ruleset-agnostic combat/dice simulation.
-library vtt_engine_core;
+library;
 
 // CRDT primitives
 export 'crdt/crdt_equality.dart';
