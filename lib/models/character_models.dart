@@ -215,9 +215,9 @@ class InventoryItemInstance {
 /// Generic character resource pools.
 @immutable
 class CharacterResourcePool {
-  final EntityVitals? _vitals;
-  final int? _currentHp;
-  final int? _tempHp;
+  final EntityVitals? _rawVitals;
+  final int? _rawCurrentHp;
+  final int? _rawTempHp;
   final Map<String, int> customResourcesCurrent;
   final Map<String, int> customResourcesMax;
   final Map<String, dynamic> auxiliaryData;
@@ -229,15 +229,15 @@ class CharacterResourcePool {
     this.customResourcesCurrent = const {},
     this.customResourcesMax = const {},
     this.auxiliaryData = const {},
-  })  : _vitals = vitals,
-        _currentHp = currentHp,
-        _tempHp = tempHp;
+  })  : _rawVitals = vitals,
+        _rawCurrentHp = currentHp,
+        _rawTempHp = tempHp;
 
-  int? get currentHp => _vitals?.currentHp ?? _currentHp;
-  int? get tempHp => _vitals?.temporaryHp ?? _tempHp;
+  int? get currentHp => _rawVitals?.currentHp ?? _rawCurrentHp;
+  int? get tempHp => _rawVitals?.temporaryHp ?? _rawTempHp;
 
   EntityVitals? get vitals =>
-      _vitals ??
+      _rawVitals ??
       (currentHp != null
           ? EntityVitals(
               currentHp: currentHp!,
@@ -258,9 +258,9 @@ class CharacterResourcePool {
     Map<String, dynamic>? auxiliaryData,
   }) {
     return CharacterResourcePool(
-      vitals: vitals ?? _vitals,
-      currentHp: currentHp ?? _currentHp,
-      tempHp: tempHp ?? _tempHp,
+      vitals: vitals ?? _rawVitals,
+      currentHp: currentHp ?? _rawCurrentHp,
+      tempHp: tempHp ?? _rawTempHp,
       customResourcesCurrent: customResourcesCurrent != null
           ? Map.unmodifiable(customResourcesCurrent)
           : this.customResourcesCurrent,

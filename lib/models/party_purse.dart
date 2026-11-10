@@ -14,11 +14,11 @@ class PartyPurse {
   final int _legacyEp;
   final int _legacyGp;
   final int _legacyPp;
-  final PnCounter _cpCounter;
-  final PnCounter _spCounter;
-  final PnCounter _epCounter;
-  final PnCounter _gpCounter;
-  final PnCounter _ppCounter;
+  final PnCounter _legacyCpCounter;
+  final PnCounter _legacySpCounter;
+  final PnCounter _legacyEpCounter;
+  final PnCounter _legacyGpCounter;
+  final PnCounter _legacyPpCounter;
 
   PartyPurse({
     Map<String, PnCounter> denominationCounters = const {},
@@ -45,11 +45,11 @@ class PartyPurse {
         _legacyEp = ep,
         _legacyGp = gp,
         _legacyPp = pp,
-        _cpCounter = cpCounter,
-        _spCounter = spCounter,
-        _epCounter = epCounter,
-        _gpCounter = gpCounter,
-        _ppCounter = ppCounter;
+        _legacyCpCounter = cpCounter,
+        _legacySpCounter = spCounter,
+        _legacyEpCounter = epCounter,
+        _legacyGpCounter = gpCounter,
+        _legacyPpCounter = ppCounter;
 
   const PartyPurse.empty()
       : denominationCounters = const {},
@@ -58,11 +58,11 @@ class PartyPurse {
         _legacyEp = 0,
         _legacyGp = 0,
         _legacyPp = 0,
-        _cpCounter = const PnCounter.empty(),
-        _spCounter = const PnCounter.empty(),
-        _epCounter = const PnCounter.empty(),
-        _gpCounter = const PnCounter.empty(),
-        _ppCounter = const PnCounter.empty();
+        _legacyCpCounter = const PnCounter.empty(),
+        _legacySpCounter = const PnCounter.empty(),
+        _legacyEpCounter = const PnCounter.empty(),
+        _legacyGpCounter = const PnCounter.empty(),
+        _legacyPpCounter = const PnCounter.empty();
 
   PartyPurse.fromCounters(Map<String, PnCounter> counters)
       : denominationCounters =
@@ -72,11 +72,11 @@ class PartyPurse {
         _legacyEp = 0,
         _legacyGp = 0,
         _legacyPp = 0,
-        _cpCounter = const PnCounter.empty(),
-        _spCounter = const PnCounter.empty(),
-        _epCounter = const PnCounter.empty(),
-        _gpCounter = const PnCounter.empty(),
-        _ppCounter = const PnCounter.empty();
+        _legacyCpCounter = const PnCounter.empty(),
+        _legacySpCounter = const PnCounter.empty(),
+        _legacyEpCounter = const PnCounter.empty(),
+        _legacyGpCounter = const PnCounter.empty(),
+        _legacyPpCounter = const PnCounter.empty();
 
   /// Retrieves the PN-counter for [denominationId].
   PnCounter getCounter(String denominationId) {
@@ -85,8 +85,8 @@ class PartyPurse {
     if (direct != null) return direct;
     switch (clean) {
       case 'cp':
-        if (_cpCounter.positive.isNotEmpty || _cpCounter.negative.isNotEmpty) {
-          return _cpCounter;
+        if (_legacyCpCounter.positive.isNotEmpty || _legacyCpCounter.negative.isNotEmpty) {
+          return _legacyCpCounter;
         }
         return _legacyCp != 0
             ? (_legacyCp > 0
@@ -94,8 +94,8 @@ class PartyPurse {
                 : PnCounter(negative: {'init': _legacyCp.abs()}))
             : const PnCounter.empty();
       case 'sp':
-        if (_spCounter.positive.isNotEmpty || _spCounter.negative.isNotEmpty) {
-          return _spCounter;
+        if (_legacySpCounter.positive.isNotEmpty || _legacySpCounter.negative.isNotEmpty) {
+          return _legacySpCounter;
         }
         return _legacySp != 0
             ? (_legacySp > 0
@@ -103,8 +103,8 @@ class PartyPurse {
                 : PnCounter(negative: {'init': _legacySp.abs()}))
             : const PnCounter.empty();
       case 'ep':
-        if (_epCounter.positive.isNotEmpty || _epCounter.negative.isNotEmpty) {
-          return _epCounter;
+        if (_legacyEpCounter.positive.isNotEmpty || _legacyEpCounter.negative.isNotEmpty) {
+          return _legacyEpCounter;
         }
         return _legacyEp != 0
             ? (_legacyEp > 0
@@ -112,8 +112,8 @@ class PartyPurse {
                 : PnCounter(negative: {'init': _legacyEp.abs()}))
             : const PnCounter.empty();
       case 'gp':
-        if (_gpCounter.positive.isNotEmpty || _gpCounter.negative.isNotEmpty) {
-          return _gpCounter;
+        if (_legacyGpCounter.positive.isNotEmpty || _legacyGpCounter.negative.isNotEmpty) {
+          return _legacyGpCounter;
         }
         return _legacyGp != 0
             ? (_legacyGp > 0
@@ -121,8 +121,8 @@ class PartyPurse {
                 : PnCounter(negative: {'init': _legacyGp.abs()}))
             : const PnCounter.empty();
       case 'pp':
-        if (_ppCounter.positive.isNotEmpty || _ppCounter.negative.isNotEmpty) {
-          return _ppCounter;
+        if (_legacyPpCounter.positive.isNotEmpty || _legacyPpCounter.negative.isNotEmpty) {
+          return _legacyPpCounter;
         }
         return _legacyPp != 0
             ? (_legacyPp > 0
@@ -142,15 +142,15 @@ class PartyPurse {
     if (direct != null) return math.max(0, direct.value);
     switch (clean) {
       case 'cp':
-        return math.max(0, _legacyCp != 0 ? _legacyCp : _cpCounter.value);
+        return math.max(0, _legacyCp != 0 ? _legacyCp : _legacyCpCounter.value);
       case 'sp':
-        return math.max(0, _legacySp != 0 ? _legacySp : _spCounter.value);
+        return math.max(0, _legacySp != 0 ? _legacySp : _legacySpCounter.value);
       case 'ep':
-        return math.max(0, _legacyEp != 0 ? _legacyEp : _epCounter.value);
+        return math.max(0, _legacyEp != 0 ? _legacyEp : _legacyEpCounter.value);
       case 'gp':
-        return math.max(0, _legacyGp != 0 ? _legacyGp : _gpCounter.value);
+        return math.max(0, _legacyGp != 0 ? _legacyGp : _legacyGpCounter.value);
       case 'pp':
-        return math.max(0, _legacyPp != 0 ? _legacyPp : _ppCounter.value);
+        return math.max(0, _legacyPp != 0 ? _legacyPp : _legacyPpCounter.value);
       default:
         return 0;
     }
@@ -161,11 +161,11 @@ class PartyPurse {
   Map<String, int> get balances {
     final map = <String, int>{};
     denominationCounters.forEach((k, v) => map[k] = math.max(0, v.value));
-    final cpBal = math.max(0, _legacyCp != 0 ? _legacyCp : _cpCounter.value);
-    final spBal = math.max(0, _legacySp != 0 ? _legacySp : _spCounter.value);
-    final epBal = math.max(0, _legacyEp != 0 ? _legacyEp : _epCounter.value);
-    final gpBal = math.max(0, _legacyGp != 0 ? _legacyGp : _gpCounter.value);
-    final ppBal = math.max(0, _legacyPp != 0 ? _legacyPp : _ppCounter.value);
+    final cpBal = math.max(0, _legacyCp != 0 ? _legacyCp : _legacyCpCounter.value);
+    final spBal = math.max(0, _legacySp != 0 ? _legacySp : _legacySpCounter.value);
+    final epBal = math.max(0, _legacyEp != 0 ? _legacyEp : _legacyEpCounter.value);
+    final gpBal = math.max(0, _legacyGp != 0 ? _legacyGp : _legacyGpCounter.value);
+    final ppBal = math.max(0, _legacyPp != 0 ? _legacyPp : _legacyPpCounter.value);
     if (cpBal > 0 && !map.containsKey('cp')) map['cp'] = cpBal;
     if (spBal > 0 && !map.containsKey('sp')) map['sp'] = spBal;
     if (epBal > 0 && !map.containsKey('ep')) map['ep'] = epBal;
