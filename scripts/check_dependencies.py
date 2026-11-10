@@ -456,19 +456,19 @@ def main():
                     # Track job
                     if re.match(r'^\s{2}[a-zA-Z0-9_\-]+:\s*$', line):
                         current_job_name = line.strip().rstrip(':')
-                    name_match = re.search(r'name:\s*(.*)', line)
-                    if name_match and not line.strip().startswith('#'):
-                        current_job_name = name_match.group(1).strip().strip("'\"")
+                        in_setup_dart = False
+                    elif re.match(r'^\s{4}name:\s*(.*)', line) and not line.strip().startswith('#'):
+                        current_job_name = line.strip()[5:].strip().strip("'\"")
 
                     # T2 & T3: dart-lang/setup-dart
                     if 'dart-lang/setup-dart' in line:
                         in_setup_dart = True
-                    elif re.match(r'^\s*-\s*uses:', line):
+                    elif re.match(r'^\s{6}-\s*', line):
                         in_setup_dart = False
 
                     if in_setup_dart and 'sdk:' in line:
                         sdk_val = line.split('sdk:', 1)[1].strip().strip("'\"")
-                        is_min_sdk_job = current_job_name and ('minimum' in current_job_name.lower() or 'min_sdk' in current_job_name.lower())
+                        is_min_sdk_job = current_job_name and ('minimum' in current_job_name.lower() or 'min_sdk' in current_job_name.lower() or 'min-sdk' in current_job_name.lower())
                         if is_min_sdk_job:
                             # T3: Minimum SDK job must equal floor
                             if sdk_val != target_dart_minor_floor:
