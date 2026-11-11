@@ -122,7 +122,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '26'
-  min_sdk:
+  min-sdk:
     name: Minimum SDK
     runs-on: ubuntu-latest
     steps:
@@ -780,7 +780,7 @@ d22="$TMP_DIR/dc22"; setup_base_fixtures "$d22"
 cat << 'EOF' > "$d22/.github/workflows/ci.yml"
 name: CI
 jobs:
-  min_sdk:
+  min-sdk:
     name: Minimum SDK
     runs-on: ubuntu-latest
     steps:
@@ -1007,4 +1007,239 @@ set +e; out35=$(GITHUB_ACTIONS=true run_check "$d35" 2>&1); rc35=$?; set -e
 [ "$rc35" -ne 0 ] || { echo "FAIL DC35: expected failure"; exit 1; }
 [[ "$out35" == *"--today"* ]] || { echo "FAIL DC35 output: $out35"; exit 1; }
 
-echo "All 35 dependency check self-tests (DC1 - DC35) passed successfully!"
+# DC36: real workflows check
+echo "Running DC36..."
+d36="$TMP_DIR/dc36"; setup_base_fixtures "$d36"
+# Build stand-in GitHub API for every action in real workflows
+grep -hoE "uses:\s*[a-zA-Z0-9_\-]+/[a-zA-Z0-9_\-]+@[0-9a-fA-F]{40}\s*#\s*\S+" "$SCRIPT_DIR/../.github/workflows"/*.yml | while read -r line; do
+  action=$(echo "$line" | sed -E 's/uses:\s*([^@]+)@.*/\1/')
+  sha=$(echo "$line" | sed -E 's/uses:\s*[^@]+@([0-9a-fA-F]{40})\s*#.*/\1/')
+  tag=$(echo "$line" | sed -E 's/.*#\s*(\S+)/\1/')
+  mkdir -p "$HTTP_ROOT/repos/$action/releases"
+  mkdir -p "$HTTP_ROOT/repos/$action/git/ref/tags"
+  cat << EOF > "$HTTP_ROOT/repos/$action/releases/latest.json"
+{
+  "tag_name": "$tag",
+  "published_at": "2026-05-10T12:00:00Z"
+}
+EOF
+  cat << EOF > "$HTTP_ROOT/repos/$action/git/ref/tags/$tag.json"
+{
+  "object": {
+    "sha": "$sha",
+    "type": "commit"
+  }
+}
+EOF
+done
+
+# Flutter releases fixture whose newest stable ships Dart 3.13.7 and floor Dart 3.13.0
+mkdir -p "$TMP_DIR/http_dc36"
+cat << 'EOF' > "$TMP_DIR/http_dc36/releases_linux.json"
+{
+  "current_release": {"stable": "3.47.9"},
+  "releases": [
+    {
+      "version": "3.47.9",
+      "release_date": "2026-10-20T00:00:00Z",
+      "channel": "stable",
+      "dart_sdk_version": "3.13.7"
+    },
+    {
+      "version": "3.47.0",
+      "release_date": "2026-08-01T00:00:00Z",
+      "channel": "stable",
+      "dart_sdk_version": "3.13.0"
+    }
+  ]
+}
+EOF
+cp "$TMP_DIR/http_dc36/releases_linux.json" "$HTTP_ROOT/releases_linux_dc36.json"
+
+# Header-only exceptions file
+echo -e "# rule_id\tname\theld_at\treview_by\treason" > "$d36/dependency_exceptions.tsv"
+
+# Run check against real workflows and real pubspec
+npm_args=()
+if [ -d "$SCRIPT_DIR/../firestore_rules_test" ]; then
+  npm_args=(--npm-dir "$d36/npm" --npm-outdated "$d36/npm/outdated.json" --npm-audit "$d36/npm/audit.json" --npm-registry "$SERVER_URL" --node-dist "$SERVER_URL/dist/index.json")
+fi
+
+out36=$(python3 -I "$CHECK_SCRIPT" \
+  --pub-outdated "$d36/pub_outdated.json" \
+  --pubspec "$SCRIPT_DIR/../pubspec.yaml" \
+  --workflows "$SCRIPT_DIR/../.github/workflows" \
+  --exceptions "$d36/dependency_exceptions.tsv" \
+  --pub-api "$SERVER_URL" \
+  --flutter-releases "$SERVER_URL/releases_linux_dc36.json" \
+  --github-api "$SERVER_URL" \
+  --today 2026-12-20 \
+  "${npm_args[@]}")
+
+setup_dart_count=$(echo "$out36" | grep -c "^setup-dart:" || true)
+real_count=$(grep -c 'dart-lang/setup-dart' "$SCRIPT_DIR/../.github/workflows"/*.yml | awk -F: '{s+=$2} END {print s+0}')
+[ "$setup_dart_count" -eq "$real_count" ] || { echo "FAIL DC36 count mismatch: found $setup_dart_count setup-dart lines, expected $real_count"; exit 1; }
+setup_http_fixtures
+
+# DC37: no phantom setup-dart
+echo "Running DC37..."
+d37="$TMP_DIR/dc37"; setup_base_fixtures "$d37"
+cat << 'EOF' > "$d37/.github/workflows/ci.yml"
+name: CI
+jobs:
+  main:
+    name: 🎯 Main Test Job
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: 🎯 Set up Dart SDK (3.13.7)
+        uses: dart-lang/setup-dart@e51d8e519be8f8d29450b2bc73ea832f4165e2c1 # v1.8.1
+        with:
+          sdk: 3.13.7
+  sdk-tools:
+    name: 🛠️ Tools sdk: setup (Dart 3.13.0)
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Tool step sdk: check (Dart 3.13.0)
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '26'
+          sdk: 3.13.0
+  min-sdk:
+    name: 🎯 Minimum SDK Verification (Dart 3.13.0)
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🎯 Set up Dart SDK (3.13.0)
+        uses: dart-lang/setup-dart@e51d8e519be8f8d29450b2bc73ea832f4165e2c1 # v1.8.1
+        with:
+          sdk: 3.13.0
+EOF
+out37=$(run_check "$d37" --flutter-releases "$SERVER_URL/releases_linux_dc36.json" --today 2026-12-20)
+setup_dart_count37=$(echo "$out37" | grep -c "^setup-dart:" || true)
+[ "$setup_dart_count37" -eq 2 ] || { echo "FAIL DC37: expected exactly 2 setup-dart steps, got $setup_dart_count37"; exit 1; }
+
+# DC38: min-sdk job wrong SDK -> fails T3 naming file and line
+echo "Running DC38..."
+d38="$TMP_DIR/dc38"; setup_base_fixtures "$d38"
+cp -r "$SCRIPT_DIR/../.github/workflows" "$d38/.github/"
+if grep -q "min-sdk:" "$d38/.github/workflows"/*.yml; then
+  # Pure dart repo: modify existing min-sdk job sdk to one minor below floor (3.12.0)
+  for f in "$d38/.github/workflows"/*.yml; do
+    if grep -q "min-sdk:" "$f"; then
+      python3 -c "
+with open('$f') as file:
+    content = file.read()
+import re
+content = re.sub(r'(min-sdk:[\s\S]*?sdk:\s*[\'\"]?)3\.13\.0', r'\g<1>3.12.0', content)
+with open('$f', 'w') as file:
+    file.write(content)
+"
+    fi
+  done
+else
+  # App repo (no min-sdk job in real workflows): inject min-sdk job with 3.12.0
+  cat << 'EOF' >> "$d38/.github/workflows/ci.yml"
+  min-sdk:
+    name: Minimum SDK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dart-lang/setup-dart@e51d8e519be8f8d29450b2bc73ea832f4165e2c1 # v1.8.1
+        with:
+          sdk: 3.12.0
+EOF
+fi
+set +e
+out38=$(run_check "$d38" --flutter-releases "$SERVER_URL/releases_linux_dc36.json" --today 2026-12-20 2>&1)
+rc38=$?
+set -e
+[ "$rc38" -ne 0 ] || { echo "FAIL DC38: expected failure"; exit 1; }
+[[ "$out38" == *"T3:"* ]] || { echo "FAIL DC38 output missing T3: $out38"; exit 1; }
+echo "$out38" | grep -qE "T3:.*ci\.ya?ml:[0-9]+" || { echo "FAIL DC38 output missing file and line: $out38"; exit 1; }
+
+# DC39: main job setup-dart sdk one patch below target -> fails T2 naming file and line
+echo "Running DC39..."
+d39="$TMP_DIR/dc39"; setup_base_fixtures "$d39"
+cp -r "$SCRIPT_DIR/../.github/workflows" "$d39/.github/"
+if grep -q "dart-lang/setup-dart" "$d39/.github/workflows"/*.yml; then
+  # Core / ruleset: change main job setup-dart to 3.13.6
+  for f in "$d39/.github/workflows"/*.yml; do
+    if grep -q "dart-lang/setup-dart" "$f"; then
+      python3 -c "
+with open('$f') as file:
+    content = file.read()
+import re
+# Only replace in main/test job, not min-sdk
+content = re.sub(r'(uses:\s*dart-lang/setup-dart[^\n]*\n\s*with:\s*\n\s*sdk:\s*[\'\"]?)3\.13\.7', r'\g<1>3.13.6', content)
+with open('$f', 'w') as file:
+    file.write(content)
+"
+    fi
+  done
+else
+  # App: inject main job with setup-dart 3.13.6
+  cat << 'EOF' >> "$d39/.github/workflows/ci.yml"
+  main_dart:
+    name: Main Dart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dart-lang/setup-dart@e51d8e519be8f8d29450b2bc73ea832f4165e2c1 # v1.8.1
+        with:
+          sdk: 3.13.6
+EOF
+fi
+set +e
+out39=$(run_check "$d39" --flutter-releases "$SERVER_URL/releases_linux_dc36.json" --today 2026-12-20 2>&1)
+rc39=$?
+set -e
+[ "$rc39" -ne 0 ] || { echo "FAIL DC39: expected failure"; exit 1; }
+[[ "$out39" == *"T2:"* ]] || { echo "FAIL DC39 output missing T2: $out39"; exit 1; }
+echo "$out39" | grep -qE "T2:.*ci\.ya?ml:[0-9]+" || { echo "FAIL DC39 output missing file and line: $out39"; exit 1; }
+
+# DC40: Pure-Dart fixture with no min-sdk job -> fails T3
+echo "Running DC40..."
+d40="$TMP_DIR/dc40"; setup_base_fixtures "$d40"
+# Pure Dart pubspec (no flutter:)
+cat << 'EOF' > "$d40/pubspec.yaml"
+name: pure_dart_pkg
+environment:
+  sdk: ^3.13.0
+dependencies:
+  meta: ^1.19.0
+EOF
+cat << 'EOF' > "$d40/.github/workflows/ci.yml"
+name: CI
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dart-lang/setup-dart@e51d8e519be8f8d29450b2bc73ea832f4165e2c1 # v1.8.1
+        with:
+          sdk: 3.13.7
+EOF
+set +e
+out40=$(run_check "$d40" --flutter-releases "$SERVER_URL/releases_linux_dc36.json" --today 2026-12-20 2>&1)
+rc40=$?
+set -e
+[ "$rc40" -ne 0 ] || { echo "FAIL DC40: expected failure"; exit 1; }
+[[ "$out40" == *"T3"* ]] || { echo "FAIL DC40 output missing T3: $out40"; exit 1; }
+
+# DC41: setup-dart step with no sdk: -> fails
+echo "Running DC41..."
+d41="$TMP_DIR/dc41"; setup_base_fixtures "$d41"
+cat << 'EOF' > "$d41/.github/workflows/ci.yml"
+name: CI
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dart-lang/setup-dart@e51d8e519be8f8d29450b2bc73ea832f4165e2c1 # v1.8.1
+        with:
+          cache: true
+EOF
+set +e
+out41=$(run_check "$d41" --flutter-releases "$SERVER_URL/releases_linux_dc36.json" --today 2026-12-20 2>&1)
+rc41=$?
+set -e
+[ "$rc41" -ne 0 ] || { echo "FAIL DC41: expected failure"; exit 1; }
+
+echo "All 41 dependency check self-tests (DC1 - DC41) passed successfully!"

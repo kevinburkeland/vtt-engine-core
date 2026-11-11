@@ -96,6 +96,114 @@ def is_version_in_ranges(v_str, ranges):
             return True
     return False
 
+def parse_workflow_file(wf_path, wf_file):
+    with open(wf_path, 'r', encoding='utf-8') as f:
+        wf_lines = f.readlines()
+
+    jobs = []
+    in_jobs_section = False
+    current_job = None
+    current_step = None
+
+    for line_idx, raw_line in enumerate(wf_lines, 1):
+        line = raw_line.rstrip('\r\n')
+        stripped = line.strip()
+        if not stripped or stripped.startswith('#'):
+            continue
+
+        indent = len(line) - len(line.lstrip(' '))
+
+        if indent == 0:
+            if stripped.startswith('jobs:'):
+                in_jobs_section = True
+            else:
+                in_jobs_section = False
+            current_job = None
+            current_step = None
+            continue
+
+        if not in_jobs_section:
+            continue
+
+        # Top-level jobs are indented exactly 2 spaces
+        if indent == 2:
+            m_job = re.match(r'^  ([a-zA-Z0-9_\-]+):\s*(?:#.*)?$', line)
+            if m_job:
+                job_id = m_job.group(1)
+                current_job = {
+                    'id': job_id,
+                    'name': None,
+                    'file': wf_file,
+                    'line': line_idx,
+                    'steps': []
+                }
+                jobs.append(current_job)
+                current_step = None
+            continue
+
+        if current_job is None:
+            continue
+
+        # Job attributes are indented 4 spaces
+        if indent == 4:
+            m_name = re.match(r'^    name:\s*(.*)$', line)
+            if m_name:
+                name_val = m_name.group(1).split('#')[0].strip().strip("'\"")
+                current_job['name'] = name_val
+            continue
+
+        # Step item starts with 6 spaces: "      - "
+        m_step = re.match(r'^\s{6}-\s*(.*)$', line)
+        if m_step:
+            current_step = {
+                'job_id': current_job['id'],
+                'file': wf_file,
+                'start_line': line_idx,
+                'uses': None,
+                'uses_line': None,
+                'with_active': False,
+                'with_indent': 0,
+                'sdk': None,
+                'sdk_line': None,
+                'node_version': None,
+                'node_version_line': None,
+            }
+            current_job['steps'].append(current_step)
+            rest = m_step.group(1).strip()
+            if rest.startswith('uses:'):
+                current_step['uses_line'] = line_idx
+                current_step['uses'] = rest.split('uses:', 1)[1].strip()
+            continue
+
+        if current_step is not None:
+            # Check if line sets with:
+            if re.match(r'^\s+with:\s*(?:#.*)?$', line):
+                current_step['with_active'] = True
+                current_step['with_indent'] = indent
+                continue
+
+            if current_step['with_active']:
+                if indent <= current_step['with_indent']:
+                    current_step['with_active'] = False
+                else:
+                    m_sdk = re.match(r'^\s+sdk:\s*(.*)$', line)
+                    if m_sdk:
+                        current_step['sdk'] = m_sdk.group(1).split('#')[0].strip().strip("'\"")
+                        current_step['sdk_line'] = line_idx
+                    m_node = re.match(r'^\s+node-version:\s*(.*)$', line)
+                    if m_node:
+                        current_step['node_version'] = m_node.group(1).split('#')[0].strip().strip("'\"")
+                        current_step['node_version_line'] = line_idx
+                    continue
+
+            # Check uses inside step (e.g. 8 spaces)
+            m_uses = re.match(r'^\s+uses:\s*(.*)$', line)
+            if m_uses:
+                current_step['uses_line'] = line_idx
+                current_step['uses'] = m_uses.group(1).strip()
+
+    return jobs
+
 def read_pubspec(pubspec_path):
     sdk_constraint = None
     flutter_constraint = None
@@ -439,100 +547,111 @@ def main():
                         failures.append(f"T3: pubspec environment sdk '{sdk_constraint}' floor is behind target floor ^{expected_floor}")
 
         # Check workflows
+        all_workflow_jobs = []
+        all_setup_dart_steps = []
+
         if os.path.exists(args.workflows):
-            for wf_file in os.listdir(args.workflows):
+            for wf_file in sorted(os.listdir(args.workflows)):
                 if not (wf_file.endswith('.yml') or wf_file.endswith('.yaml')):
                     continue
                 wf_path = os.path.join(args.workflows, wf_file)
-                with open(wf_path, 'r', encoding='utf-8') as f:
-                    wf_lines = f.readlines()
+                wf_jobs = parse_workflow_file(wf_path, wf_file)
+                all_workflow_jobs.extend(wf_jobs)
 
-                current_job_name = None
-                in_steps = False
-                in_setup_dart = False
+                for job in wf_jobs:
+                    for step in job['steps']:
+                        # Check setup-dart
+                        if step['uses'] and 'dart-lang/setup-dart' in step['uses']:
+                            all_setup_dart_steps.append(step)
 
-                for line_idx, raw_line in enumerate(wf_lines, 1):
-                    line = raw_line.rstrip()
-                    # Track job
-                    if re.match(r'^\s{2}[a-zA-Z0-9_\-]+:\s*$', line):
-                        current_job_name = line.strip().rstrip(':')
-                    name_match = re.search(r'name:\s*(.*)', line)
-                    if name_match and not line.strip().startswith('#'):
-                        current_job_name = name_match.group(1).strip().strip("'\"")
-
-                    # T2 & T3: dart-lang/setup-dart
-                    if 'dart-lang/setup-dart' in line:
-                        in_setup_dart = True
-                    elif re.match(r'^\s*-\s*uses:', line):
-                        in_setup_dart = False
-
-                    if in_setup_dart and 'sdk:' in line:
-                        sdk_val = line.split('sdk:', 1)[1].strip().strip("'\"")
-                        is_min_sdk_job = current_job_name and ('minimum' in current_job_name.lower() or 'min_sdk' in current_job_name.lower())
-                        if is_min_sdk_job:
-                            # T3: Minimum SDK job must equal floor
-                            if sdk_val != target_dart_minor_floor:
-                                if not check_exception('T3', 'dart', sdk_val):
-                                    failures.append(f"T3: {wf_file}:{line_idx}: Minimum SDK job runs '{sdk_val}', expected exact floor '{target_dart_minor_floor}'")
-                        else:
-                            # T2: Setup-dart must equal target Dart
-                            if sdk_val != target_dart:
-                                age_days = (today - newest_flutter_date).days if newest_flutter_date else 999
-                                if age_days < 14:
-                                    pending_notes.append(f"{wf_file}:{line_idx}: setup-dart sdk '{sdk_val}' pending target Dart '{target_dart}' ({age_days} days old)")
-                                else:
-                                    if not check_exception('T2', 'dart', sdk_val):
-                                        failures.append(f"T2: {wf_file}:{line_idx}: setup-dart sdk '{sdk_val}' is behind target Dart '{target_dart}'")
-
-                    # A1: uses: owner/repo@sha # vX.Y.Z
-                    uses_match = re.search(r'uses:\s*([a-zA-Z0-9_\-]+/[a-zA-Z0-9_\-]+)@([0-9a-fA-F]{40})\s*#\s*(\S+)', line)
-                    if uses_match:
-                        action_name = uses_match.group(1)
-                        action_sha = uses_match.group(2)
-                        action_comment = uses_match.group(3)
-
-                        # Query GitHub release
-                        gh_rel_url = f"{args.github_api.rstrip('/')}/repos/{action_name}/releases/latest"
-                        gh_rel_data = fetch_json(gh_rel_url, headers=github_headers)
-                        latest_tag = gh_rel_data.get('tag_name')
-                        rel_date = parse_date(gh_rel_data.get('published_at'))
-
-                        # Follow tag to commit SHA
-                        gh_ref_url = f"{args.github_api.rstrip('/')}/repos/{action_name}/git/ref/tags/{latest_tag}"
-                        gh_ref_data = fetch_json(gh_ref_url, headers=github_headers)
-                        ref_obj = gh_ref_data.get('object', {})
-                        commit_sha = ref_obj.get('sha')
-                        if ref_obj.get('type') == 'tag':
-                            # Annotated tag, follow to commit
-                            tag_obj_url = f"{args.github_api.rstrip('/')}/repos/{action_name}/git/tags/{commit_sha}"
-                            tag_data = fetch_json(tag_obj_url, headers=github_headers)
-                            commit_sha = tag_data.get('object', {}).get('sha', commit_sha)
-
-                        if action_sha != commit_sha or action_comment != latest_tag:
-                            age_days = (today - rel_date).days if rel_date else 999
-                            if age_days < 14:
-                                pending_notes.append(f"{wf_file}:{line_idx}: Action '{action_name}' pending latest release {latest_tag} ({age_days} days old)")
+                            if not step['sdk']:
+                                line_no = step['uses_line'] or step['start_line']
+                                failures.append(f"T2: {wf_file}:{line_no}: setup-dart step has no sdk: in with: block")
+                            elif job['id'] == 'min-sdk':
+                                line_no = step['sdk_line'] or step['uses_line'] or step['start_line']
+                                if step['sdk'] != target_dart_minor_floor:
+                                    if not check_exception('T3', 'dart', step['sdk']):
+                                        failures.append(f"T3: {wf_file}:{line_no}: Minimum SDK job runs '{step['sdk']}', expected exact floor '{target_dart_minor_floor}'")
                             else:
-                                if not check_exception('A1', action_name, action_sha):
-                                    failures.append(f"A1: {wf_file}:{line_idx}: Action '{action_name}' pinned to {action_sha} #{action_comment}, newest is {commit_sha} #{latest_tag}")
+                                line_no = step['sdk_line'] or step['uses_line'] or step['start_line']
+                                if step['sdk'] != target_dart:
+                                    age_days = (today - newest_flutter_date).days if newest_flutter_date else 999
+                                    if age_days < 14:
+                                        pending_notes.append(f"{wf_file}:{line_no}: setup-dart sdk '{step['sdk']}' pending target Dart '{target_dart}' ({age_days} days old)")
+                                    else:
+                                        if not check_exception('T2', 'dart', step['sdk']):
+                                            failures.append(f"T2: {wf_file}:{line_no}: setup-dart sdk '{step['sdk']}' is behind target Dart '{target_dart}'")
 
-                    # N3: Node LTS in actions/setup-node
-                    if 'node-version:' in line:
-                        node_val = line.split('node-version:', 1)[1].strip().strip("'\"")
-                        node_dist_data = fetch_json(args.node_dist)
-                        lts_releases = [x for x in node_dist_data if x.get('lts')]
-                        if lts_releases:
-                            newest_lts = lts_releases[0]
-                            lts_ver = newest_lts.get('version', '').lstrip('v')
-                            lts_major = lts_ver.split('.')[0]
-                            lts_date = parse_date(newest_lts.get('date'))
-                            if node_val != lts_major:
-                                age_days = (today - lts_date).days if lts_date else 999
-                                if age_days < 14:
-                                    pending_notes.append(f"{wf_file}:{line_idx}: Node version '{node_val}' pending newest LTS '{lts_major}' ({age_days} days old)")
-                                else:
-                                    if not check_exception('N3', 'node', node_val):
-                                        failures.append(f"N3: {wf_file}:{line_idx}: node-version '{node_val}' is behind newest Node LTS major '{lts_major}' (became LTS {lts_date}, {age_days} days old)")
+                        # A1: uses: owner/repo@sha # vX.Y.Z
+                        if step['uses']:
+                            uses_match = re.search(r'([a-zA-Z0-9_\-]+/[a-zA-Z0-9_\-]+)@([0-9a-fA-F]{40})\s*#\s*(\S+)', step['uses'])
+                            if uses_match:
+                                action_name = uses_match.group(1)
+                                action_sha = uses_match.group(2)
+                                action_comment = uses_match.group(3)
+                                line_no = step['uses_line'] or step['start_line']
+
+                                # Query GitHub release
+                                gh_rel_url = f"{args.github_api.rstrip('/')}/repos/{action_name}/releases/latest"
+                                gh_rel_data = fetch_json(gh_rel_url, headers=github_headers)
+                                latest_tag = gh_rel_data.get('tag_name')
+                                rel_date = parse_date(gh_rel_data.get('published_at'))
+
+                                # Follow tag to commit SHA
+                                gh_ref_url = f"{args.github_api.rstrip('/')}/repos/{action_name}/git/ref/tags/{latest_tag}"
+                                gh_ref_data = fetch_json(gh_ref_url, headers=github_headers)
+                                ref_obj = gh_ref_data.get('object', {})
+                                commit_sha = ref_obj.get('sha')
+                                if ref_obj.get('type') == 'tag':
+                                    tag_obj_url = f"{args.github_api.rstrip('/')}/repos/{action_name}/git/tags/{commit_sha}"
+                                    tag_data = fetch_json(tag_obj_url, headers=github_headers)
+                                    commit_sha = tag_data.get('object', {}).get('sha', commit_sha)
+
+                                if action_sha != commit_sha or action_comment != latest_tag:
+                                    age_days = (today - rel_date).days if rel_date else 999
+                                    if age_days < 14:
+                                        pending_notes.append(f"{wf_file}:{line_no}: Action '{action_name}' pending latest release {latest_tag} ({age_days} days old)")
+                                    else:
+                                        if not check_exception('A1', action_name, action_sha):
+                                            failures.append(f"A1: {wf_file}:{line_no}: Action '{action_name}' pinned to {action_sha} #{action_comment}, newest is {commit_sha} #{latest_tag}")
+
+                        # N3: Node LTS in actions/setup-node
+                        if step['node_version']:
+                            node_val = step['node_version']
+                            line_no = step['node_version_line'] or step['start_line']
+                            node_dist_data = fetch_json(args.node_dist)
+                            lts_releases = [x for x in node_dist_data if x.get('lts')]
+                            if lts_releases:
+                                newest_lts = lts_releases[0]
+                                lts_ver = newest_lts.get('version', '').lstrip('v')
+                                lts_major = lts_ver.split('.')[0]
+                                lts_date = parse_date(newest_lts.get('date'))
+                                if node_val != lts_major:
+                                    age_days = (today - lts_date).days if lts_date else 999
+                                    if age_days < 14:
+                                        pending_notes.append(f"{wf_file}:{line_no}: Node version '{node_val}' pending newest LTS '{lts_major}' ({age_days} days old)")
+                                    else:
+                                        if not check_exception('N3', 'node', node_val):
+                                            failures.append(f"N3: {wf_file}:{line_no}: node-version '{node_val}' is behind newest Node LTS major '{lts_major}' (became LTS {lts_date}, {age_days} days old)")
+
+            # T3 validation for pure Dart packages
+            is_pure_dart = (flutter_constraint is None)
+            min_sdk_jobs = [j for j in all_workflow_jobs if j['id'] == 'min-sdk']
+            if is_pure_dart:
+                if len(min_sdk_jobs) != 1:
+                    failures.append(f"T3: Pure Dart package requires exactly one 'min-sdk' job, found {len(min_sdk_jobs)}")
+                else:
+                    min_sdk_job = min_sdk_jobs[0]
+                    sd_steps = [s for s in min_sdk_job['steps'] if s['uses'] and 'dart-lang/setup-dart' in s['uses']]
+                    if len(sd_steps) != 1:
+                        failures.append(f"T3: 'min-sdk' job in pure Dart package must contain exactly one setup-dart step, found {len(sd_steps)}")
+
+            # Print setup-dart summary lines (Fix 1.3)
+            for s in all_setup_dart_steps:
+                role = 'floor' if s['job_id'] == 'min-sdk' else 'target'
+                line_no = s['uses_line'] or s['start_line']
+                sdk_disp = s['sdk'] if s['sdk'] is not None else ''
+                print(f"setup-dart: {s['file']}:{line_no} job {s['job_id']} sdk {sdk_disp} ({role})")
 
     # N1 & N2: npm dependencies
     if args.npm_dir and args.npm_outdated and os.path.exists(args.npm_outdated):
