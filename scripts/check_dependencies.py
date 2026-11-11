@@ -217,7 +217,11 @@ def read_pubspec(pubspec_path):
     current_dep_name = None
 
     if not os.path.exists(pubspec_path):
-        return None, None, [], [], set(), set(), set()
+        print(f"Error: Pubspec file '{pubspec_path}' not found.", file=sys.stderr)
+        sys.exit(1)
+    if not os.path.isfile(pubspec_path):
+        print(f"Error: Pubspec path '{pubspec_path}' is not a file.", file=sys.stderr)
+        sys.exit(1)
 
     # Read pubspec.lock if present
     lock_path = os.path.join(os.path.dirname(pubspec_path), 'pubspec.lock')
@@ -314,6 +318,35 @@ def main():
     if github_token:
         github_headers['Authorization'] = f'Bearer {github_token}'
 
+    # Validate inputs exist and are readable (Fix 2.1)
+    if not os.path.exists(args.pub_outdated) or not os.path.isfile(args.pub_outdated):
+        print(f"Error: Outdated file '{args.pub_outdated}' not found or unreadable.", file=sys.stderr)
+        sys.exit(1)
+
+    if not os.path.exists(args.pubspec) or not os.path.isfile(args.pubspec):
+        print(f"Error: Pubspec file '{args.pubspec}' not found or unreadable.", file=sys.stderr)
+        sys.exit(1)
+
+    if not os.path.exists(args.workflows) or not os.path.isdir(args.workflows):
+        print(f"Error: Workflows directory '{args.workflows}' not found or not a directory.", file=sys.stderr)
+        sys.exit(1)
+
+    if not os.path.exists(args.exceptions) or not os.path.isfile(args.exceptions):
+        print(f"Error: Exceptions file '{args.exceptions}' not found or unreadable.", file=sys.stderr)
+        sys.exit(1)
+
+    has_npm = any([args.npm_dir, args.npm_outdated, args.npm_audit])
+    if has_npm:
+        if not args.npm_dir or not os.path.exists(args.npm_dir) or not os.path.isdir(args.npm_dir):
+            print(f"Error: npm directory '{args.npm_dir}' not found or not a directory.", file=sys.stderr)
+            sys.exit(1)
+        if not args.npm_outdated or not os.path.exists(args.npm_outdated) or not os.path.isfile(args.npm_outdated):
+            print(f"Error: npm outdated file '{args.npm_outdated}' not found or unreadable.", file=sys.stderr)
+            sys.exit(1)
+        if not args.npm_audit or not os.path.exists(args.npm_audit) or not os.path.isfile(args.npm_audit):
+            print(f"Error: npm audit file '{args.npm_audit}' not found or unreadable.", file=sys.stderr)
+            sys.exit(1)
+
     # Parse exceptions
     exceptions = []
     exception_failures = []
@@ -399,7 +432,13 @@ def main():
         print(f"Error: Failed to parse pub outdated JSON in '{args.pub_outdated}': {e}", file=sys.stderr)
         sys.exit(1)
 
-    pub_packages = outdated_data.get('packages', [])
+    if not isinstance(outdated_data, dict):
+        print(f"Error: Malformed pub outdated JSON in '{args.pub_outdated}': root must be a dict.", file=sys.stderr)
+        sys.exit(1)
+    if 'packages' not in outdated_data or not isinstance(outdated_data['packages'], list):
+        print(f"Error: Malformed pub outdated JSON in '{args.pub_outdated}': 'packages' key must be a list.", file=sys.stderr)
+        sys.exit(1)
+    pub_packages = outdated_data['packages']
     package_api_cache = {}
 
     def get_pub_package_info(pkg_name):
@@ -654,45 +693,63 @@ def main():
                 print(f"setup-dart: {s['file']}:{line_no} job {s['job_id']} sdk {sdk_disp} ({role})")
 
     # N1 & N2: npm dependencies
-    if args.npm_dir and args.npm_outdated and os.path.exists(args.npm_outdated):
-        with open(args.npm_outdated, 'r', encoding='utf-8') as f:
-            npm_outdated_content = f.read().strip()
-        if npm_outdated_content:
-            try:
+    if args.npm_dir:
+        try:
+            with open(args.npm_outdated, 'r', encoding='utf-8') as f:
+                npm_outdated_content = f.read().strip()
+            if npm_outdated_content:
                 npm_outdated_data = json.loads(npm_outdated_content)
-                for npm_pkg, details in npm_outdated_data.items():
-                    curr_npm_v = details.get('current')
-                    lat_npm_v = details.get('latest')
-                    if curr_npm_v and lat_npm_v and curr_npm_v != lat_npm_v:
-                        # Query npm registry
-                        npm_pkg_url = f"{args.npm_registry.rstrip('/')}/{npm_pkg}"
-                        npm_pkg_data = fetch_json(npm_pkg_url)
-                        pub_time = npm_pkg_data.get('time', {}).get(lat_npm_v)
-                        lat_npm_date = parse_date(pub_time) if pub_time else None
-                        age_days = (today - lat_npm_date).days if lat_npm_date else 999
-                        if age_days < 14:
-                            pending_notes.append(f"npm package '{npm_pkg}' pending {lat_npm_v} ({age_days} days old)")
-                        else:
-                            if not check_exception('N1', npm_pkg, curr_npm_v):
-                                failures.append(f"N1: npm package '{npm_pkg}' current {curr_npm_v} is behind latest {lat_npm_v} (published {lat_npm_date}, {age_days} days old)")
-            except Exception as e:
-                failures.append(f"N1: Failed to parse npm outdated JSON: {e}")
+                if not isinstance(npm_outdated_data, dict):
+                    failures.append(f"N1: npm outdated JSON in '{args.npm_outdated}' must be an object")
+                elif 'error' in npm_outdated_data:
+                    failures.append(f"N1: npm outdated reported error: {npm_outdated_data['error']}")
+                else:
+                    for npm_pkg, details in npm_outdated_data.items():
+                        if not isinstance(details, dict):
+                            failures.append(f"N1: npm outdated details for '{npm_pkg}' must be an object")
+                            continue
+                        curr_npm_v = details.get('current')
+                        lat_npm_v = details.get('latest')
+                        if curr_npm_v and lat_npm_v and curr_npm_v != lat_npm_v:
+                            # Query npm registry
+                            npm_pkg_url = f"{args.npm_registry.rstrip('/')}/{npm_pkg}"
+                            npm_pkg_data = fetch_json(npm_pkg_url)
+                            pub_time = npm_pkg_data.get('time', {}).get(lat_npm_v)
+                            lat_npm_date = parse_date(pub_time) if pub_time else None
+                            age_days = (today - lat_npm_date).days if lat_npm_date else 999
+                            if age_days < 14:
+                                pending_notes.append(f"npm package '{npm_pkg}' pending {lat_npm_v} ({age_days} days old)")
+                            else:
+                                if not check_exception('N1', npm_pkg, curr_npm_v):
+                                    failures.append(f"N1: npm package '{npm_pkg}' current {curr_npm_v} is behind latest {lat_npm_v} (published {lat_npm_date}, {age_days} days old)")
+        except Exception as e:
+            failures.append(f"N1: Failed to read or parse npm outdated JSON in '{args.npm_outdated}': {e}")
 
-    if args.npm_dir and args.npm_audit and os.path.exists(args.npm_audit):
-        with open(args.npm_audit, 'r', encoding='utf-8') as f:
-            npm_audit_content = f.read().strip()
-        if npm_audit_content:
-            try:
+        try:
+            with open(args.npm_audit, 'r', encoding='utf-8') as f:
+                npm_audit_content = f.read().strip()
+            if npm_audit_content:
                 npm_audit_data = json.loads(npm_audit_content)
-                metadata = npm_audit_data.get('metadata', {})
-                vulns = metadata.get('vulnerabilities', {})
-                mod_count = vulns.get('moderate', 0)
-                high_count = vulns.get('high', 0)
-                crit_count = vulns.get('critical', 0)
-                if mod_count > 0 or high_count > 0 or crit_count > 0:
-                    failures.append(f"N2: npm audit reports {mod_count} moderate, {high_count} high, {crit_count} critical vulnerabilities")
-            except Exception as e:
-                failures.append(f"N2: Failed to parse npm audit JSON: {e}")
+                if not isinstance(npm_audit_data, dict):
+                    failures.append(f"N2: npm audit JSON in '{args.npm_audit}' must be an object")
+                elif 'error' in npm_audit_data:
+                    failures.append(f"N2: npm audit reported error: {npm_audit_data['error']}")
+                else:
+                    metadata = npm_audit_data.get('metadata', {})
+                    if not isinstance(metadata, dict):
+                        failures.append(f"N2: npm audit JSON in '{args.npm_audit}' missing metadata object")
+                    else:
+                        vulns = metadata.get('vulnerabilities', {})
+                        if not isinstance(vulns, dict):
+                            failures.append(f"N2: npm audit metadata missing vulnerabilities object")
+                        else:
+                            mod_count = vulns.get('moderate', 0)
+                            high_count = vulns.get('high', 0)
+                            crit_count = vulns.get('critical', 0)
+                            if mod_count > 0 or high_count > 0 or crit_count > 0:
+                                failures.append(f"N2: npm audit reports {mod_count} moderate, {high_count} high, {crit_count} critical vulnerabilities")
+        except Exception as e:
+            failures.append(f"N2: Failed to read or parse npm audit JSON in '{args.npm_audit}': {e}")
 
     # E1: Check for stale exceptions
     for idx, exc in enumerate(exceptions):

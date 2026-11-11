@@ -1290,4 +1290,90 @@ rc41=$?
 set -e
 [ "$rc41" -ne 0 ] || { echo "FAIL DC41: expected failure"; exit 1; }
 
-echo "All 41 dependency check self-tests (DC1 - DC41) passed successfully!"
+# DC42: missing or unreadable --pub-outdated -> fails
+echo "Running DC42..."
+d42="$TMP_DIR/dc42"; setup_base_fixtures "$d42"
+set +e
+out42=$(python3 "$CHECK_SCRIPT" --pub-outdated "$d42/nonexistent.json" --pubspec "$d42/pubspec.yaml" --workflows "$d42/.github/workflows" --exceptions "$d42/dependency_exceptions.tsv" 2>&1)
+rc42=$?
+set -e
+[ "$rc42" -ne 0 ] || { echo "FAIL DC42: expected failure"; exit 1; }
+
+# DC43: missing or unreadable --pubspec -> fails
+echo "Running DC43..."
+d43="$TMP_DIR/dc43"; setup_base_fixtures "$d43"
+set +e
+out43=$(python3 "$CHECK_SCRIPT" --pub-outdated "$d43/pub_outdated.json" --pubspec "$d43/nonexistent.yaml" --workflows "$d43/.github/workflows" --exceptions "$d43/dependency_exceptions.tsv" 2>&1)
+rc43=$?
+set -e
+[ "$rc43" -ne 0 ] || { echo "FAIL DC43: expected failure"; exit 1; }
+
+# DC44: missing or unreadable --workflows -> fails
+echo "Running DC44..."
+d44="$TMP_DIR/dc44"; setup_base_fixtures "$d44"
+set +e
+out44=$(python3 "$CHECK_SCRIPT" --pub-outdated "$d44/pub_outdated.json" --pubspec "$d44/pubspec.yaml" --workflows "$d44/nonexistent_workflows" --exceptions "$d44/dependency_exceptions.tsv" 2>&1)
+rc44=$?
+set -e
+[ "$rc44" -ne 0 ] || { echo "FAIL DC44: expected failure"; exit 1; }
+
+# DC45: missing or unreadable --exceptions -> fails
+echo "Running DC45..."
+d45="$TMP_DIR/dc45"; setup_base_fixtures "$d45"
+set +e
+out45=$(python3 "$CHECK_SCRIPT" --pub-outdated "$d45/pub_outdated.json" --pubspec "$d45/pubspec.yaml" --workflows "$d45/.github/workflows" --exceptions "$d45/nonexistent.tsv" 2>&1)
+rc45=$?
+set -e
+[ "$rc45" -ne 0 ] || { echo "FAIL DC45: expected failure"; exit 1; }
+
+# DC46: missing or unreadable --npm-outdated (when npm args given) -> fails
+echo "Running DC46..."
+d46="$TMP_DIR/dc46"; setup_base_fixtures "$d46"
+mkdir -p "$d46/npm_dir"
+echo '{"name": "test"}' > "$d46/npm_dir/package.json"
+echo '{"name": "test", "lockfileVersion": 3}' > "$d46/npm_dir/package-lock.json"
+echo '{"metadata":{"vulnerabilities":{"moderate":0,"high":0,"critical":0}}}' > "$d46/npm_audit.json"
+set +e
+out46=$(python3 "$CHECK_SCRIPT" --pub-outdated "$d46/pub_outdated.json" --pubspec "$d46/pubspec.yaml" --workflows "$d46/.github/workflows" --exceptions "$d46/dependency_exceptions.tsv" --npm-dir "$d46/npm_dir" --npm-outdated "$d46/nonexistent.json" --npm-audit "$d46/npm_audit.json" 2>&1)
+rc46=$?
+set -e
+[ "$rc46" -ne 0 ] || { echo "FAIL DC46: expected failure"; exit 1; }
+
+# DC47: missing or unreadable --npm-audit (when npm args given) -> fails
+echo "Running DC47..."
+d47="$TMP_DIR/dc47"; setup_base_fixtures "$d47"
+mkdir -p "$d47/npm_dir"
+echo '{"name": "test"}' > "$d47/npm_dir/package.json"
+echo '{"name": "test", "lockfileVersion": 3}' > "$d47/npm_dir/package-lock.json"
+echo '{}' > "$d47/npm_outdated.json"
+set +e
+out47=$(python3 "$CHECK_SCRIPT" --pub-outdated "$d47/pub_outdated.json" --pubspec "$d47/pubspec.yaml" --workflows "$d47/.github/workflows" --exceptions "$d47/dependency_exceptions.tsv" --npm-dir "$d47/npm_dir" --npm-outdated "$d47/npm_outdated.json" --npm-audit "$d47/nonexistent.json" 2>&1)
+rc47=$?
+set -e
+[ "$rc47" -ne 0 ] || { echo "FAIL DC47: expected failure"; exit 1; }
+
+# DC48: malformed JSON or unexpected shape in pub_outdated -> fails
+echo "Running DC48..."
+d48="$TMP_DIR/dc48"; setup_base_fixtures "$d48"
+echo '{"packages": "not_a_list"}' > "$d48/pub_outdated.json"
+set +e
+out48=$(run_check "$d48" 2>&1)
+rc48=$?
+set -e
+[ "$rc48" -ne 0 ] || { echo "FAIL DC48: expected failure"; exit 1; }
+
+# DC49: npm audit/outdated with error payload -> fails
+echo "Running DC49..."
+d49="$TMP_DIR/dc49"; setup_base_fixtures "$d49"
+mkdir -p "$d49/npm_dir"
+echo '{"name": "test"}' > "$d49/npm_dir/package.json"
+echo '{"name": "test", "lockfileVersion": 3}' > "$d49/npm_dir/package-lock.json"
+echo '{"error": {"code": "E404", "summary": "Not found"}}' > "$d49/npm_audit.json"
+echo '{}' > "$d49/npm_outdated.json"
+set +e
+out49=$(run_check "$d49" --npm-dir "$d49/npm_dir" --npm-outdated "$d49/npm_outdated.json" --npm-audit "$d49/npm_audit.json" 2>&1)
+rc49=$?
+set -e
+[ "$rc49" -ne 0 ] || { echo "FAIL DC49: expected failure"; exit 1; }
+
+echo "All 49 dependency check self-tests (DC1 - DC49) passed successfully!"
