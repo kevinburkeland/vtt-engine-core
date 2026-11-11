@@ -172,6 +172,50 @@ setup_http_fixtures() {
 }
 EOF
 
+  cat << 'EOF' > "$HTTP_ROOT/releases_linux_dc36.json"
+{
+  "current_release": {"stable": "3.47.9"},
+  "releases": [
+    {
+      "version": "3.47.9",
+      "release_date": "2026-10-20T00:00:00Z",
+      "channel": "stable",
+      "dart_sdk_version": "3.13.7"
+    },
+    {
+      "version": "3.47.0",
+      "release_date": "2026-08-01T00:00:00Z",
+      "channel": "stable",
+      "dart_sdk_version": "3.13.0"
+    }
+  ]
+}
+EOF
+
+  if [ -d "$SCRIPT_DIR/../.github/workflows" ]; then
+    grep -hoE "uses:\s*[a-zA-Z0-9_\-]+/[a-zA-Z0-9_\-]+@[0-9a-fA-F]{40}\s*#\s*\S+" "$SCRIPT_DIR/../.github/workflows"/*.yml | while read -r line; do
+      action=$(echo "$line" | sed -E 's/uses:\s*([^@]+)@.*/\1/')
+      sha=$(echo "$line" | sed -E 's/uses:\s*[^@]+@([0-9a-fA-F]{40})\s*#.*/\1/')
+      tag=$(echo "$line" | sed -E 's/.*#\s*(\S+)/\1/')
+      mkdir -p "$HTTP_ROOT/repos/$action/releases"
+      mkdir -p "$HTTP_ROOT/repos/$action/git/ref/tags"
+      cat << EOF_ACT > "$HTTP_ROOT/repos/$action/releases/latest.json"
+{
+  "tag_name": "$tag",
+  "published_at": "2026-05-10T12:00:00Z"
+}
+EOF_ACT
+      cat << EOF_ACT > "$HTTP_ROOT/repos/$action/git/ref/tags/$tag.json"
+{
+  "object": {
+    "sha": "$sha",
+    "type": "commit"
+  }
+}
+EOF_ACT
+    done
+  fi
+
   # Node dist index
   mkdir -p "$HTTP_ROOT/dist"
   cat << 'EOF' > "$HTTP_ROOT/dist/index.json"
@@ -1077,7 +1121,7 @@ out36=$(python3 -I "$CHECK_SCRIPT" \
   "${npm_args[@]}")
 
 setup_dart_count=$(echo "$out36" | grep -c "^setup-dart:" || true)
-real_count=$(grep -c 'dart-lang/setup-dart' "$SCRIPT_DIR/../.github/workflows"/*.yml | awk -F: '{s+=$2} END {print s+0}')
+real_count=$((grep -c 'dart-lang/setup-dart' "$SCRIPT_DIR/../.github/workflows"/*.yml || true) | awk -F: '{s+=$2} END {print s+0}')
 [ "$setup_dart_count" -eq "$real_count" ] || { echo "FAIL DC36 count mismatch: found $setup_dart_count setup-dart lines, expected $real_count"; exit 1; }
 setup_http_fixtures
 
@@ -1138,7 +1182,9 @@ with open('$f', 'w') as file:
   done
 else
   # App repo (no min-sdk job in real workflows): inject min-sdk job with 3.12.0
-  cat << 'EOF' >> "$d38/.github/workflows/ci.yml"
+  cat << 'EOF' > "$d38/.github/workflows/ci.yml"
+name: CI
+jobs:
   min-sdk:
     name: Minimum SDK
     runs-on: ubuntu-latest
@@ -1177,7 +1223,9 @@ with open('$f', 'w') as file:
   done
 else
   # App: inject main job with setup-dart 3.13.6
-  cat << 'EOF' >> "$d39/.github/workflows/ci.yml"
+  cat << 'EOF' > "$d39/.github/workflows/ci.yml"
+name: CI
+jobs:
   main_dart:
     name: Main Dart
     runs-on: ubuntu-latest
