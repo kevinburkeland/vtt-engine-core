@@ -1131,27 +1131,99 @@ EOF
 EOF
 done
 
-# Flutter releases fixture whose newest stable ships Dart 3.13.7 and floor Dart 3.13.0
+# Flutter releases fixture built dynamically from repo workflows/pubspec
 mkdir -p "$TMP_DIR/http_dc36"
-cat << 'EOF' > "$TMP_DIR/http_dc36/releases_linux.json"
-{
-  "current_release": {"stable": "3.47.9"},
-  "releases": [
-    {
-      "version": "3.47.9",
-      "release_date": "2026-10-20T00:00:00Z",
-      "channel": "stable",
-      "dart_sdk_version": "3.13.7"
-    },
-    {
-      "version": "3.47.0",
-      "release_date": "2026-08-01T00:00:00Z",
-      "channel": "stable",
-      "dart_sdk_version": "3.13.0"
-    }
-  ]
+today_dc36=$(python3 -I - "$SCRIPT_DIR/.." "$HTTP_ROOT" "$TMP_DIR/http_dc36/releases_linux.json" << 'PYEOF'
+import os, sys, re, json
+from datetime import datetime, timezone, timedelta
+
+repo_root = sys.argv[1]
+http_root = sys.argv[2]
+out_fixture = sys.argv[3]
+
+ci_path = os.path.join(repo_root, '.github/workflows/ci.yml')
+pubspec_path = os.path.join(repo_root, 'pubspec.yaml')
+
+target_dart = None
+if os.path.exists(ci_path):
+    with open(ci_path) as f:
+        content = f.read()
+    m = re.search(r'^\s*test:\s*[\s\S]*?uses:\s*dart-lang/setup-dart[^\n]*\s*with:\s*sdk:\s*[\x27\"]?([0-9]+\.[0-9]+\.[0-9]+)[\x27\"]?', content, re.MULTILINE)
+    if m:
+        target_dart = m.group(1)
+
+flutter_ver = None
+if os.path.exists(pubspec_path):
+    with open(pubspec_path) as f:
+        p_content = f.read()
+    fm = re.search(r'^\s*flutter:\s*[\x27\"]?([0-9]+\.[0-9]+\.[0-9]+)[\x27\"]?', p_content, re.MULTILINE)
+    if fm:
+        flutter_ver = fm.group(1)
+
+# Known Flutter releases fixture mapping
+known_releases = {
+    '3.50.0': '3.14.0',
 }
-EOF
+rel_json_path = os.path.join(http_root, 'releases_linux.json')
+if os.path.exists(rel_json_path):
+    with open(rel_json_path) as f:
+        base_data = json.load(f)
+        for r in base_data.get('releases', []):
+            if 'version' in r and 'dart_sdk_version' in r:
+                known_releases[r['version']] = r['dart_sdk_version']
+
+if not target_dart and flutter_ver:
+    target_dart = known_releases.get(flutter_ver)
+
+if not target_dart:
+    target_dart = '3.14.0'
+
+major, minor, patch = target_dart.split('.')
+floor_dart = f"{major}.{minor}.0"
+
+if flutter_ver:
+    newest_flutter_ver = flutter_ver
+else:
+    newest_flutter_ver = '3.50.0' if target_dart == '3.14.0' else f"{major}.{minor}.0"
+
+floor_flutter_ver = None
+for f_v, d_v in known_releases.items():
+    if d_v == floor_dart:
+        floor_flutter_ver = f_v
+        break
+if not floor_flutter_ver:
+    floor_flutter_ver = newest_flutter_ver
+
+newest_date = datetime(2026, 10, 20, 0, 0, 0, tzinfo=timezone.utc)
+today_calc = (newest_date + timedelta(days=60)).strftime('%Y-%m-%d')
+
+releases = [
+    {
+        'version': newest_flutter_ver,
+        'release_date': newest_date.strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'channel': 'stable',
+        'dart_sdk_version': target_dart,
+    }
+]
+if floor_dart != target_dart:
+    floor_date = newest_date - timedelta(days=60)
+    releases.append({
+        'version': floor_flutter_ver,
+        'release_date': floor_date.strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'channel': 'stable',
+        'dart_sdk_version': floor_dart,
+    })
+
+data = {
+    'current_release': {'stable': newest_flutter_ver},
+    'releases': releases,
+}
+with open(out_fixture, 'w') as f:
+    json.dump(data, f, indent=2)
+
+print(today_calc)
+PYEOF
+)
 cp "$TMP_DIR/http_dc36/releases_linux.json" "$HTTP_ROOT/releases_linux_dc36.json"
 
 # Header-only exceptions file
@@ -1171,7 +1243,7 @@ out36=$(python3 -I "$CHECK_SCRIPT" \
   --pub-api "$SERVER_URL" \
   --flutter-releases "$SERVER_URL/releases_linux_dc36.json" \
   --github-api "$SERVER_URL" \
-  --today 2026-12-20 \
+  --today "$today_dc36" \
   "${npm_args[@]}")
 
 setup_dart_count=$(echo "$out36" | grep -c "^setup-dart:" || true)

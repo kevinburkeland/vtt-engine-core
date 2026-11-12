@@ -3,6 +3,9 @@
 One line per slice, newest first. Each line: date, slice name, what changed for a user or a developer.
 Work before Map slice 1.1 (hardening passes 0 to 12) is in the git history.
 
+## 2026-11-12
+- Bonus slice 2: Move environment SDK to ^3.14.0 and workflows setup-dart to 3.14.0, and update DC36 in test_check_dependencies.sh to dynamically read repo target SDK.
+
 ## 2026-11-11
 - Bonus slice 1.1: Enforce mutation branch commit rules (single commit, Signed-off-by trailer, and MUTATION subject format with matching id), validate remote branch subjects and active branch limit in check_mutation_branches.sh, support dated exact-SHA exceptions in mutation_subject_exceptions.tsv, and add MB1-MB17 and RM1-RM20 self-tests.
 - Bonus slice 1.1: Add npm override declaration rule N4, per-advisory vulnerability checking with GHSA verification rule N2, and add DC60-DC69 self-tests.
