@@ -179,13 +179,11 @@ def parse_workflow_file(wf_path, wf_file):
         if current_job is None:
             continue
 
-        # Job attributes are indented 4 spaces
-        if indent == 4:
-            m_name = re.match(r'^    name:\s*(.*)$', line)
-            if m_name:
-                name_val = m_name.group(1).split('#')[0].strip().strip("'\"")
-                current_job['name'] = name_val
-            continue
+        # Find name: at any level (nearest name: line)
+        m_name = re.match(r'^\s*(?:-\s*)?name:\s*(.*)$', line)
+        if m_name:
+            name_val = m_name.group(1).split('#')[0].strip().strip("'\"")
+            current_job['name'] = name_val
 
         # Step item starts with 6 spaces: "      - "
         m_step = re.match(r'^\s{6}-\s*(.*)$', line)
@@ -703,7 +701,7 @@ def main():
                             if not step['sdk']:
                                 line_no = step['uses_line'] or step['start_line']
                                 failures.append(f"T2: {wf_file}:{line_no}: setup-dart step has no sdk: in with: block")
-                            elif job['id'] == 'min-sdk':
+                            elif 'minimum' in (job['name'] or '').lower():
                                 line_no = step['sdk_line'] or step['uses_line'] or step['start_line']
                                 if step['sdk'] != target_dart_minor_floor:
                                     first_release_date = None
