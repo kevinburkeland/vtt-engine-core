@@ -1601,4 +1601,126 @@ set -e
 [ "$rc55" -ne 0 ] || { echo "FAIL DC55: expected failure for outdated SDK floor"; exit 1; }
 [[ "$out55" == *"T3:"* ]] || { echo "FAIL DC55 output: $out55"; exit 1; }
 
-echo "All 55 dependency check self-tests (DC1 - DC55) passed successfully!"
+# DC56: N1: current ahead of latest tag -> pass with 'ahead of latest tag'
+echo "Running DC56..."
+d56="$TMP_DIR/dc56"; setup_base_fixtures "$d56"
+mkdir -p "$d56/npm_dir"
+echo '{"name": "test"}' > "$d56/npm_dir/package.json"
+echo '{"name": "test", "lockfileVersion": 3}' > "$d56/npm_dir/package-lock.json"
+echo '{"metadata":{"vulnerabilities":{"moderate":0,"high":0,"critical":0}}}' > "$d56/npm_audit.json"
+cat << 'EOF2' > "$d56/npm_outdated.json"
+{
+  "pkg_ahead": {
+    "current": "6.0.0",
+    "latest": "5.0.2"
+  }
+}
+EOF2
+set +e
+out56=$(run_check "$d56" --npm-dir "$d56/npm_dir" --npm-outdated "$d56/npm_outdated.json" --npm-audit "$d56/npm_audit.json" --today 2026-11-10 2>&1)
+rc56=$?; set -e
+[ "$rc56" -eq 0 ] || { echo "FAIL DC56: expected pass for current ahead of latest: $out56"; exit 1; }
+[[ "$out56" == *"ahead of latest tag"* ]] || { echo "FAIL DC56 output missing 'ahead of latest tag': $out56"; exit 1; }
+
+# DC57: Rule D6: declared floor behind current -> fail D6
+echo "Running DC57..."
+d57="$TMP_DIR/dc57"; setup_base_fixtures "$d57"
+mkdir -p "$HTTP_ROOT/api/packages/pkg_d6"
+echo '{"advisories": []}' > "$HTTP_ROOT/api/packages/pkg_d6/advisories.json"
+cat << 'EOF2' > "$HTTP_ROOT/api/packages/pkg_d6.json"
+{
+  "name": "pkg_d6",
+  "latest": {"version": "1.17.0", "published": "2026-01-01T00:00:00Z"},
+  "versions": [
+    {"version": "1.12.0", "published": "2025-01-01T00:00:00Z"},
+    {"version": "1.13.0", "published": "2025-06-01T00:00:00Z"},
+    {"version": "1.17.0", "published": "2026-01-01T00:00:00Z"}
+  ]
+}
+EOF2
+cat << 'EOF2' > "$d57/pubspec.yaml"
+name: test_pkg
+environment:
+  sdk: '^3.13.0'
+dependencies:
+  pkg_d6: ^1.12.0
+EOF2
+cat << 'EOF2' > "$d57/pub_outdated.json"
+{
+  "packages": [
+    {
+      "package": "pkg_d6",
+      "kind": "direct",
+      "isDiscontinued": false,
+      "isCurrentRetracted": false,
+      "isCurrentAffectedByAdvisory": false,
+      "current": {"version": "1.17.0"},
+      "resolvable": {"version": "1.17.0"},
+      "latest": {"version": "1.17.0"}
+    }
+  ]
+}
+EOF2
+set +e
+out57=$(run_check "$d57" --today 2026-11-10 2>&1)
+rc57=$?; set -e
+[ "$rc57" -ne 0 ] || { echo "FAIL DC57: expected failure for declared floor behind current"; exit 1; }
+[[ "$out57" == *"D6:"* && "$out57" == *"pkg_d6"* ]] || { echo "FAIL DC57 output: $out57"; exit 1; }
+
+# DC58: Rule D6: declared floor equal to current -> pass
+echo "Running DC58..."
+d58="$TMP_DIR/dc58"; setup_base_fixtures "$d58"
+cat << 'EOF2' > "$d58/pubspec.yaml"
+name: test_pkg
+environment:
+  sdk: '^3.13.0'
+dependencies:
+  pkg_d6: ^1.17.0
+EOF2
+cat << 'EOF2' > "$d58/pub_outdated.json"
+{
+  "packages": [
+    {
+      "package": "pkg_d6",
+      "kind": "direct",
+      "isDiscontinued": false,
+      "isCurrentRetracted": false,
+      "isCurrentAffectedByAdvisory": false,
+      "current": {"version": "1.17.0"},
+      "resolvable": {"version": "1.17.0"},
+      "latest": {"version": "1.17.0"}
+    }
+  ]
+}
+EOF2
+set +e
+out58=$(run_check "$d58" --today 2026-11-10 2>&1)
+rc58=$?; set -e
+[ "$rc58" -eq 0 ] || { echo "FAIL DC58: expected pass when floor equals current: $out58"; exit 1; }
+
+# DC59: Rule D6: Git and SDK dependencies skipped
+echo "Running DC59..."
+d59="$TMP_DIR/dc59"; setup_base_fixtures "$d59"
+cat << 'EOF2' > "$d59/pubspec.yaml"
+name: test_pkg
+environment:
+  sdk: '^3.13.0'
+dependencies:
+  vtt_engine_core:
+    git:
+      url: https://github.com/kevinburkeland/vtt-engine-core.git
+      ref: main
+  flutter:
+    sdk: flutter
+EOF2
+cat << 'EOF2' > "$d59/pub_outdated.json"
+{
+  "packages": []
+}
+EOF2
+set +e
+out59=$(run_check "$d59" --today 2026-11-10 2>&1)
+rc59=$?; set -e
+[ "$rc59" -eq 0 ] || { echo "FAIL DC59: expected pass for git/sdk dependencies: $out59"; exit 1; }
+
+echo "All 59 dependency check self-tests (DC1 - DC59) passed successfully!"

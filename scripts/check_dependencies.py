@@ -51,27 +51,62 @@ def fetch_json(url, headers=None, retries=3):
     print(f"Error: Network failure fetching URL '{url}': {last_err}", file=sys.stderr)
     sys.exit(1)
 
-def semver_tuple(v_str):
-    cleaned = re.sub(r'^[v\^~>=<]+', '', v_str.strip())
-    # Split on -, +
-    core = re.split(r'[-+]', cleaned)[0]
-    parts = []
+def parse_semver(v_str):
+    cleaned = re.sub(r'^[v\^~>=<]+', '', str(v_str).strip())
+    without_build = cleaned.split('+', 1)[0]
+    parts = without_build.split('-', 1)
+    core = parts[0]
+    prerelease = parts[1] if len(parts) > 1 else None
+
+    core_parts = []
     for p in core.split('.'):
         try:
-            parts.append(int(p))
+            core_parts.append(int(p))
         except ValueError:
-            parts.append(0)
-    while len(parts) < 3:
-        parts.append(0)
-    return tuple(parts[:3])
+            core_parts.append(0)
+    while len(core_parts) < 3:
+        core_parts.append(0)
+    return tuple(core_parts[:3]), prerelease
+
+def semver_tuple(v_str):
+    c, _ = parse_semver(v_str)
+    return c
 
 def semver_cmp(v1_str, v2_str):
-    t1 = semver_tuple(v1_str)
-    t2 = semver_tuple(v2_str)
-    if t1 < t2:
+    c1, pre1 = parse_semver(v1_str)
+    c2, pre2 = parse_semver(v2_str)
+    if c1 < c2:
         return -1
-    elif t1 > t2:
+    elif c1 > c2:
         return 1
+
+    if pre1 is not None and pre2 is None:
+        return -1
+    if pre1 is None and pre2 is not None:
+        return 1
+    if pre1 is None and pre2 is None:
+        return 0
+
+    p1_parts = pre1.split('.')
+    p2_parts = pre2.split('.')
+    for i in range(max(len(p1_parts), len(p2_parts))):
+        if i >= len(p1_parts):
+            return -1
+        if i >= len(p2_parts):
+            return 1
+        id1, id2 = p1_parts[i], p2_parts[i]
+        id1_is_num, id2_is_num = id1.isdigit(), id2.isdigit()
+        if id1_is_num and id2_is_num:
+            n1, n2 = int(id1), int(id2)
+            if n1 < n2: return -1
+            if n1 > n2: return 1
+        elif id1_is_num and not id2_is_num:
+            return -1
+        elif not id1_is_num and id2_is_num:
+            return 1
+        else:
+            if id1 < id2: return -1
+            if id1 > id2: return 1
     return 0
 
 def is_version_in_ranges(v_str, ranges):
@@ -212,6 +247,7 @@ def read_pubspec(pubspec_path):
     direct_deps = set()
     dev_deps = set()
     non_hosted_deps = set()
+    declared_floors = {}
 
     current_section = None
     current_dep_name = None
@@ -282,10 +318,20 @@ def read_pubspec(pubspec_path):
                                 direct_exact_pins.append((pkg_name, val_clean))
                             else:
                                 dev_exact_pins.append((pkg_name, val_clean))
-                elif current_dep_name and ('git:' in indent_line or 'sdk:' in indent_line):
+                            declared_floors[pkg_name] = val_clean
+                        elif val_clean.startswith('^'):
+                            declared_floors[pkg_name] = val_clean[1:].strip()
+                        elif val_clean.startswith('>='):
+                            m_floor = re.search(r'>=\s*([0-9a-zA-Z\.\+\-]+)', val_clean)
+                            if m_floor:
+                                declared_floors[pkg_name] = m_floor.group(1).strip()
+                    elif val.startswith('{'):
+                        if 'git:' in val or 'sdk:' in val or 'path:' in val:
+                            non_hosted_deps.add(pkg_name)
+                elif current_dep_name and ('git:' in indent_line or 'sdk:' in indent_line or 'path:' in indent_line):
                     non_hosted_deps.add(current_dep_name)
 
-    return sdk_constraint, flutter_constraint, direct_exact_pins, dev_exact_pins, direct_deps, dev_deps, non_hosted_deps
+    return sdk_constraint, flutter_constraint, direct_exact_pins, dev_exact_pins, direct_deps, dev_deps, non_hosted_deps, declared_floors
 
 def main():
     parser = argparse.ArgumentParser(description='Enforce dependency currency and security invariances.')
@@ -406,7 +452,7 @@ def main():
     held_notes = []
 
     # Read pubspec
-    sdk_constraint, flutter_constraint, direct_exact_pins, dev_exact_pins, direct_deps, dev_deps, non_hosted_deps = read_pubspec(args.pubspec)
+    sdk_constraint, flutter_constraint, direct_exact_pins, dev_exact_pins, direct_deps, dev_deps, non_hosted_deps, declared_floors = read_pubspec(args.pubspec)
 
     # D5: exact pins
     for pkg, v in direct_exact_pins + dev_exact_pins:
@@ -537,6 +583,32 @@ def main():
         elif lat_v and curr_v == res_v and semver_cmp(curr_v, lat_v) < 0:
             held_notes.append(f"Package '{pkg_name}' held by graph at {curr_v} (latest is {lat_v})")
 
+        # D6: declared floor current (Fix 3.3)
+        if (kind == 'direct' or pkg_name in direct_deps or pkg_name in dev_deps) and pkg_name in declared_floors:
+            if pkg_name not in non_hosted_deps:
+                floor_v = declared_floors[pkg_name]
+                if curr_v and floor_v and curr_v != floor_v:
+                    pkg_info = get_pub_package_info(pkg_name)
+                    first_newer_floor_date = None
+                    first_newer_floor_ver = None
+                    for v_entry in pkg_info.get('versions', []):
+                        v_str = v_entry.get('version')
+                        if v_str and semver_cmp(v_str, floor_v) > 0:
+                            if '-' in v_str and '-' not in floor_v:
+                                continue
+                            d = parse_date(v_entry.get('published'))
+                            if d:
+                                if first_newer_floor_date is None or d < first_newer_floor_date:
+                                    first_newer_floor_date = d
+                                    first_newer_floor_ver = v_str
+
+                    age_days = (today - first_newer_floor_date).days if first_newer_floor_date else 999
+                    if age_days < 14:
+                        pending_notes.append(f"Package '{pkg_name}' declared floor '{floor_v}' pending current '{curr_v}' ({age_days} days old)")
+                    else:
+                        if not check_exception('D6', pkg_name, floor_v):
+                            failures.append(f"D6: Package '{pkg_name}' declared floor '{floor_v}' is behind current '{curr_v}' (published {age_days} days ago)")
+
         # D4: not maintained (direct dependencies only)
         if kind == 'direct' or pkg_name in direct_deps:
             pkg_info = get_pub_package_info(pkg_name)
@@ -614,8 +686,18 @@ def main():
                             elif job['id'] == 'min-sdk':
                                 line_no = step['sdk_line'] or step['uses_line'] or step['start_line']
                                 if step['sdk'] != target_dart_minor_floor:
-                                    if not check_exception('T3', 'dart', step['sdk']):
-                                        failures.append(f"T3: {wf_file}:{line_no}: Minimum SDK job runs '{step['sdk']}', expected exact floor '{target_dart_minor_floor}'")
+                                    first_release_date = None
+                                    for rel in reversed(stable_releases):
+                                        d_ver = rel.get('dart_sdk_version', '')
+                                        if semver_tuple(d_ver)[:2] == semver_tuple(target_dart)[:2]:
+                                            first_release_date = parse_date(rel.get('release_date'))
+                                            break
+                                    age_days = (today - first_release_date).days if first_release_date else (today - newest_flutter_date).days if newest_flutter_date else 999
+                                    if age_days < 14:
+                                        pending_notes.append(f"{wf_file}:{line_no}: Minimum SDK job sdk '{step['sdk']}' pending target floor '{target_dart_minor_floor}' ({age_days} days old)")
+                                    else:
+                                        if not check_exception('T3', 'dart', step['sdk']):
+                                            failures.append(f"T3: {wf_file}:{line_no}: Minimum SDK job runs '{step['sdk']}', expected exact floor '{target_dart_minor_floor}'")
                             else:
                                 line_no = step['sdk_line'] or step['uses_line'] or step['start_line']
                                 if step['sdk'] != target_dart:
@@ -665,10 +747,11 @@ def main():
                                     if isinstance(gh_all_rels, list):
                                         newer_dates = []
                                         for r in gh_all_rels:
+                                            if r.get('draft') or r.get('prerelease'):
+                                                continue
                                             tag = r.get('tag_name')
                                             p_date = parse_date(r.get('published_at'))
-                                            if tag and p_date and tag != action_comment:
-                                                # If current tag is known in releases list, check if newer
+                                            if tag and p_date and semver_cmp(tag, action_comment) > 0:
                                                 newer_dates.append(p_date)
                                         if newer_dates:
                                             first_newer_rel_date = min(newer_dates)
@@ -744,6 +827,9 @@ def main():
                         curr_npm_v = details.get('current')
                         lat_npm_v = details.get('latest')
                         if curr_npm_v and lat_npm_v and curr_npm_v != lat_npm_v:
+                            if semver_cmp(curr_npm_v, lat_npm_v) > 0:
+                                print(f"npm package '{npm_pkg}' version {curr_npm_v} ahead of latest tag {lat_npm_v}")
+                                continue
                             # Query npm registry
                             npm_pkg_url = f"{args.npm_registry.rstrip('/')}/{npm_pkg}"
                             npm_pkg_data = fetch_json(npm_pkg_url)

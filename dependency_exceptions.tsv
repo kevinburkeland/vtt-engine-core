@@ -1,2 +1,2 @@
 # rule_id	name	held_at	review_by	reason
-D4	collection	1.19.1	2027-02-01	Official Dart team core package, mature and stable, no newer release available
+D4	collection	1.19.1	2027-02-01	Published by dart.dev with newest release 1.19.1 on 2024-10-21; maintained by the Dart team as a mature utility library without need for feature churn, ending when a new release is published or the SDK subsumes its utilities.
