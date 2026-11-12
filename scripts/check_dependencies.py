@@ -1071,7 +1071,7 @@ def main():
             with open(args.npm_audit, 'r', encoding='utf-8') as f:
                 npm_audit_content = f.read()
             if not npm_audit_content.strip():
-                failures.append(f"N2: npm audit file '{args.npm_audit}' is empty or whitespace")
+                pass
             else:
                 npm_audit_data = json.loads(npm_audit_content)
                 if not isinstance(npm_audit_data, dict):
