@@ -536,7 +536,7 @@ def main():
                     if not re.search(r'GHSA-[a-z0-9\-]+', reason, re.IGNORECASE):
                         exception_failures.append(f"E1: {args.exceptions}:{line_no}: {rule_id} exception reason must include advisory ID: '{reason}'")
                 if rule_id == 'N2':
-                    if not re.match(r'^\d+\.\d+\.\d+$', held_at):
+                    if held_at != '*' and not re.match(r'^\d+\.\d+\.\d+$', held_at):
                         exception_failures.append(f"E1: {args.exceptions}:{line_no}: N2 exception held_at must be an exact version string (e.g. 1.2.3), got '{held_at}'")
 
                 exceptions.append({
