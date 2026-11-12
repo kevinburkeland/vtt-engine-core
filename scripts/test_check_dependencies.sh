@@ -139,6 +139,10 @@ EOF
   mkdir -p "$case_dir/npm"
   echo "{}" > "$case_dir/npm/package.json"
   echo "{}" > "$case_dir/npm/outdated.json"
+  echo "0" > "$case_dir/npm/outdated_status.json"
+  echo "0" > "$case_dir/npm/audit_status.json"
+  touch "$case_dir/npm/outdated.stderr"
+  touch "$case_dir/npm/audit.stderr"
   cat << 'EOF' > "$case_dir/npm/audit.json"
 {
   "metadata": {
@@ -373,6 +377,8 @@ run_check() {
     --npm-dir "$dir/npm" \
     --npm-outdated "$dir/npm/outdated.json" \
     --npm-audit "$dir/npm/audit.json" \
+    --npm-outdated-status "$dir/npm/outdated_status.json" \
+    --npm-audit-status "$dir/npm/audit_status.json" \
     --npm-registry "$SERVER_URL" \
     --node-dist "$SERVER_URL/dist/index.json" \
     --today 2026-11-10 \
@@ -430,6 +436,16 @@ EOF
 cat << 'EOF' > "$d3/pub_outdated.json"
 {
   "packages": [
+    {
+      "package": "meta",
+      "kind": "direct",
+      "isDiscontinued": false,
+      "isCurrentRetracted": false,
+      "isCurrentAffectedByAdvisory": false,
+      "current": {"version": "1.19.0"},
+      "resolvable": {"version": "1.19.0"},
+      "latest": {"version": "1.19.0"}
+    },
     {
       "package": "pkg_fresh",
       "kind": "direct",
@@ -544,6 +560,16 @@ cat << 'EOF' > "$d7/pub_outdated.json"
 {
   "packages": [
     {
+      "package": "meta",
+      "kind": "direct",
+      "isDiscontinued": false,
+      "isCurrentRetracted": false,
+      "isCurrentAffectedByAdvisory": false,
+      "current": {"version": "1.19.0"},
+      "resolvable": {"version": "1.19.0"},
+      "latest": {"version": "1.19.0"}
+    },
+    {
       "package": "pkg_adv",
       "kind": "direct",
       "isDiscontinued": false,
@@ -637,7 +663,7 @@ cat << 'EOF' > "$d10/pub_outdated.json"
   ]
 }
 EOF
-echo "  pkg_old: ^1.0.0" >> "$d10/pubspec.yaml"
+sed -i 's/meta: \^1.19.0/pkg_old: ^1.0.0/' "$d10/pubspec.yaml"
 set +e; out10=$(run_check "$d10" 2>&1); rc10=$?; set -e
 [ "$rc10" -ne 0 ] || { echo "FAIL DC10: expected failure"; exit 1; }
 [[ "$out10" == *"D4"* && "$out10" == *"pkg_old"* ]] || { echo "FAIL DC10 output: $out10"; exit 1; }
@@ -661,7 +687,7 @@ cat << 'EOF' > "$d11/pub_outdated.json"
   ]
 }
 EOF
-echo "  pkg_old: ^1.0.0" >> "$d11/pubspec.yaml"
+sed -i 's/meta: \^1.19.0/pkg_old: ^1.0.0/' "$d11/pubspec.yaml"
 printf "D4\tpkg_old\t1.0.0\t2026-12-01\tMaintained upstream fork is pending migration.\n" > "$d11/dependency_exceptions.tsv"
 out11=$(run_check "$d11")
 [[ "$out11" == *"Dependencies up to date"* || "$out11" == *"Summary"* ]] || { echo "FAIL DC11: $out11"; exit 1; }
@@ -685,7 +711,7 @@ cat << 'EOF' > "$d12/pub_outdated.json"
   ]
 }
 EOF
-echo "  pkg_old: ^1.0.0" >> "$d12/pubspec.yaml"
+sed -i 's/meta: \^1.19.0/pkg_old: ^1.0.0/' "$d12/pubspec.yaml"
 printf "D4\tpkg_old\t1.0.0\t2026-11-09\tMaintained upstream fork is pending migration.\n" > "$d12/dependency_exceptions.tsv"
 set +e; out12=$(run_check "$d12" 2>&1); rc12=$?; set -e
 [ "$rc12" -ne 0 ] || { echo "FAIL DC12: expected failure"; exit 1; }
@@ -710,7 +736,7 @@ cat << 'EOF' > "$d13/pub_outdated.json"
   ]
 }
 EOF
-echo "  pkg_old: ^1.0.0" >> "$d13/pubspec.yaml"
+sed -i 's/meta: \^1.19.0/pkg_old: ^1.0.0/' "$d13/pubspec.yaml"
 printf "D4\tpkg_old\t1.0.0\t2027-02-15\tMaintained upstream fork is pending migration.\n" > "$d13/dependency_exceptions.tsv"
 set +e; out13=$(run_check "$d13" 2>&1); rc13=$?; set -e
 [ "$rc13" -ne 0 ] || { echo "FAIL DC13: expected failure"; exit 1; }
@@ -735,7 +761,7 @@ cat << 'EOF' > "$d14/pub_outdated.json"
   ]
 }
 EOF
-echo "  pkg_old: ^1.0.0" >> "$d14/pubspec.yaml"
+sed -i 's/meta: \^1.19.0/pkg_old: ^1.0.0/' "$d14/pubspec.yaml"
 printf "D4\tpkg_old\t1.0.0\t2026-12-01\tToo short reason\n" > "$d14/dependency_exceptions.tsv"
 set +e; out14=$(run_check "$d14" 2>&1); rc14=$?; set -e
 [ "$rc14" -ne 0 ] || { echo "FAIL DC14: expected failure"; exit 1; }
@@ -1094,6 +1120,8 @@ out34=$(python3 -I "$CHECK_SCRIPT" \
   --npm-dir "$d34/npm" \
   --npm-outdated "$d34/npm/outdated.json" \
   --npm-audit "$d34/npm/audit.json" \
+  --npm-outdated-status "$d34/npm/outdated_status.json" \
+  --npm-audit-status "$d34/npm/audit_status.json" \
   --npm-registry "$SERVER_URL" \
   --node-dist "$SERVER_URL/dist/index.json")
 [[ "$out34" == *"$today_utc"* ]] || { echo "FAIL DC34: expected date $today_utc in output: $out34"; exit 1; }
@@ -1226,13 +1254,43 @@ PYEOF
 )
 cp "$TMP_DIR/http_dc36/releases_linux.json" "$HTTP_ROOT/releases_linux_dc36.json"
 
+# Populate pub_outdated.json with all dependencies from repo pubspec matching declared floors
+python3 -c "
+import json, re, os
+with open('$SCRIPT_DIR/../pubspec.yaml') as f:
+    lines = f.readlines()
+pkgs = {}
+sec = None
+for l in lines:
+    if l.startswith('dependencies:'): sec = 'dep'
+    elif l.startswith('dev_dependencies:'): sec = 'dev'
+    elif not l.startswith(' ') and not l.startswith('\t'): sec = None
+    elif sec:
+        m = re.match(r'^\s+([a-zA-Z0-9_\-]+):\s*[\^]?([0-9]+\.[0-9]+\.[0-9]+)', l)
+        if m and m.group(1) not in ('flutter', 'vtt_engine_core', 'vtt_ruleset_dnd5e'):
+            pkgs[m.group(1)] = m.group(2)
+        else:
+            m2 = re.match(r'^\s+([a-zA-Z0-9_\-]+):', l)
+            if m2 and m2.group(1) not in ('flutter', 'vtt_engine_core', 'vtt_ruleset_dnd5e'):
+                pkgs[m2.group(1)] = '1.0.0'
+outdated = {'packages': [{'package': p, 'kind': 'direct', 'isDiscontinued': False, 'isCurrentRetracted': False, 'isCurrentAffectedByAdvisory': False, 'current': {'version': v}, 'resolvable': {'version': v}, 'latest': {'version': v}} for p, v in pkgs.items()]}
+for p, v in pkgs.items():
+    os.makedirs('$HTTP_ROOT/api/packages/' + p, exist_ok=True)
+    with open('$HTTP_ROOT/api/packages/' + p + '.json', 'w') as f:
+        json.dump({'name': p, 'latest': {'version': v, 'published': '2026-10-01T00:00:00Z'}, 'versions': [{'version': v, 'published': '2026-10-01T00:00:00Z'}]}, f)
+    with open('$HTTP_ROOT/api/packages/' + p + '/advisories.json', 'w') as f:
+        json.dump({'advisories': []}, f)
+with open('$d36/pub_outdated.json', 'w') as f:
+    json.dump(outdated, f, indent=2)
+"
+
 # Header-only exceptions file
 echo -e "# rule_id\tname\theld_at\treview_by\treason" > "$d36/dependency_exceptions.tsv"
 
 # Run check against real workflows and real pubspec
 npm_args=()
 if [ -d "$SCRIPT_DIR/../firestore_rules_test" ]; then
-  npm_args=(--npm-dir "$d36/npm" --npm-outdated "$d36/npm/outdated.json" --npm-audit "$d36/npm/audit.json" --npm-registry "$SERVER_URL" --node-dist "$SERVER_URL/dist/index.json")
+  npm_args=(--npm-dir "$d36/npm" --npm-outdated "$d36/npm/outdated.json" --npm-audit "$d36/npm/audit.json" --npm-outdated-status "$d36/npm/outdated_status.json" --npm-audit-status "$d36/npm/audit_status.json" --npm-registry "$SERVER_URL" --node-dist "$SERVER_URL/dist/index.json")
 fi
 
 out36=$(python3 -I "$CHECK_SCRIPT" \
@@ -1459,8 +1517,9 @@ mkdir -p "$d46/npm_dir"
 echo '{"name": "test"}' > "$d46/npm_dir/package.json"
 echo '{"name": "test", "lockfileVersion": 3}' > "$d46/npm_dir/package-lock.json"
 echo '{"metadata":{"vulnerabilities":{"moderate":0,"high":0,"critical":0}}}' > "$d46/npm_audit.json"
+echo "0" > "$d46/npm_status.json"
 set +e
-out46=$(python3 "$CHECK_SCRIPT" --pub-outdated "$d46/pub_outdated.json" --pubspec "$d46/pubspec.yaml" --workflows "$d46/.github/workflows" --exceptions "$d46/dependency_exceptions.tsv" --npm-dir "$d46/npm_dir" --npm-outdated "$d46/nonexistent.json" --npm-audit "$d46/npm_audit.json" 2>&1)
+out46=$(python3 "$CHECK_SCRIPT" --pub-outdated "$d46/pub_outdated.json" --pubspec "$d46/pubspec.yaml" --workflows "$d46/.github/workflows" --exceptions "$d46/dependency_exceptions.tsv" --npm-dir "$d46/npm_dir" --npm-outdated "$d46/nonexistent.json" --npm-audit "$d46/npm_audit.json" --npm-outdated-status "$d46/npm_status.json" --npm-audit-status "$d46/npm_status.json" 2>&1)
 rc46=$?
 set -e
 [ "$rc46" -ne 0 ] || { echo "FAIL DC46: expected failure"; exit 1; }
@@ -1472,8 +1531,9 @@ mkdir -p "$d47/npm_dir"
 echo '{"name": "test"}' > "$d47/npm_dir/package.json"
 echo '{"name": "test", "lockfileVersion": 3}' > "$d47/npm_dir/package-lock.json"
 echo '{}' > "$d47/npm_outdated.json"
+echo "0" > "$d47/npm_status.json"
 set +e
-out47=$(python3 "$CHECK_SCRIPT" --pub-outdated "$d47/pub_outdated.json" --pubspec "$d47/pubspec.yaml" --workflows "$d47/.github/workflows" --exceptions "$d47/dependency_exceptions.tsv" --npm-dir "$d47/npm_dir" --npm-outdated "$d47/npm_outdated.json" --npm-audit "$d47/nonexistent.json" 2>&1)
+out47=$(python3 "$CHECK_SCRIPT" --pub-outdated "$d47/pub_outdated.json" --pubspec "$d47/pubspec.yaml" --workflows "$d47/.github/workflows" --exceptions "$d47/dependency_exceptions.tsv" --npm-dir "$d47/npm_dir" --npm-outdated "$d47/npm_outdated.json" --npm-audit "$d47/nonexistent.json" --npm-outdated-status "$d47/npm_status.json" --npm-audit-status "$d47/npm_status.json" 2>&1)
 rc47=$?
 set -e
 [ "$rc47" -ne 0 ] || { echo "FAIL DC47: expected failure"; exit 1; }
@@ -1537,7 +1597,7 @@ cat << 'EOF2' > "$d50/pub_outdated.json"
   ]
 }
 EOF2
-echo "  pkg_multi_pub: ^1.0.0" >> "$d50/pubspec.yaml"
+sed -i 's/meta: \^1.19.0/pkg_multi_pub: ^1.0.0/' "$d50/pubspec.yaml"
 set +e
 out50=$(run_check "$d50" --today 2026-11-10 2>&1)
 rc50=$?
@@ -2015,4 +2075,633 @@ rc70=$?; set -e
 [ "$rc70" -ne 0 ] || { echo "FAIL DC70: expected failure for empty flutter releases"; exit 1; }
 [[ "$out70" == *"T1:"* && "$out70" == *"releases"* ]] || { echo "FAIL DC70 output: $out70"; exit 1; }
 
-echo "All 70 dependency check self-tests (DC1 - DC70) passed successfully!"
+# DC71: Table-driven fail-closed law over all inputs (Fix 4.1)
+echo "Running DC71: Table-driven fail-closed law over all inputs..."
+CHECK_SCRIPT="$CHECK_SCRIPT" python3 - << 'EOF_DC71'
+import os, sys, shutil, subprocess, json, tempfile, re
+from http.server import SimpleHTTPRequestHandler
+import socketserver
+import threading
+
+CHECK_SCRIPT = os.environ.get('CHECK_SCRIPT', os.path.abspath('scripts/check_dependencies.py'))
+
+class LawTestRunner:
+    def __init__(self):
+        self.tmp_dir = tempfile.mkdtemp(prefix='fc_law_')
+        self.http_root = os.path.join(self.tmp_dir, 'http_root')
+        os.makedirs(self.http_root, exist_ok=True)
+        self.setup_http_server()
+        self.setup_base_fixtures()
+
+    def setup_http_server(self):
+        root = self.http_root
+        class Handler(SimpleHTTPRequestHandler):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, directory=root, **kwargs)
+            def do_GET(self):
+                req_path = self.path.split('?')[0].rstrip('/')
+                json_file = os.path.join(root, req_path.lstrip('/') + '.json')
+                if os.path.isfile(json_file):
+                    with open(json_file, 'rb') as f:
+                        data = f.read()
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Content-Length', str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return
+                parts = req_path.lstrip('/').split('/', 1)
+                if '404' not in req_path and 'not_found' not in req_path and len(parts) > 1:
+                    base_json_file = os.path.join(root, parts[1] + '.json')
+                    if os.path.isfile(base_json_file):
+                        with open(base_json_file, 'rb') as f:
+                            data = f.read()
+                        self.send_response(200)
+                        self.send_header('Content-Type', 'application/json')
+                        self.send_header('Content-Length', str(len(data)))
+                        self.end_headers()
+                        self.wfile.write(data)
+                        return
+                super().do_GET()
+
+        self.server = socketserver.TCPServer(('127.0.0.1', 0), Handler)
+        self.port = self.server.server_address[1]
+        self.server_url = f"http://127.0.0.1:{self.port}"
+        self.server_thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.server_thread.start()
+
+    def setup_base_fixtures(self):
+        def write_json(rel_path, obj_or_str):
+            full_path = os.path.join(self.http_root, rel_path)
+            os.makedirs(os.path.dirname(full_path), exist_ok=True)
+            with open(full_path, 'w', encoding='utf-8') as f:
+                if isinstance(obj_or_str, str):
+                    f.write(obj_or_str)
+                else:
+                    json.dump(obj_or_str, f, indent=2)
+
+        write_json('releases_linux.json', {
+            "current_release": {"stable": "3.47.9"},
+            "releases": [
+                {
+                    "version": "3.47.9",
+                    "release_date": "2026-10-20T00:00:00Z",
+                    "channel": "stable",
+                    "dart_sdk_version": "3.13.7"
+                },
+                {
+                    "version": "3.47.0",
+                    "release_date": "2026-08-01T00:00:00Z",
+                    "channel": "stable",
+                    "dart_sdk_version": "3.13.0"
+                }
+            ]
+        })
+        write_json('api/packages/meta.json', {
+            "name": "meta",
+            "latest": {"version": "1.19.0", "published": "2026-10-01T00:00:00Z"},
+            "versions": [{"version": "1.19.0", "published": "2026-10-01T00:00:00Z"}]
+        })
+        write_json('api/packages/meta/advisories.json', {"advisories": []})
+        write_json('repos/actions/checkout/releases/latest.json', {"tag_name": "v7.0.1", "published_at": "2026-05-01T12:00:00Z"})
+        write_json('repos/actions/checkout/releases.json', [{"tag_name": "v7.0.1", "published_at": "2026-05-01T12:00:00Z"}])
+        write_json('repos/actions/checkout/git/ref/tags/v7.0.1.json', {"object": {"sha": "3d3c42e5aac5ba805825da76410c181273ba90b1", "type": "commit"}})
+        write_json('repos/dart-lang/setup-dart/releases/latest.json', {"tag_name": "v1.8.1", "published_at": "2026-05-10T12:00:00Z"})
+        write_json('repos/dart-lang/setup-dart/releases.json', [{"tag_name": "v1.8.1", "published_at": "2026-05-10T12:00:00Z"}])
+        write_json('repos/dart-lang/setup-dart/git/ref/tags/v1.8.1.json', {"object": {"sha": "e51d8e519be8f8d29450b2bc73ea832f4165e2c1", "type": "commit"}})
+        write_json('repos/actions/setup-node/releases/latest.json', {"tag_name": "v4.4.0", "published_at": "2026-05-01T12:00:00Z"})
+        write_json('repos/actions/setup-node/releases.json', [{"tag_name": "v4.4.0", "published_at": "2026-05-01T12:00:00Z"}])
+        write_json('repos/actions/setup-node/git/ref/tags/v4.4.0.json', {"object": {"sha": "49933ea5288caeca8642d1e84afbd3f7d6820020", "type": "commit"}})
+        write_json('dist/index.json', [{"version": "v20.18.0", "date": "2026-10-01", "lts": "Iron"}])
+        write_json('pkg_override.json', {"name": "pkg_override", "time": {"1.0.0": "2026-11-01T00:00:00Z"}})
+
+    def create_case_dir(self, name):
+        case_dir = os.path.join(self.tmp_dir, name)
+        os.makedirs(case_dir, exist_ok=True)
+        wf_dir = os.path.join(case_dir, '.github/workflows')
+        os.makedirs(wf_dir, exist_ok=True)
+        npm_dir = os.path.join(case_dir, 'npm')
+        os.makedirs(npm_dir, exist_ok=True)
+
+        with open(os.path.join(case_dir, 'pubspec.yaml'), 'w') as f:
+            f.write("name: test_pkg\nenvironment:\n  sdk: ^3.13.0\n  flutter: 3.47.9\ndependencies:\n  meta: ^1.19.0\n")
+        with open(os.path.join(case_dir, 'pubspec.lock'), 'w') as f:
+            f.write("packages:\n  meta:\n    dependency: \"direct main\"\n    description:\n      name: meta\n      url: \"https://pub.dev\"\n    source: hosted\n    version: \"1.19.0\"\n")
+        with open(os.path.join(case_dir, 'pub_outdated.json'), 'w') as f:
+            json.dump({
+                "packages": [{
+                    "package": "meta",
+                    "kind": "direct",
+                    "isDiscontinued": False,
+                    "isCurrentRetracted": False,
+                    "isCurrentAffectedByAdvisory": False,
+                    "current": {"version": "1.19.0"},
+                    "upgradable": {"version": "1.19.0"},
+                    "resolvable": {"version": "1.19.0"},
+                    "latest": {"version": "1.19.0"}
+                }]
+            }, f)
+        with open(os.path.join(wf_dir, 'ci.yml'), 'w') as f:
+            f.write("""name: CI
+on: [push]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dart-lang/setup-dart@e51d8e519be8f8d29450b2bc73ea832f4165e2c1 # v1.8.1
+        with:
+          sdk: 3.13.7
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '20'
+""")
+        with open(os.path.join(case_dir, 'dependency_exceptions.tsv'), 'w') as f:
+            f.write("# rule\tname\theld_at\treview_by\treason\n")
+
+        with open(os.path.join(npm_dir, 'package.json'), 'w') as f:
+            f.write('{"name": "test_pkg", "version": "1.0.0"}\n')
+        with open(os.path.join(npm_dir, 'package-lock.json'), 'w') as f:
+            f.write('{"name": "test_pkg", "version": "1.0.0", "lockfileVersion": 3, "packages": {}}\n')
+        with open(os.path.join(npm_dir, 'outdated.json'), 'w') as f:
+            f.write("{}\n")
+        with open(os.path.join(npm_dir, 'audit.json'), 'w') as f:
+            json.dump({
+                "auditReportVersion": 2,
+                "vulnerabilities": {},
+                "metadata": {
+                    "vulnerabilities": {
+                        "info": 0, "low": 0, "moderate": 0, "high": 0, "critical": 0, "total": 0
+                    }
+                }
+            }, f)
+        with open(os.path.join(npm_dir, 'outdated_status.json'), 'w') as f:
+            f.write("0\n")
+        with open(os.path.join(npm_dir, 'audit_status.json'), 'w') as f:
+            f.write("0\n")
+        open(os.path.join(npm_dir, 'outdated.stderr'), 'w').close()
+        open(os.path.join(npm_dir, 'audit.stderr'), 'w').close()
+
+        return case_dir
+
+    def run_check(self, case_dir, extra_args=None):
+        cmd = [
+            sys.executable, '-I', CHECK_SCRIPT,
+            '--pub-outdated', os.path.join(case_dir, 'pub_outdated.json'),
+            '--pubspec', os.path.join(case_dir, 'pubspec.yaml'),
+            '--workflows', os.path.join(case_dir, '.github/workflows'),
+            '--exceptions', os.path.join(case_dir, 'dependency_exceptions.tsv'),
+            '--pub-api', self.server_url,
+            '--flutter-releases', f"{self.server_url}/releases_linux.json",
+            '--github-api', self.server_url,
+            '--npm-dir', os.path.join(case_dir, 'npm'),
+            '--npm-outdated', os.path.join(case_dir, 'npm/outdated.json'),
+            '--npm-audit', os.path.join(case_dir, 'npm/audit.json'),
+            '--npm-outdated-status', os.path.join(case_dir, 'npm/outdated_status.json'),
+            '--npm-audit-status', os.path.join(case_dir, 'npm/audit_status.json'),
+            '--npm-registry', self.server_url,
+            '--node-dist', f"{self.server_url}/dist/index.json",
+            '--today', '2026-11-10'
+        ]
+        if extra_args:
+            cmd.extend(extra_args)
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        return res.returncode, res.stdout, res.stderr
+
+    def cleanup(self):
+        try:
+            self.server.shutdown()
+        except Exception:
+            pass
+        shutil.rmtree(self.tmp_dir, ignore_errors=True)
+
+def main():
+    runner = LawTestRunner()
+    failing_rows = []
+    passing_rows = []
+
+    # Verify baseline control
+    base = runner.create_case_dir('base_control')
+    rc, out, err = runner.run_check(base)
+    if rc != 0:
+        print(f"FATAL: Base control fixture failed! rc={rc}\nout={out}\nerr={err}")
+        runner.cleanup()
+        sys.exit(1)
+
+    print("Baseline control passed clean.")
+
+    tests = []
+
+    # --- 1. FILES ---
+    # pubspec.yaml
+    tests.append(('pubspec_missing', 'pubspec.yaml', 'missing', lambda d: os.remove(os.path.join(d, 'pubspec.yaml')), 'pubspec.yaml'))
+    tests.append(('pubspec_empty', 'pubspec.yaml', 'empty', lambda d: open(os.path.join(d, 'pubspec.yaml'), 'w').close(), 'pubspec.yaml'))
+    tests.append(('pubspec_whitespace', 'pubspec.yaml', 'whitespace', lambda d: open(os.path.join(d, 'pubspec.yaml'), 'w').write("   \n\t\n"), 'pubspec.yaml'))
+    tests.append(('pubspec_unparseable', 'pubspec.yaml', 'unparseable_yaml', lambda d: open(os.path.join(d, 'pubspec.yaml'), 'w').write(":\n  - : :\n"), 'pubspec.yaml'))
+    tests.append(('pubspec_missing_sdk', 'pubspec.yaml', 'missing_sdk', lambda d: open(os.path.join(d, 'pubspec.yaml'), 'w').write("name: test_pkg\nenvironment:\n  flutter: 3.47.9\ndependencies:\n  meta: ^1.19.0\n"), 'pubspec.yaml'))
+
+    # pubspec.lock (missed input found in code)
+    tests.append(('pubspec_lock_empty', 'pubspec.lock', 'empty', lambda d: open(os.path.join(d, 'pubspec.lock'), 'w').close(), 'pubspec.lock'))
+    tests.append(('pubspec_lock_whitespace', 'pubspec.lock', 'whitespace', lambda d: open(os.path.join(d, 'pubspec.lock'), 'w').write("   \n\t\n"), 'pubspec.lock'))
+
+    # workflows directory & files
+    tests.append(('workflows_missing_dir', 'workflows', 'missing_dir', lambda d: shutil.rmtree(os.path.join(d, '.github/workflows')), 'workflows'))
+    tests.append(('workflows_empty_dir', 'workflows', 'empty_dir', lambda d: (shutil.rmtree(os.path.join(d, '.github/workflows')), os.makedirs(os.path.join(d, '.github/workflows'))), 'workflows'))
+    tests.append(('workflows_file_empty', '.github/workflows/ci.yml', 'empty_file', lambda d: open(os.path.join(d, '.github/workflows/ci.yml'), 'w').close(), 'ci.yml'))
+    tests.append(('workflows_file_whitespace', '.github/workflows/ci.yml', 'whitespace', lambda d: open(os.path.join(d, '.github/workflows/ci.yml'), 'w').write("  \n\t \n"), 'ci.yml'))
+    tests.append(('workflows_file_unparseable', '.github/workflows/ci.yml', 'unparseable_yaml', lambda d: open(os.path.join(d, '.github/workflows/ci.yml'), 'w').write(":\n  - : :\n"), 'ci.yml'))
+    tests.append(('workflows_file_no_jobs', '.github/workflows/ci.yml', 'missing_jobs', lambda d: open(os.path.join(d, '.github/workflows/ci.yml'), 'w').write("name: CI\non: [push]\n"), 'ci.yml'))
+
+    # dependency_exceptions.tsv
+    tests.append(('exceptions_missing', 'dependency_exceptions.tsv', 'missing', lambda d: os.remove(os.path.join(d, 'dependency_exceptions.tsv')), 'dependency_exceptions.tsv'))
+    tests.append(('exceptions_malformed', 'dependency_exceptions.tsv', 'malformed_columns', lambda d: open(os.path.join(d, 'dependency_exceptions.tsv'), 'w').write("D1\tmeta\t1.0.0\n"), 'dependency_exceptions.tsv'))
+    tests.append(('exceptions_invalid_date', 'dependency_exceptions.tsv', 'invalid_date', lambda d: open(os.path.join(d, 'dependency_exceptions.tsv'), 'w').write("D1\tmeta\t1.0.0\tinvalid-date\tReason that is more than twenty characters long\n"), 'dependency_exceptions.tsv'))
+    tests.append(('exceptions_reason_short', 'dependency_exceptions.tsv', 'reason_too_short', lambda d: open(os.path.join(d, 'dependency_exceptions.tsv'), 'w').write("D1\tmeta\t1.0.0\t2026-11-20\tshort\n"), 'dependency_exceptions.tsv'))
+
+    # pub_outdated.json
+    tests.append(('pub_outdated_missing', 'pub_outdated.json', 'missing', lambda d: os.remove(os.path.join(d, 'pub_outdated.json')), 'pub_outdated.json'))
+    tests.append(('pub_outdated_empty', 'pub_outdated.json', 'empty', lambda d: open(os.path.join(d, 'pub_outdated.json'), 'w').close(), 'pub_outdated.json'))
+    tests.append(('pub_outdated_whitespace', 'pub_outdated.json', 'whitespace', lambda d: open(os.path.join(d, 'pub_outdated.json'), 'w').write("   \n\t  \n"), 'pub_outdated.json'))
+    tests.append(('pub_outdated_unparseable', 'pub_outdated.json', 'unparseable_json', lambda d: open(os.path.join(d, 'pub_outdated.json'), 'w').write("{ not valid json"), 'pub_outdated.json'))
+    tests.append(('pub_outdated_null', 'pub_outdated.json', 'top_level_null', lambda d: open(os.path.join(d, 'pub_outdated.json'), 'w').write("null\n"), 'pub_outdated.json'))
+    tests.append(('pub_outdated_array', 'pub_outdated.json', 'top_level_array', lambda d: open(os.path.join(d, 'pub_outdated.json'), 'w').write("[]\n"), 'pub_outdated.json'))
+    tests.append(('pub_outdated_error', 'pub_outdated.json', 'error_payload', lambda d: open(os.path.join(d, 'pub_outdated.json'), 'w').write('{"error": "outdated failed"}\n'), 'pub_outdated.json'))
+    tests.append(('pub_outdated_no_pkgs', 'pub_outdated.json', 'missing_packages_field', lambda d: open(os.path.join(d, 'pub_outdated.json'), 'w').write('{}\n'), 'pub_outdated.json'))
+    tests.append(('pub_outdated_incomplete', 'pub_outdated.json', 'missing_dependency_entry', lambda d: open(os.path.join(d, 'pub_outdated.json'), 'w').write('{"packages": []}\n'), 'pub_outdated.json'))
+
+    # npm package.json
+    tests.append(('npm_pkg_missing', 'package.json', 'missing', lambda d: os.remove(os.path.join(d, 'npm/package.json')), 'package.json'))
+    tests.append(('npm_pkg_empty', 'package.json', 'empty', lambda d: open(os.path.join(d, 'npm/package.json'), 'w').close(), 'package.json'))
+    tests.append(('npm_pkg_ws', 'package.json', 'whitespace', lambda d: open(os.path.join(d, 'npm/package.json'), 'w').write("  \n\t \n"), 'package.json'))
+    tests.append(('npm_pkg_unparseable', 'package.json', 'unparseable_json', lambda d: open(os.path.join(d, 'npm/package.json'), 'w').write("{ bad json"), 'package.json'))
+    tests.append(('npm_pkg_null', 'package.json', 'top_level_null', lambda d: open(os.path.join(d, 'npm/package.json'), 'w').write("null\n"), 'package.json'))
+    tests.append(('npm_pkg_array', 'package.json', 'top_level_array', lambda d: open(os.path.join(d, 'npm/package.json'), 'w').write("[]\n"), 'package.json'))
+
+    # npm package-lock.json when vulnerable package present
+    def setup_vuln_audit(d):
+        open(os.path.join(d, 'npm/audit.json'), 'w').write(json.dumps({
+            "auditReportVersion": 2,
+            "vulnerabilities": {"vuln_pkg": {"severity": "moderate", "nodes": ["node_modules/vuln_pkg"], "via": [{"url": "https://github.com/advisories/GHSA-1234-5678-90ab"}]}}
+        }))
+
+    tests.append(('npm_lock_missing', 'package-lock.json', 'missing_when_vulnerable', lambda d: (setup_vuln_audit(d), os.remove(os.path.join(d, 'npm/package-lock.json'))), 'package-lock.json'))
+    tests.append(('npm_lock_empty', 'package-lock.json', 'empty_when_vulnerable', lambda d: (setup_vuln_audit(d), open(os.path.join(d, 'npm/package-lock.json'), 'w').close()), 'package-lock.json'))
+    tests.append(('npm_lock_ws', 'package-lock.json', 'whitespace_when_vulnerable', lambda d: (setup_vuln_audit(d), open(os.path.join(d, 'npm/package-lock.json'), 'w').write("  \n")), 'package-lock.json'))
+    tests.append(('npm_lock_unparseable', 'package-lock.json', 'unparseable_when_vulnerable', lambda d: (setup_vuln_audit(d), open(os.path.join(d, 'npm/package-lock.json'), 'w').write("{ bad json")), 'package-lock.json'))
+    tests.append(('npm_lock_null', 'package-lock.json', 'top_level_null_when_vulnerable', lambda d: (setup_vuln_audit(d), open(os.path.join(d, 'npm/package-lock.json'), 'w').write("null\n")), 'package-lock.json'))
+    tests.append(('npm_lock_array', 'package-lock.json', 'top_level_array_when_vulnerable', lambda d: (setup_vuln_audit(d), open(os.path.join(d, 'npm/package-lock.json'), 'w').write("[]\n")), 'package-lock.json'))
+
+    # npm outdated.json
+    tests.append(('npm_outdated_missing', 'npm/outdated.json', 'missing', lambda d: os.remove(os.path.join(d, 'npm/outdated.json')), 'outdated.json'))
+    tests.append(('npm_outdated_empty', 'npm/outdated.json', 'empty', lambda d: open(os.path.join(d, 'npm/outdated.json'), 'w').close(), 'outdated.json'))
+    tests.append(('npm_outdated_ws', 'npm/outdated.json', 'whitespace', lambda d: open(os.path.join(d, 'npm/outdated.json'), 'w').write("  \n\t \n"), 'outdated.json'))
+    tests.append(('npm_outdated_unparseable', 'npm/outdated.json', 'unparseable_json', lambda d: open(os.path.join(d, 'npm/outdated.json'), 'w').write("{ not valid json"), 'outdated.json'))
+    tests.append(('npm_outdated_null', 'npm/outdated.json', 'top_level_null', lambda d: open(os.path.join(d, 'npm/outdated.json'), 'w').write("null\n"), 'outdated.json'))
+    tests.append(('npm_outdated_array', 'npm/outdated.json', 'top_level_array', lambda d: open(os.path.join(d, 'npm/outdated.json'), 'w').write("[]\n"), 'outdated.json'))
+    tests.append(('npm_outdated_error', 'npm/outdated.json', 'error_payload', lambda d: open(os.path.join(d, 'npm/outdated.json'), 'w').write('{"error": "E404"}\n'), 'outdated.json'))
+
+    # npm audit.json
+    tests.append(('npm_audit_missing', 'npm/audit.json', 'missing', lambda d: os.remove(os.path.join(d, 'npm/audit.json')), 'audit.json'))
+    tests.append(('npm_audit_empty', 'npm/audit.json', 'empty', lambda d: open(os.path.join(d, 'npm/audit.json'), 'w').close(), 'audit.json'))
+    tests.append(('npm_audit_ws', 'npm/audit.json', 'whitespace', lambda d: open(os.path.join(d, 'npm/audit.json'), 'w').write("  \n\t \n"), 'audit.json'))
+    tests.append(('npm_audit_unparseable', 'npm/audit.json', 'unparseable_json', lambda d: open(os.path.join(d, 'npm/audit.json'), 'w').write("{ not json"), 'audit.json'))
+    tests.append(('npm_audit_null', 'npm/audit.json', 'top_level_null', lambda d: open(os.path.join(d, 'npm/audit.json'), 'w').write("null\n"), 'audit.json'))
+    tests.append(('npm_audit_array', 'npm/audit.json', 'top_level_array', lambda d: open(os.path.join(d, 'npm/audit.json'), 'w').write("[]\n"), 'audit.json'))
+    tests.append(('npm_audit_error', 'npm/audit.json', 'error_payload', lambda d: open(os.path.join(d, 'npm/audit.json'), 'w').write('{"error": "audit failed"}\n'), 'audit.json'))
+    tests.append(('npm_audit_missing_meta', 'npm/audit.json', 'missing_metadata_and_vulns', lambda d: open(os.path.join(d, 'npm/audit.json'), 'w').write('{}\n'), 'audit.json'))
+    tests.append(('npm_audit_missing_mod', 'npm/audit.json', 'missing_moderate_field', lambda d: open(os.path.join(d, 'npm/audit.json'), 'w').write('{"metadata": {"vulnerabilities": {}}}\n'), 'audit.json'))
+
+    # npm outdated status
+    tests.append(('npm_outdated_status_missing', 'npm/outdated_status.json', 'missing', lambda d: os.remove(os.path.join(d, 'npm/outdated_status.json')), 'outdated_status.json'))
+    tests.append(('npm_outdated_status_empty', 'npm/outdated_status.json', 'empty', lambda d: open(os.path.join(d, 'npm/outdated_status.json'), 'w').close(), 'outdated_status.json'))
+    tests.append(('npm_outdated_status_ws', 'npm/outdated_status.json', 'whitespace', lambda d: open(os.path.join(d, 'npm/outdated_status.json'), 'w').write("  \n"), 'outdated_status.json'))
+    tests.append(('npm_outdated_status_non_int', 'npm/outdated_status.json', 'non_integer', lambda d: open(os.path.join(d, 'npm/outdated_status.json'), 'w').write("abc\n"), 'outdated_status.json'))
+    tests.append(('npm_outdated_status_code2', 'npm/outdated_status.json', 'exit_code_2', lambda d: (open(os.path.join(d, 'npm/outdated_status.json'), 'w').write("2\n"), open(os.path.join(d, 'npm/outdated.stderr'), 'w').write("npm ERR! code E404\n")), 'outdated_status.json'))
+    tests.append(('npm_outdated_status_code127', 'npm/outdated_status.json', 'exit_code_127', lambda d: (open(os.path.join(d, 'npm/outdated_status.json'), 'w').write("127\n"), open(os.path.join(d, 'npm/outdated.stderr'), 'w').write("npm: command not found\n")), 'outdated_status.json'))
+
+    # npm audit status
+    tests.append(('npm_audit_status_missing', 'npm/audit_status.json', 'missing', lambda d: os.remove(os.path.join(d, 'npm/audit_status.json')), 'audit_status.json'))
+    tests.append(('npm_audit_status_empty', 'npm/audit_status.json', 'empty', lambda d: open(os.path.join(d, 'npm/audit_status.json'), 'w').close(), 'audit_status.json'))
+    tests.append(('npm_audit_status_ws', 'npm/audit_status.json', 'whitespace', lambda d: open(os.path.join(d, 'npm/audit_status.json'), 'w').write("  \n"), 'audit_status.json'))
+    tests.append(('npm_audit_status_non_int', 'npm/audit_status.json', 'non_integer', lambda d: open(os.path.join(d, 'npm/audit_status.json'), 'w').write("error\n"), 'audit_status.json'))
+    tests.append(('npm_audit_status_code2', 'npm/audit_status.json', 'exit_code_2', lambda d: (open(os.path.join(d, 'npm/audit_status.json'), 'w').write("2\n"), open(os.path.join(d, 'npm/audit.stderr'), 'w').write("npm ERR! audit server error\n")), 'audit_status.json'))
+    tests.append(('npm_audit_status_code127', 'npm/audit_status.json', 'exit_code_127', lambda d: (open(os.path.join(d, 'npm/audit_status.json'), 'w').write("127\n"), open(os.path.join(d, 'npm/audit.stderr'), 'w').write("npm: command not found\n")), 'audit_status.json'))
+
+    # --- 2. URLS ---
+    def setup_url_fixture(subpath, content):
+        p = os.path.join(runner.http_root, subpath)
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, 'w') as f:
+            if isinstance(content, str):
+                f.write(content)
+            else:
+                json.dump(content, f)
+
+    def test_url(test_id, input_name, damage_kind, arg_flag, subpath, content_or_none):
+        def setup_fn(d):
+            if content_or_none is None:
+                rel_url = f"{runner.server_url}/not_found_{test_id}"
+            else:
+                setup_url_fixture(f"{test_id}/{subpath}", content_or_none)
+                rel_url = f"{runner.server_url}/{test_id}"
+            return [arg_flag, rel_url]
+        return (test_id, input_name, damage_kind, setup_fn, input_name)
+
+    # pub.dev package
+    tests.append(test_url('url_pub_pkg_404', 'pub.dev package', 'http_404', '--pub-api', 'api/packages/meta.json', None))
+    tests.append(test_url('url_pub_pkg_empty', 'pub.dev package', 'empty_body', '--pub-api', 'api/packages/meta.json', ''))
+    tests.append(test_url('url_pub_pkg_ws', 'pub.dev package', 'whitespace', '--pub-api', 'api/packages/meta.json', '  \n\t '))
+    tests.append(test_url('url_pub_pkg_bad_json', 'pub.dev package', 'unparseable_json', '--pub-api', 'api/packages/meta.json', '{ bad'))
+    tests.append(test_url('url_pub_pkg_null', 'pub.dev package', 'top_level_null', '--pub-api', 'api/packages/meta.json', 'null\n'))
+    tests.append(test_url('url_pub_pkg_array', 'pub.dev package', 'top_level_array', '--pub-api', 'api/packages/meta.json', '[]\n'))
+    tests.append(test_url('url_pub_pkg_error', 'pub.dev package', 'error_payload', '--pub-api', 'api/packages/meta.json', '{"error": "pkg error"}'))
+    tests.append(test_url('url_pub_pkg_missing_fields', 'pub.dev package', 'missing_versions_and_latest', '--pub-api', 'api/packages/meta.json', '{"name": "meta"}\n'))
+
+    # pub.dev advisories
+    tests.append(test_url('url_pub_adv_404', 'pub.dev advisories', 'http_404', '--pub-api', 'api/packages/meta/advisories.json', None))
+    tests.append(test_url('url_pub_adv_empty', 'pub.dev advisories', 'empty_body', '--pub-api', 'api/packages/meta/advisories.json', ''))
+    tests.append(test_url('url_pub_adv_ws', 'pub.dev advisories', 'whitespace', '--pub-api', 'api/packages/meta/advisories.json', '   \n'))
+    tests.append(test_url('url_pub_adv_bad_json', 'pub.dev advisories', 'unparseable_json', '--pub-api', 'api/packages/meta/advisories.json', '{ bad'))
+    tests.append(test_url('url_pub_adv_null', 'pub.dev advisories', 'top_level_null', '--pub-api', 'api/packages/meta/advisories.json', 'null\n'))
+    tests.append(test_url('url_pub_adv_array', 'pub.dev advisories', 'top_level_array', '--pub-api', 'api/packages/meta/advisories.json', '[]\n'))
+    tests.append(test_url('url_pub_adv_error', 'pub.dev advisories', 'error_payload', '--pub-api', 'api/packages/meta/advisories.json', '{"error": "adv error"}'))
+    tests.append(test_url('url_pub_adv_missing_adv', 'pub.dev advisories', 'missing_advisories_field', '--pub-api', 'api/packages/meta/advisories.json', '{}\n'))
+
+    # Flutter releases
+    def test_fl(test_id, damage_kind, content_or_none):
+        def setup_fn(d):
+            if content_or_none is None:
+                url = f"{runner.server_url}/fl_404_{test_id}.json"
+            else:
+                setup_url_fixture(f"{test_id}/releases.json", content_or_none)
+                url = f"{runner.server_url}/{test_id}/releases.json"
+            return ['--flutter-releases', url]
+        return (test_id, 'Flutter releases', damage_kind, setup_fn, 'Flutter releases')
+
+    tests.append(test_fl('url_fl_404', 'http_404', None))
+    tests.append(test_fl('url_fl_empty', 'empty_body', ''))
+    tests.append(test_fl('url_fl_ws', 'whitespace', '   \n'))
+    tests.append(test_fl('url_fl_bad_json', 'unparseable_json', '{ bad'))
+    tests.append(test_fl('url_fl_null', 'top_level_null', 'null\n'))
+    tests.append(test_fl('url_fl_array', 'top_level_array', '[]\n'))
+    tests.append(test_fl('url_fl_error', 'error_payload', '{"error": "fl error"}'))
+    tests.append(test_fl('url_fl_missing_rel', 'missing_releases_field', '{}\n'))
+    tests.append(test_fl('url_fl_empty_rel', 'empty_releases_list', '{"releases": []}\n'))
+
+    # GitHub latest release
+    def test_gh_latest(test_id, damage_kind, content_or_none):
+        def setup_fn(d):
+            if content_or_none is None:
+                url = f"{runner.server_url}/gh_404_{test_id}"
+            else:
+                setup_url_fixture(f"{test_id}/repos/actions/checkout/releases/latest.json", content_or_none)
+                setup_url_fixture(f"{test_id}/repos/actions/checkout/releases.json", [{"tag_name": "v7.0.1", "published_at": "2026-05-01T12:00:00Z"}])
+                setup_url_fixture(f"{test_id}/repos/actions/checkout/git/ref/tags/v7.0.1.json", {"object": {"sha": "3d3c42e5aac5ba805825da76410c181273ba90b1", "type": "commit"}})
+                setup_url_fixture(f"{test_id}/repos/dart-lang/setup-dart/releases/latest.json", {"tag_name": "v1.8.1", "published_at": "2026-05-10T12:00:00Z"})
+                setup_url_fixture(f"{test_id}/repos/dart-lang/setup-dart/releases.json", [{"tag_name": "v1.8.1", "published_at": "2026-05-10T12:00:00Z"}])
+                setup_url_fixture(f"{test_id}/repos/dart-lang/setup-dart/git/ref/tags/v1.8.1.json", {"object": {"sha": "e51d8e519be8f8d29450b2bc73ea832f4165e2c1", "type": "commit"}})
+                setup_url_fixture(f"{test_id}/repos/actions/setup-node/releases/latest.json", {"tag_name": "v4.4.0", "published_at": "2026-05-01T12:00:00Z"})
+                setup_url_fixture(f"{test_id}/repos/actions/setup-node/releases.json", [{"tag_name": "v4.4.0", "published_at": "2026-05-01T12:00:00Z"}])
+                setup_url_fixture(f"{test_id}/repos/actions/setup-node/git/ref/tags/v4.4.0.json", {"object": {"sha": "49933ea5288caeca8642d1e84afbd3f7d6820020", "type": "commit"}})
+                url = f"{runner.server_url}/{test_id}"
+            return ['--github-api', url]
+        return (test_id, 'GitHub latest release', damage_kind, setup_fn, 'GitHub release')
+
+    tests.append(test_gh_latest('url_gh_latest_404', 'http_404', None))
+    tests.append(test_gh_latest('url_gh_latest_empty', 'empty_body', ''))
+    tests.append(test_gh_latest('url_gh_latest_ws', 'whitespace', '  \n\t '))
+    tests.append(test_gh_latest('url_gh_latest_bad_json', 'unparseable_json', '{ bad'))
+    tests.append(test_gh_latest('url_gh_latest_null', 'top_level_null', 'null\n'))
+    tests.append(test_gh_latest('url_gh_latest_array', 'top_level_array', '[]\n'))
+    tests.append(test_gh_latest('url_gh_latest_error', 'error_payload', '{"error": "gh error"}'))
+    tests.append(test_gh_latest('url_gh_latest_missing_tag', 'missing_tag_name', '{"name": "v7.0.1"}\n'))
+
+    # GitHub releases list
+    def test_gh_rels(test_id, damage_kind, content_or_none):
+        def setup_fn(d):
+            if content_or_none is None:
+                url = f"{runner.server_url}/gh_404_{test_id}"
+            else:
+                setup_url_fixture(f"{test_id}/repos/actions/checkout/releases/latest.json", {"tag_name": "v7.0.2", "published_at": "2026-05-01T12:00:00Z"})
+                setup_url_fixture(f"{test_id}/repos/actions/checkout/releases.json", content_or_none)
+                setup_url_fixture(f"{test_id}/repos/actions/checkout/git/ref/tags/v7.0.2.json", {"object": {"sha": "999c42e5aac5ba805825da76410c181273ba90b1", "type": "commit"}})
+                setup_url_fixture(f"{test_id}/repos/dart-lang/setup-dart/releases/latest.json", {"tag_name": "v1.8.1", "published_at": "2026-05-10T12:00:00Z"})
+                setup_url_fixture(f"{test_id}/repos/dart-lang/setup-dart/releases.json", [{"tag_name": "v1.8.1", "published_at": "2026-05-10T12:00:00Z"}])
+                setup_url_fixture(f"{test_id}/repos/dart-lang/setup-dart/git/ref/tags/v1.8.1.json", {"object": {"sha": "e51d8e519be8f8d29450b2bc73ea832f4165e2c1", "type": "commit"}})
+                setup_url_fixture(f"{test_id}/repos/actions/setup-node/releases/latest.json", {"tag_name": "v4.4.0", "published_at": "2026-05-01T12:00:00Z"})
+                setup_url_fixture(f"{test_id}/repos/actions/setup-node/releases.json", [{"tag_name": "v4.4.0", "published_at": "2026-05-01T12:00:00Z"}])
+                setup_url_fixture(f"{test_id}/repos/actions/setup-node/git/ref/tags/v4.4.0.json", {"object": {"sha": "49933ea5288caeca8642d1e84afbd3f7d6820020", "type": "commit"}})
+                url = f"{runner.server_url}/{test_id}"
+            return ['--github-api', url]
+        return (test_id, 'GitHub releases list', damage_kind, setup_fn, 'GitHub releases list')
+
+    tests.append(test_gh_rels('url_gh_rels_404', 'http_404', None))
+    tests.append(test_gh_rels('url_gh_rels_empty', 'empty_body', ''))
+    tests.append(test_gh_rels('url_gh_rels_ws', 'whitespace', '   \n'))
+    tests.append(test_gh_rels('url_gh_rels_bad_json', 'unparseable_json', '{ bad'))
+    tests.append(test_gh_rels('url_gh_rels_null', 'top_level_null', 'null\n'))
+    tests.append(test_gh_rels('url_gh_rels_obj', 'top_level_object', '{}\n'))
+    tests.append(test_gh_rels('url_gh_rels_error', 'error_payload', '{"error": "rels error"}'))
+
+    # GitHub tag ref
+    def test_gh_ref(test_id, damage_kind, content_or_none):
+        def setup_fn(d):
+            if content_or_none is None:
+                url = f"{runner.server_url}/gh_404_{test_id}"
+            else:
+                setup_url_fixture(f"{test_id}/repos/actions/checkout/releases/latest.json", {"tag_name": "v7.0.1", "published_at": "2026-05-01T12:00:00Z"})
+                setup_url_fixture(f"{test_id}/repos/actions/checkout/releases.json", [{"tag_name": "v7.0.1", "published_at": "2026-05-01T12:00:00Z"}])
+                setup_url_fixture(f"{test_id}/repos/actions/checkout/git/ref/tags/v7.0.1.json", content_or_none)
+                setup_url_fixture(f"{test_id}/repos/dart-lang/setup-dart/releases/latest.json", {"tag_name": "v1.8.1", "published_at": "2026-05-10T12:00:00Z"})
+                setup_url_fixture(f"{test_id}/repos/dart-lang/setup-dart/releases.json", [{"tag_name": "v1.8.1", "published_at": "2026-05-10T12:00:00Z"}])
+                setup_url_fixture(f"{test_id}/repos/dart-lang/setup-dart/git/ref/tags/v1.8.1.json", {"object": {"sha": "e51d8e519be8f8d29450b2bc73ea832f4165e2c1", "type": "commit"}})
+                setup_url_fixture(f"{test_id}/repos/actions/setup-node/releases/latest.json", {"tag_name": "v4.4.0", "published_at": "2026-05-01T12:00:00Z"})
+                setup_url_fixture(f"{test_id}/repos/actions/setup-node/releases.json", [{"tag_name": "v4.4.0", "published_at": "2026-05-01T12:00:00Z"}])
+                setup_url_fixture(f"{test_id}/repos/actions/setup-node/git/ref/tags/v4.4.0.json", {"object": {"sha": "49933ea5288caeca8642d1e84afbd3f7d6820020", "type": "commit"}})
+                url = f"{runner.server_url}/{test_id}"
+            return ['--github-api', url]
+        return (test_id, 'GitHub tag ref', damage_kind, setup_fn, 'GitHub tag ref')
+
+    tests.append(test_gh_ref('url_gh_ref_404', 'http_404', None))
+    tests.append(test_gh_ref('url_gh_ref_empty', 'empty_body', ''))
+    tests.append(test_gh_ref('url_gh_ref_ws', 'whitespace', '   \n'))
+    tests.append(test_gh_ref('url_gh_ref_bad_json', 'unparseable_json', '{ bad'))
+    tests.append(test_gh_ref('url_gh_ref_null', 'top_level_null', 'null\n'))
+    tests.append(test_gh_ref('url_gh_ref_array', 'top_level_array', '[]\n'))
+    tests.append(test_gh_ref('url_gh_ref_error', 'error_payload', '{"error": "ref error"}'))
+
+    # GitHub tag object
+    def test_gh_tag(test_id, damage_kind, content_or_none):
+        def setup_fn(d):
+            if content_or_none is None:
+                url = f"{runner.server_url}/gh_404_{test_id}"
+            else:
+                setup_url_fixture(f"{test_id}/repos/actions/checkout/releases/latest.json", {"tag_name": "v7.0.1", "published_at": "2026-05-01T12:00:00Z"})
+                setup_url_fixture(f"{test_id}/repos/actions/checkout/releases.json", [{"tag_name": "v7.0.1", "published_at": "2026-05-01T12:00:00Z"}])
+                setup_url_fixture(f"{test_id}/repos/actions/checkout/git/ref/tags/v7.0.1.json", {"object": {"sha": "tagsha1234567890abcdef1234567890abcdef12", "type": "tag"}})
+                setup_url_fixture(f"{test_id}/repos/actions/checkout/git/tags/tagsha1234567890abcdef1234567890abcdef12.json", content_or_none)
+                setup_url_fixture(f"{test_id}/repos/dart-lang/setup-dart/releases/latest.json", {"tag_name": "v1.8.1", "published_at": "2026-05-10T12:00:00Z"})
+                setup_url_fixture(f"{test_id}/repos/dart-lang/setup-dart/releases.json", [{"tag_name": "v1.8.1", "published_at": "2026-05-10T12:00:00Z"}])
+                setup_url_fixture(f"{test_id}/repos/dart-lang/setup-dart/git/ref/tags/v1.8.1.json", {"object": {"sha": "e51d8e519be8f8d29450b2bc73ea832f4165e2c1", "type": "commit"}})
+                setup_url_fixture(f"{test_id}/repos/actions/setup-node/releases/latest.json", {"tag_name": "v4.4.0", "published_at": "2026-05-01T12:00:00Z"})
+                setup_url_fixture(f"{test_id}/repos/actions/setup-node/releases.json", [{"tag_name": "v4.4.0", "published_at": "2026-05-01T12:00:00Z"}])
+                setup_url_fixture(f"{test_id}/repos/actions/setup-node/git/ref/tags/v4.4.0.json", {"object": {"sha": "49933ea5288caeca8642d1e84afbd3f7d6820020", "type": "commit"}})
+                url = f"{runner.server_url}/{test_id}"
+            return ['--github-api', url]
+        return (test_id, 'GitHub tag object', damage_kind, setup_fn, 'GitHub tag object')
+
+    tests.append(test_gh_tag('url_gh_tag_404', 'http_404', None))
+    tests.append(test_gh_tag('url_gh_tag_empty', 'empty_body', ''))
+    tests.append(test_gh_tag('url_gh_tag_ws', 'whitespace', '   \n'))
+    tests.append(test_gh_tag('url_gh_tag_bad_json', 'unparseable_json', '{ bad'))
+    tests.append(test_gh_tag('url_gh_tag_null', 'top_level_null', 'null\n'))
+    tests.append(test_gh_tag('url_gh_tag_array', 'top_level_array', '[]\n'))
+    tests.append(test_gh_tag('url_gh_tag_error', 'error_payload', '{"error": "tag error"}'))
+
+    # Node index
+    def test_node(test_id, damage_kind, content_or_none):
+        def setup_fn(d):
+            if content_or_none is None:
+                url = f"{runner.server_url}/node_404_{test_id}.json"
+            else:
+                setup_url_fixture(f"{test_id}/dist/index.json", content_or_none)
+                url = f"{runner.server_url}/{test_id}/dist/index.json"
+            return ['--node-dist', url]
+        return (test_id, 'Node index', damage_kind, setup_fn, 'Node releases')
+
+    tests.append(test_node('url_node_404', 'http_404', None))
+    tests.append(test_node('url_node_empty', 'empty_body', ''))
+    tests.append(test_node('url_node_ws', 'whitespace', '   \n'))
+    tests.append(test_node('url_node_bad_json', 'unparseable_json', '{ bad'))
+    tests.append(test_node('url_node_null', 'top_level_null', 'null\n'))
+    tests.append(test_node('url_node_obj', 'top_level_object', '{}\n'))
+    tests.append(test_node('url_node_error', 'error_payload', '{"error": "node error"}'))
+    tests.append(test_node('url_node_empty_lts', 'no_lts_releases', '[{"version": "v21.0.0", "lts": false}]\n'))
+
+    # npm registry package
+    def test_npm_reg(test_id, damage_kind, content_or_none):
+        def setup_fn(d):
+            open(os.path.join(d, 'npm/package.json'), 'w').write(json.dumps({"name": "test_pkg", "overrides": {"pkg_override": "1.0.0"}}))
+            open(os.path.join(d, 'dependency_exceptions.tsv'), 'w').write("N4\tpkg_override\t1.0.0\t2026-11-20\tExcused for test GHSA-1111-2222-3333\n")
+            if content_or_none is None:
+                url = f"{runner.server_url}/npm_404_{test_id}"
+            else:
+                setup_url_fixture(f"{test_id}/pkg_override.json", content_or_none)
+                url = f"{runner.server_url}/{test_id}"
+            return ['--npm-registry', url]
+        return (test_id, 'npm registry package', damage_kind, setup_fn, 'npm registry')
+
+    tests.append(test_npm_reg('url_npm_reg_404', 'http_404', None))
+    tests.append(test_npm_reg('url_npm_reg_empty', 'empty_body', ''))
+    tests.append(test_npm_reg('url_npm_reg_ws', 'whitespace', '   \n'))
+    tests.append(test_npm_reg('url_npm_reg_bad_json', 'unparseable_json', '{ bad'))
+    tests.append(test_npm_reg('url_npm_reg_null', 'top_level_null', 'null\n'))
+    tests.append(test_npm_reg('url_npm_reg_array', 'top_level_array', '[]\n'))
+    tests.append(test_npm_reg('url_npm_reg_error', 'error_payload', '{"error": "registry error"}'))
+    tests.append(test_npm_reg('url_npm_reg_no_time', 'missing_time_field', '{"name": "pkg_override"}\n'))
+
+    # Execute damage tests
+    print(f"Running {len(tests)} damage tests...")
+    for test_id, input_name, damage_kind, setup_fn, expected_identifier in tests:
+        d = runner.create_case_dir(test_id)
+        res_setup = setup_fn(d)
+        extra_args = res_setup if isinstance(res_setup, list) else None
+        rc, out, err = runner.run_check(d, extra_args)
+
+        combined = (out + "\n" + err).strip()
+        has_traceback = "Traceback (most recent call last)" in combined
+        # Check that output names the damaged input (file path or URL)
+        input_named = (
+            expected_identifier.lower() in combined.lower() or
+            input_name.lower() in combined.lower() or
+            (extra_args and any(isinstance(a, str) and a.startswith('http') and a.lower() in combined.lower() for a in extra_args))
+        )
+
+        if rc == 0:
+            failing_rows.append(f"FAIL_OPEN: {input_name} | {damage_kind} | exit code was 0 (expected non-zero failure)")
+        elif has_traceback:
+            failing_rows.append(f"UNHANDLED_EXCEPTION: {input_name} | {damage_kind} | traceback detected in output: {combined[:120]}...")
+        elif not input_named:
+            failing_rows.append(f"MISSING_INPUT_NAME: {input_name} | {damage_kind} | output did not mention '{expected_identifier}': {combined[:120]}...")
+        else:
+            passing_rows.append(f"PASS: {input_name} | {damage_kind}")
+
+    # --- 3. ALLOWED-VALID TESTS ---
+    valid_tests = []
+    # 1. exceptions empty
+    valid_tests.append(('exceptions_empty', 'dependency_exceptions.tsv', 'empty_file', lambda d: open(os.path.join(d, 'dependency_exceptions.tsv'), 'w').close(), '0 exceptions allowed'))
+    # 2. exceptions comments only
+    valid_tests.append(('exceptions_comments', 'dependency_exceptions.tsv', 'comments_only', lambda d: open(os.path.join(d, 'dependency_exceptions.tsv'), 'w').write("# comment 1\n# comment 2\n"), 'comments only allowed'))
+    # 3. npm outdated empty object
+    valid_tests.append(('npm_outdated_empty_obj', 'npm/outdated.json', 'empty_object', lambda d: open(os.path.join(d, 'npm/outdated.json'), 'w').write("{}\n"), 'npm outdated prints {} when current'))
+    # 4. pub advisories empty list
+    def setup_val_adv(d):
+        setup_url_fixture('val_adv/api/packages/meta/advisories.json', '{"advisories": []}\n')
+        return ['--pub-api', f"{runner.server_url}/val_adv"]
+    valid_tests.append(('pub_adv_empty_list', 'pub.dev advisories', 'empty_advisories_list', setup_val_adv, 'pub.dev returns {"advisories": []} when clean'))
+    # 5. npm audit zero vulnerabilities
+    valid_tests.append(('npm_audit_zero_vulns', 'npm/audit.json', 'zero_vulnerabilities', lambda d: open(os.path.join(d, 'npm/audit.json'), 'w').write(json.dumps({
+        "auditReportVersion": 2, "vulnerabilities": {}, "metadata": {"vulnerabilities": {"info": 0, "low": 0, "moderate": 0, "high": 0, "critical": 0, "total": 0}}
+    })), 'npm audit reports 0 vulnerabilities when clean'))
+    # 6. pubspec without flutter (pure Dart)
+    def setup_pure_dart(d):
+        open(os.path.join(d, 'pubspec.yaml'), 'w').write("name: test_pkg\nenvironment:\n  sdk: ^3.13.0\ndependencies:\n  meta: ^1.19.0\n")
+        open(os.path.join(d, '.github/workflows/ci.yml'), 'w').write("""name: CI
+on: [push]
+jobs:
+  main:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dart-lang/setup-dart@e51d8e519be8f8d29450b2bc73ea832f4165e2c1 # v1.8.1
+        with:
+          sdk: 3.13.7
+  min-sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dart-lang/setup-dart@e51d8e519be8f8d29450b2bc73ea832f4165e2c1 # v1.8.1
+        with:
+          sdk: 3.13.0
+""")
+    valid_tests.append(('pubspec_pure_dart', 'pubspec.yaml', 'pure_dart_no_flutter', setup_pure_dart, 'pure Dart package has no flutter constraint'))
+
+    print(f"Running {len(valid_tests)} allowed-valid tests...")
+    for test_id, input_name, damage_kind, setup_fn, reason in valid_tests:
+        d = runner.create_case_dir(test_id)
+        res_setup = setup_fn(d)
+        extra_args = res_setup if isinstance(res_setup, list) else None
+        rc, out, err = runner.run_check(d, extra_args)
+        if rc != 0:
+            failing_rows.append(f"VALID_REJECTED: {input_name} | {damage_kind} | exited with code {rc} but should pass ({reason}): {(out + err).strip()[:100]}")
+        else:
+            passing_rows.append(f"PASS (allowed-valid): {input_name} | {damage_kind} ({reason})")
+
+    runner.cleanup()
+
+    print("\n--- RESULTS ---")
+    print(f"Total tests: {len(tests) + len(valid_tests)}")
+    print(f"Passing: {len(passing_rows)}")
+    print(f"Failing: {len(failing_rows)}")
+    if failing_rows:
+        print("\nFailing rows:")
+        for r in failing_rows:
+            print("  ", r)
+        sys.exit(1)
+    else:
+        print(f"\nFC law: {len(tests)} rows, {len(tests)} failed closed")
+        print(f"FC law allowed-valid: {len(valid_tests)} rows passed")
+        sys.exit(0)
+
+if __name__ == '__main__':
+    main()
+
+EOF_DC71
+
+# DC72: Source check - no swallowed exceptions
+echo "Running DC72: Check for swallowed exceptions..."
+if grep -n "except Exception: *pass" "$SCRIPT_DIR/check_dependencies.py"; then
+  echo "FAIL DC72: Found swallowed exceptions in check_dependencies.py"
+  exit 1
+fi
+
+echo "All 72 dependency check self-tests (DC1 - DC72) passed successfully!"
