@@ -2075,8 +2075,80 @@ rc70=$?; set -e
 [ "$rc70" -ne 0 ] || { echo "FAIL DC70: expected failure for empty flutter releases"; exit 1; }
 [[ "$out70" == *"T1:"* && "$out70" == *"releases"* ]] || { echo "FAIL DC70 output: $out70"; exit 1; }
 
-# DC71: Table-driven fail-closed law over all inputs (Fix 4.1)
-echo "Running DC71: Table-driven fail-closed law over all inputs..."
+# DC71: Fix 4.4 N2 exceptions name one exact version
+echo "Running DC71 (Fix 4.4)..."
+# Case 1: a '*' row fails as malformed (naming the line)
+d71_star="$TMP_DIR/dc71_star"; setup_base_fixtures "$d71_star"
+cp "$d67/npm/audit.json" "$d71_star/npm/audit.json"
+printf "N2	vuln_pkg	*	2026-11-20	Excused for GHSA-1234-5678-90ab in vuln_pkg
+" > "$d71_star/dependency_exceptions.tsv"
+set +e; out71_star=$(run_check "$d71_star" --today 2026-11-10 2>&1); rc71_star=$?; set -e
+[ "$rc71_star" -ne 0 ] || { echo "FAIL Fix 4.4 * case: expected failure for *"; exit 1; }
+[[ "$out71_star" == *"dependency_exceptions.tsv:1"* && "$out71_star" == *"exact version string"* ]] || { echo "FAIL Fix 4.4 * case: unexpected output: $out71_star"; exit 1; }
+
+# Case 2: a row for another version doesn't excuse the package
+d71_diff="$TMP_DIR/dc71_diff"; setup_base_fixtures "$d71_diff"
+cp "$d67/npm/audit.json" "$d71_diff/npm/audit.json"
+printf "N2	vuln_pkg	2.0.0	2026-11-20	Excused for GHSA-1234-5678-90ab in vuln_pkg
+" > "$d71_diff/dependency_exceptions.tsv"
+set +e; out71_diff=$(run_check "$d71_diff" --today 2026-11-10 2>&1); rc71_diff=$?; set -e
+[ "$rc71_diff" -ne 0 ] || { echo "FAIL Fix 4.4 diff version case: expected failure"; exit 1; }
+[[ "$out71_diff" == *"N2"* ]] || { echo "FAIL Fix 4.4 diff version case: unexpected output: $out71_diff"; exit 1; }
+
+# Case 3: an unknown installed version fails naming the package
+d71_unk="$TMP_DIR/dc71_unk"; setup_base_fixtures "$d71_unk"
+cat << 'EOF' > "$d71_unk/npm/audit.json"
+{
+  "vulnerabilities": {
+    "vuln_pkg": {
+      "name": "vuln_pkg",
+      "severity": "moderate",
+      "isDirect": true,
+      "effects": [],
+      "range": ">=1.0.0",
+      "nodes": [ "node_modules/vuln_pkg" ],
+      "fixAvailable": true,
+      "via": [
+        {
+          "source": 1001,
+          "name": "vuln_pkg",
+          "dependency": "vuln_pkg",
+          "title": "Vulnerability in vuln_pkg",
+          "url": "https://github.com/advisories/GHSA-1234-5678-90ab",
+          "severity": "moderate",
+          "cwe": [],
+          "cvss": {"score": 5.0, "vectorString": null},
+          "range": ">=1.0.0"
+        }
+      ]
+    }
+  }
+}
+EOF
+cat << 'EOF' > "$d71_unk/npm/package-lock.json"
+{
+  "name": "test-pkg",
+  "version": "1.0.0",
+  "lockfileVersion": 3,
+  "packages": {}
+}
+EOF
+printf "N2	vuln_pkg	1.0.0	2026-11-20	Excused for GHSA-1234-5678-90ab in vuln_pkg
+" > "$d71_unk/dependency_exceptions.tsv"
+set +e; out71_unk=$(run_check "$d71_unk" --today 2026-11-10 2>&1); rc71_unk=$?; set -e
+[ "$rc71_unk" -ne 0 ] || { echo "FAIL Fix 4.4 unknown installed version: expected failure"; exit 1; }
+[[ "$out71_unk" == *"N2"* && "$out71_unk" == *"Unable to determine installed version for vulnerable package 'vuln_pkg'"* ]] || { echo "FAIL Fix 4.4 unknown installed version output: $out71_unk"; exit 1; }
+
+# Case 4: exact matching row passes
+d71_exact="$TMP_DIR/dc71_exact"; setup_base_fixtures "$d71_exact"
+cp "$d67/npm/audit.json" "$d71_exact/npm/audit.json"
+printf "N2	vuln_pkg	1.0.0	2026-11-20	Excused for GHSA-1234-5678-90ab in vuln_pkg
+" > "$d71_exact/dependency_exceptions.tsv"
+out71_exact=$(run_check "$d71_exact" --today 2026-11-10)
+[[ "$out71_exact" == *"Summary"* ]] || { echo "FAIL Fix 4.4 exact matching row: $out71_exact"; exit 1; }
+
+# DC72: Table-driven fail-closed law over all inputs (Fix 4.1)
+echo "Running DC72: Table-driven fail-closed law over all inputs..."
 CHECK_SCRIPT="$CHECK_SCRIPT" python3 - << 'EOF_DC71'
 import os, sys, shutil, subprocess, json, tempfile, re
 from http.server import SimpleHTTPRequestHandler
@@ -2697,11 +2769,11 @@ if __name__ == '__main__':
 
 EOF_DC71
 
-# DC72: Source check - no swallowed exceptions
-echo "Running DC72: Check for swallowed exceptions..."
+# DC73: Source check - no swallowed exceptions
+echo "Running DC73: Check for swallowed exceptions..."
 if grep -n "except Exception: *pass" "$SCRIPT_DIR/check_dependencies.py"; then
-  echo "FAIL DC72: Found swallowed exceptions in check_dependencies.py"
+  echo "FAIL DC73: Found swallowed exceptions in check_dependencies.py"
   exit 1
 fi
 
-echo "All 72 dependency check self-tests (DC1 - DC72) passed successfully!"
+echo "All 73 dependency check self-tests (DC1 - DC73) passed successfully!"
