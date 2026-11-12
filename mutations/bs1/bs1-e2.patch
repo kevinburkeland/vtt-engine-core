@@ -1,0 +1,68 @@
+From b417e751e34d74c8de8c32a9f9b3661c07360be1 Mon Sep 17 00:00:00 2001
+From: Kevin Burkeland <kevin@burke.land>
+Date: Tue, 10 Nov 2026 14:01:59 -0800
+Subject: [PATCH] Bonus slice 1: mutation bs1-e2: E2 catch
+
+Signed-off-by: Kevin Burkeland <kevin@burke.land>
+---
+ .github/workflows/ci.yml      |  6 +++---
+ scripts/check_dependencies.py | 10 +++++-----
+ 2 files changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 806006c..0d5a0a6 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -56,17 +56,17 @@ jobs:
+         run: dart test -p node
+ 
+   min-sdk:
+-    name: 🎯 Minimum SDK Verification (Dart 3.13.0)
++    name: 🎯 Minimum SDK Verification (Dart 3.3.4)
+     runs-on: ubuntu-latest
+ 
+     steps:
+       - name: 📥 Checkout Repository
+         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+ 
+-      - name: 🎯 Set up Dart SDK (3.13.0)
++      - name: 🎯 Set up Dart SDK (3.3.4)
+         uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+         with:
+-          sdk: '3.13.0'
++          sdk: '3.3.4'
+ 
+       - name: 📦 Install Dependencies
+         run: dart pub get
+diff --git a/scripts/check_dependencies.py b/scripts/check_dependencies.py
+index 363c68d..53f82aa 100755
+--- a/scripts/check_dependencies.py
++++ b/scripts/check_dependencies.py
+@@ -456,19 +456,19 @@ def main():
+                     # Track job
+                     if re.match(r'^\s{2}[a-zA-Z0-9_\-]+:\s*$', line):
+                         current_job_name = line.strip().rstrip(':')
+-                    name_match = re.search(r'name:\s*(.*)', line)
+-                    if name_match and not line.strip().startswith('#'):
+-                        current_job_name = name_match.group(1).strip().strip("'\"")
++                        in_setup_dart = False
++                    elif re.match(r'^\s{4}name:\s*(.*)', line) and not line.strip().startswith('#'):
++                        current_job_name = line.strip()[5:].strip().strip("'\"")
+ 
+                     # T2 & T3: dart-lang/setup-dart
+                     if 'dart-lang/setup-dart' in line:
+                         in_setup_dart = True
+-                    elif re.match(r'^\s*-\s*uses:', line):
++                    elif re.match(r'^\s{6}-\s*', line):
+                         in_setup_dart = False
+ 
+                     if in_setup_dart and 'sdk:' in line:
+                         sdk_val = line.split('sdk:', 1)[1].strip().strip("'\"")
+-                        is_min_sdk_job = current_job_name and ('minimum' in current_job_name.lower() or 'min_sdk' in current_job_name.lower())
++                        is_min_sdk_job = current_job_name and ('minimum' in current_job_name.lower() or 'min_sdk' in current_job_name.lower() or 'min-sdk' in current_job_name.lower())
+                         if is_min_sdk_job:
+                             # T3: Minimum SDK job must equal floor
+                             if sdk_val != target_dart_minor_floor:
+-- 
+2.55.0
+

@@ -1,0 +1,28 @@
+From 2fc7a27d7e49230d9c0affd43a529e9f93705eff Mon Sep 17 00:00:00 2001
+From: Kevin Burkeland <kevin@burke.land>
+Date: Tue, 10 Nov 2026 13:58:05 -0800
+Subject: [PATCH] Bonus slice 1: mutation bs1-g1: G1 catch
+
+Signed-off-by: Kevin Burkeland <kevin@burke.land>
+---
+ scripts/check_dependencies.py | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/scripts/check_dependencies.py b/scripts/check_dependencies.py
+index 363c68d..e912f7a 100755
+--- a/scripts/check_dependencies.py
++++ b/scripts/check_dependencies.py
+@@ -48,8 +48,8 @@ def fetch_json(url, headers=None, retries=3):
+             last_err = e
+             if attempt < retries - 1:
+                 time.sleep(0.2 * (attempt + 1))
+-    print(f"Error: Network failure fetching URL '{url}': {last_err}", file=sys.stderr)
+-    sys.exit(1)
++    # G1 mutation: a registry error returns empty dict instead of failing
++    return {}
+ 
+ def semver_tuple(v_str):
+     cleaned = re.sub(r'^[v\^~>=<]+', '', v_str.strip())
+-- 
+2.55.0
+

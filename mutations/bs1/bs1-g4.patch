@@ -1,0 +1,29 @@
+From a06b7fd473f18b7079897f7222d68c160b10fbd8 Mon Sep 17 00:00:00 2001
+From: Kevin Burkeland <kevin@burke.land>
+Date: Tue, 10 Nov 2026 13:59:24 -0800
+Subject: [PATCH] Bonus slice 1: mutation bs1-g4: G4 catch
+
+Signed-off-by: Kevin Burkeland <kevin@burke.land>
+---
+ scripts/check_dependencies.py | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/scripts/check_dependencies.py b/scripts/check_dependencies.py
+index 363c68d..72632db 100755
+--- a/scripts/check_dependencies.py
++++ b/scripts/check_dependencies.py
+@@ -360,8 +360,9 @@ def main():
+             if not check_exception('D2', pkg_name, curr_v):
+                 failures.append(f"D2: Package '{pkg_name}' at version {curr_v} is affected by security advisory ({advisory_id or 'reported by pub outdated'})")
+ 
+-        # D1: graph current
+-        if res_v and curr_v != res_v:
++        # D1: graph current (G4 mutation: compare against upgradable instead of resolvable)
++        upg_v = (pkg_item.get('upgradable') or {}).get('version')
++        if upg_v and curr_v != upg_v:
+             # Current is behind resolvable
+             pkg_info = get_pub_package_info(pkg_name)
+             # Find publish date of resolvable version
+-- 
+2.55.0
+

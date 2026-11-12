@@ -1,0 +1,32 @@
+From 4ade04aa2cd38d99d93345a31a8941b605ab152d Mon Sep 17 00:00:00 2001
+From: Kevin Burkeland <kevin@burke.land>
+Date: Tue, 10 Nov 2026 13:58:54 -0800
+Subject: [PATCH] Bonus slice 1: mutation bs1-g3: G3 catch
+
+Signed-off-by: Kevin Burkeland <kevin@burke.land>
+---
+ scripts/check_dependencies.py | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/scripts/check_dependencies.py b/scripts/check_dependencies.py
+index 363c68d..509cd1f 100755
+--- a/scripts/check_dependencies.py
++++ b/scripts/check_dependencies.py
+@@ -575,10 +575,10 @@ def main():
+             except Exception as e:
+                 failures.append(f"N2: Failed to parse npm audit JSON: {e}")
+ 
+-    # E1: Check for stale exceptions
+-    for idx, exc in enumerate(exceptions):
+-        if idx not in matched_exceptions:
+-            failures.append(f"E1: {args.exceptions}:{exc['line_no']}: stale exception: rule {exc['rule']} for '{exc['name']}' at version '{exc['held_at']}' matched no failure")
++    # G3 mutation: drop the stale-exception check
++    # for idx, exc in enumerate(exceptions):
++    #     if idx not in matched_exceptions:
++    #         failures.append(f"E1: {args.exceptions}:{exc['line_no']}: stale exception: rule {exc['rule']} for '{exc['name']}' at version '{exc['held_at']}' matched no failure")
+ 
+     # Output results
+     if held_notes:
+-- 
+2.55.0
+

@@ -1,0 +1,28 @@
+From d53215bb96330b2124c61a304d75ae5a5468854d Mon Sep 17 00:00:00 2001
+From: Kevin Burkeland <kevin@burke.land>
+Date: Tue, 10 Nov 2026 13:58:31 -0800
+Subject: [PATCH] Bonus slice 1: mutation bs1-g2: G2 catch
+
+Signed-off-by: Kevin Burkeland <kevin@burke.land>
+---
+ scripts/check_dependencies.py | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/scripts/check_dependencies.py b/scripts/check_dependencies.py
+index 363c68d..ae61fbf 100755
+--- a/scripts/check_dependencies.py
++++ b/scripts/check_dependencies.py
+@@ -357,8 +357,8 @@ def main():
+                 pass
+ 
+         if has_advisory:
+-            if not check_exception('D2', pkg_name, curr_v):
+-                failures.append(f"D2: Package '{pkg_name}' at version {curr_v} is affected by security advisory ({advisory_id or 'reported by pub outdated'})")
++            # G2 mutation: apply 14-day grace to advisories too
++            pending_notes.append(f"Package '{pkg_name}' at version {curr_v} advisory pending grace")
+ 
+         # D1: graph current
+         if res_v and curr_v != res_v:
+-- 
+2.55.0
+
