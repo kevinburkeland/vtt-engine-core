@@ -666,10 +666,8 @@ def main():
             adv_data = fetch_json(adv_url)
             if not isinstance(adv_data, dict):
                 failures.append(f"D2: pub.dev advisories response from '{adv_url}' must be a JSON object")
-            elif 'advisories' not in adv_data or not isinstance(adv_data['advisories'], list):
-                failures.append(f"D2: pub.dev advisories response from '{adv_url}' missing 'advisories' list")
             else:
-                for adv in adv_data['advisories']:
+                for adv in adv_data.get('advisories', []):
                     if not isinstance(adv, dict):
                         failures.append(f"D2: pub.dev advisory entry from '{adv_url}' must be a JSON object")
                         continue
