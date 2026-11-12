@@ -104,6 +104,55 @@ done
 
 repo_root=$(git rev-parse --show-toplevel)
 repo_name=$(basename "$repo_root")
+exceptions_file="$repo_root/mutation_subject_exceptions.tsv"
+
+declare -A exc_sha
+declare -A exc_used
+
+if [ -f "$exceptions_file" ]; then
+  while IFS=$'\t' read -r exc_branch exc_sha_val exc_review_by exc_reason || [ -n "$exc_branch" ]; do
+    [ -z "$exc_branch" ] && continue
+    [[ "$exc_branch" =~ ^# ]] && continue
+
+    if [ -z "$exc_sha_val" ] || [ -z "$exc_review_by" ] || [ -z "$exc_reason" ]; then
+      echo "Error: Malformed exception row in '$exceptions_file': expected 4 tab-separated fields." >&2
+      exit 1
+    fi
+
+    # Validate review_by date
+    date_rc=0
+    python3 -c "
+import sys
+from datetime import datetime, timezone, timedelta
+today_str = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] else None
+today = datetime.strptime(today_str, '%Y-%m-%d').date() if today_str else datetime.now(timezone.utc).date()
+try:
+    r_date = datetime.strptime(sys.argv[1], '%Y-%m-%d').date()
+except Exception:
+    sys.exit(4)
+if r_date < today:
+    sys.exit(2)
+if r_date > today + timedelta(days=90):
+    sys.exit(3)
+sys.exit(0)
+" "$exc_review_by" "${MUTATION_CHECK_TODAY:-}" || date_rc=$?
+
+    if [ "$date_rc" -eq 2 ]; then
+      echo "Error: Exception review_by date '$exc_review_by' for '$exc_branch' is in the past." >&2
+      exit 1
+    elif [ "$date_rc" -eq 3 ]; then
+      echo "Error: Exception review_by date '$exc_review_by' for '$exc_branch' is more than 90 days in the future." >&2
+      exit 1
+    elif [ "$date_rc" -eq 4 ]; then
+      echo "Error: Invalid date format in review_by '$exc_review_by' for '$exc_branch'." >&2
+      exit 1
+    fi
+
+    clean_b="${exc_branch#refs/heads/}"
+    exc_sha["$clean_b"]="$exc_sha_val"
+    exc_used["$clean_b"]=0
+  done < "$exceptions_file"
+fi
 
 if [ "$dry_run" -eq 1 ]; then
   dry_dir=$(mktemp -d)
@@ -182,18 +231,43 @@ for i in "${!matched_branches[@]}"; do
     exit 1
   fi
 
-  commit_sha=$(git rev-list "$base_sha..$head_sha")
-  subject=$(git log -n 1 --format="%s" "$commit_sha")
-  prefix="MUTATION — do not merge: "
-  if [[ "$subject" != "$prefix"* ]]; then
-    echo "Error: Branch '$b' commit subject '$subject' does not start with '$prefix'." >&2
-    exit 1
+  # Check subject rule or exception
+  if [ -n "${exc_sha[$b]:-}" ]; then
+    if [ "${exc_sha[$b]}" != "$head_sha" ]; then
+      echo "Error: Branch '$b' head SHA ($head_sha) does not match exception SHA (${exc_sha[$b]})." >&2
+      exit 1
+    fi
+    exc_used["$b"]=1
+  else
+    commit_sha=$(git rev-list "$base_sha..$head_sha")
+    subject=$(git log -n 1 --format="%s" "$commit_sha")
+    branch_id="${leaf#*-}"
+
+    # Subject must start with "MUTATION — do not merge: <id>" (case-insensitive on id)
+    shopt -s nocasematch
+    req_prefix="MUTATION — do not merge: $branch_id"
+    if [[ "$subject" != "$req_prefix"* ]]; then
+      shopt -u nocasematch
+      echo "Error: Branch '$b' commit subject '$subject' does not match required subject '$req_prefix'." >&2
+      exit 1
+    fi
+    shopt -u nocasematch
   fi
 
-  trailers=$(git log -n 1 --format="%(trailers:key=Signed-off-by,valueonly)" "$commit_sha")
+  trailers=$(git log -n 1 --format="%(trailers:key=Signed-off-by,valueonly)" "$head_sha")
   if [ -z "$trailers" ]; then
-    echo "Error: Branch '$b' commit $commit_sha is missing a Signed-off-by: trailer." >&2
+    echo "Error: Branch '$b' commit $head_sha is missing a Signed-off-by: trailer." >&2
     exit 1
+  fi
+done
+
+# Check for stale exceptions matching this slice_id
+for exc_b in "${!exc_sha[@]}"; do
+  if [[ "$exc_b" == "mutation/${slice_id}-"* ]]; then
+    if [ "${exc_used[$exc_b]:-0}" -eq 0 ]; then
+      echo "Error: Stale mutation subject exception for branch '$exc_b' (expected SHA: ${exc_sha[$exc_b]}). Branch does not exist or SHA differs." >&2
+      exit 1
+    fi
   fi
 done
 

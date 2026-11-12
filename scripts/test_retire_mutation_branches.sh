@@ -41,7 +41,8 @@ setup_test_env() {
 create_branch() {
   local repo="$1"
   local leaf="$2"
-  local msg="${3:-MUTATION — do not merge: $leaf}"
+  local branch_id="${leaf#*-}"
+  local msg="${3:-MUTATION — do not merge: $branch_id}"
   local signoff="${4:-yes}"
 
   (
@@ -424,4 +425,112 @@ tag_b15=$(git -C "$bare15" rev-parse refs/tags/archive/cs2-b 2>/dev/null || true
 [ "$tag_a15" = "$head_a15" ] || { echo "FAIL RM15: archive/cs2-a mismatch"; exit 1; }
 [ "$tag_b15" = "$head_b15" ] || { echo "FAIL RM15: archive/cs2-b missing or mismatch"; exit 1; }
 
-echo "All retire mutation branch self-tests passed (RM1 - RM15)."
+# ------------------------------------------------------------------------------
+# RM16: a branch whose subject id doesn't match the branch name. Fails.
+# ------------------------------------------------------------------------------
+echo "Running RM16..."
+env16=$(setup_test_env "rm16")
+repo16="$env16/local"
+bare16="$env16/origin.git"
+create_branch "$repo16" "cs2-a" "MUTATION — do not merge: wrong" "yes"
+
+set +e
+out16=$(cd "$repo16" && ./scripts/retire_mutation_branches.sh cs2 2>&1)
+rc16=$?
+set -e
+[ "$rc16" -ne 0 ] || { echo "FAIL RM16: expected failure on mismatched id in subject"; exit 1; }
+[[ "$out16" == *"MUTATION — do not merge: a"* ]] || { echo "FAIL RM16: unexpected error message: $out16"; exit 1; }
+[ -n "$(git -C "$bare16" branch -l 'mutation/cs2-a')" ] || { echo "FAIL RM16: branch deleted despite error"; exit 1; }
+
+# ------------------------------------------------------------------------------
+# RM17: an excused branch with wrong subject passes when exact SHA is in exceptions.
+# ------------------------------------------------------------------------------
+echo "Running RM17..."
+env17=$(setup_test_env "rm17")
+repo17="$env17/local"
+bare17="$env17/origin.git"
+create_branch "$repo17" "cs2-a" "Wrong subject excused" "yes"
+head_a17=$(git -C "$bare17" rev-parse refs/heads/mutation/cs2-a)
+
+(
+  cd "$repo17"
+  echo -e "mutation/cs2-a\t$head_a17\t2027-02-01\tExcused wrong subject" > mutation_subject_exceptions.tsv
+  git add mutation_subject_exceptions.tsv
+  git commit -s -m "Add exception" >/dev/null 2>&1
+  git push origin main >/dev/null 2>&1
+  ./scripts/retire_mutation_branches.sh cs2
+)
+[ -z "$(git -C "$bare17" branch -l 'mutation/cs2-a')" ] || { echo "FAIL RM17: branch not deleted"; exit 1; }
+
+# ------------------------------------------------------------------------------
+# RM18: an excused branch fails when its head is at another SHA (the other-SHA case).
+# ------------------------------------------------------------------------------
+echo "Running RM18..."
+env18=$(setup_test_env "rm18")
+repo18="$env18/local"
+bare18="$env18/origin.git"
+create_branch "$repo18" "cs2-a" "Wrong subject excused" "yes"
+
+(
+  cd "$repo18"
+  echo -e "mutation/cs2-a\t0123456789abcdef0123456789abcdef01234567\t2027-02-01\tDifferent sha" > mutation_subject_exceptions.tsv
+  git add mutation_subject_exceptions.tsv
+  git commit -s -m "Add exception" >/dev/null 2>&1
+  git push origin main >/dev/null 2>&1
+)
+set +e
+out18=$(cd "$repo18" && ./scripts/retire_mutation_branches.sh cs2 2>&1)
+rc18=$?
+set -e
+[ "$rc18" -ne 0 ] || { echo "FAIL RM18: expected failure on different SHA"; exit 1; }
+[[ "$out18" == *"does not match exception SHA"* ]] || { echo "FAIL RM18: unexpected error: $out18"; exit 1; }
+[ -n "$(git -C "$bare18" branch -l 'mutation/cs2-a')" ] || { echo "FAIL RM18: branch deleted despite error"; exit 1; }
+
+# ------------------------------------------------------------------------------
+# RM19: stale row in mutation_subject_exceptions.tsv matching prefix fails.
+# ------------------------------------------------------------------------------
+echo "Running RM19..."
+env19=$(setup_test_env "rm19")
+repo19="$env19/local"
+bare19="$env19/origin.git"
+create_branch "$repo19" "cs2-a"
+
+(
+  cd "$repo19"
+  echo -e "mutation/cs2-stale\t0123456789abcdef0123456789abcdef01234567\t2027-02-01\tStale exception" > mutation_subject_exceptions.tsv
+  git add mutation_subject_exceptions.tsv
+  git commit -s -m "Add exception" >/dev/null 2>&1
+  git push origin main >/dev/null 2>&1
+)
+set +e
+out19=$(cd "$repo19" && ./scripts/retire_mutation_branches.sh cs2 2>&1)
+rc19=$?
+set -e
+[ "$rc19" -ne 0 ] || { echo "FAIL RM19: expected failure on stale row"; exit 1; }
+[[ "$out19" == *"Stale mutation subject exception"* ]] || { echo "FAIL RM19: unexpected error: $out19"; exit 1; }
+
+# ------------------------------------------------------------------------------
+# RM20: exception row with review_by in the past fails.
+# ------------------------------------------------------------------------------
+echo "Running RM20..."
+env20=$(setup_test_env "rm20")
+repo20="$env20/local"
+bare20="$env20/origin.git"
+create_branch "$repo20" "cs2-a"
+
+(
+  cd "$repo20"
+  head_a20=$(git -C "$bare20" rev-parse refs/heads/mutation/cs2-a)
+  echo -e "mutation/cs2-a\t$head_a20\t2020-01-01\tExpired exception" > mutation_subject_exceptions.tsv
+  git add mutation_subject_exceptions.tsv
+  git commit -s -m "Add exception" >/dev/null 2>&1
+  git push origin main >/dev/null 2>&1
+)
+set +e
+out20=$(cd "$repo20" && ./scripts/retire_mutation_branches.sh cs2 2>&1)
+rc20=$?
+set -e
+[ "$rc20" -ne 0 ] || { echo "FAIL RM20: expected failure on past review_by"; exit 1; }
+[[ "$out20" == *"is in the past"* ]] || { echo "FAIL RM20: unexpected error: $out20"; exit 1; }
+
+echo "All retire mutation branch self-tests passed (RM1 - RM20)."
