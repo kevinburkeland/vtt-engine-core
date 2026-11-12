@@ -1477,6 +1477,12 @@ set -e
 echo "Running DC51..."
 d51="$TMP_DIR/dc51"; setup_base_fixtures "$d51"
 mkdir -p "$HTTP_ROOT/repos/actions/checkout/releases"
+cat << 'EOF2' > "$HTTP_ROOT/repos/actions/checkout/releases/latest.json"
+{
+  "tag_name": "v7.0.1",
+  "published_at": "2026-11-08T00:00:00Z"
+}
+EOF2
 cat << 'EOF2' > "$HTTP_ROOT/repos/actions/checkout/releases.json"
 [
   {"tag_name": "v7.0.1", "published_at": "2026-11-08T00:00:00Z"},
