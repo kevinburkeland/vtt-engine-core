@@ -511,20 +511,25 @@ def main():
         if res_v and curr_v != res_v:
             # Current is behind resolvable
             pkg_info = get_pub_package_info(pkg_name)
-            # Find publish date of resolvable version
-            res_pub_date = None
+            # Find publish date of FIRST newer version > curr_v (Fix 3.1)
+            first_newer_date = None
+            first_newer_ver = None
             for v_entry in pkg_info.get('versions', []):
-                if v_entry.get('version') == res_v:
-                    res_pub_date = parse_date(v_entry.get('published'))
-                    break
+                v_str = v_entry.get('version')
+                if v_str and semver_cmp(v_str, curr_v) > 0 and semver_cmp(v_str, res_v) <= 0:
+                    d = parse_date(v_entry.get('published'))
+                    if d:
+                        if first_newer_date is None or d < first_newer_date:
+                            first_newer_date = d
+                            first_newer_ver = v_str
             
-            if res_pub_date:
-                age_days = (today - res_pub_date).days
+            if first_newer_date:
+                age_days = (today - first_newer_date).days
                 if age_days < 14:
                     pending_notes.append(f"Package '{pkg_name}' resolvable {res_v} pending ({age_days} days old)")
                 else:
                     if not check_exception('D1', pkg_name, curr_v):
-                        failures.append(f"D1: Package '{pkg_name}' current {curr_v} is behind resolvable {res_v} (published {res_pub_date}, {age_days} days old)")
+                        failures.append(f"D1: Package '{pkg_name}' current {curr_v} is behind resolvable {res_v} (first newer release {first_newer_ver} published {first_newer_date}, {age_days} days old)")
             else:
                 if not check_exception('D1', pkg_name, curr_v):
                     failures.append(f"D1: Package '{pkg_name}' current {curr_v} is behind resolvable {res_v}")
@@ -614,12 +619,18 @@ def main():
                             else:
                                 line_no = step['sdk_line'] or step['uses_line'] or step['start_line']
                                 if step['sdk'] != target_dart:
-                                    age_days = (today - newest_flutter_date).days if newest_flutter_date else 999
+                                    # Find release date of first Flutter stable that shipped target_dart (Fix 3.1)
+                                    first_target_dart_date = None
+                                    for rel in reversed(stable_releases):
+                                        if rel.get('dart_sdk_version') == target_dart:
+                                            first_target_dart_date = parse_date(rel.get('release_date'))
+                                            break
+                                    age_days = (today - first_target_dart_date).days if first_target_dart_date else (today - newest_flutter_date).days if newest_flutter_date else 999
                                     if age_days < 14:
                                         pending_notes.append(f"{wf_file}:{line_no}: setup-dart sdk '{step['sdk']}' pending target Dart '{target_dart}' ({age_days} days old)")
                                     else:
                                         if not check_exception('T2', 'dart', step['sdk']):
-                                            failures.append(f"T2: {wf_file}:{line_no}: setup-dart sdk '{step['sdk']}' is behind target Dart '{target_dart}'")
+                                            failures.append(f"T2: {wf_file}:{line_no}: setup-dart sdk '{step['sdk']}' is behind target Dart '{target_dart}' (shipped in Flutter {age_days} days ago)")
 
                         # A1: uses: owner/repo@sha # vX.Y.Z
                         if step['uses']:
@@ -647,7 +658,22 @@ def main():
                                     commit_sha = tag_data.get('object', {}).get('sha', commit_sha)
 
                                 if action_sha != commit_sha or action_comment != latest_tag:
-                                    age_days = (today - rel_date).days if rel_date else 999
+                                    # Query releases list to find date of first newer release tag (Fix 3.1)
+                                    first_newer_rel_date = rel_date
+                                    gh_all_rels_url = f"{args.github_api.rstrip('/')}/repos/{action_name}/releases"
+                                    gh_all_rels = fetch_json(gh_all_rels_url, headers=github_headers)
+                                    if isinstance(gh_all_rels, list):
+                                        newer_dates = []
+                                        for r in gh_all_rels:
+                                            tag = r.get('tag_name')
+                                            p_date = parse_date(r.get('published_at'))
+                                            if tag and p_date and tag != action_comment:
+                                                # If current tag is known in releases list, check if newer
+                                                newer_dates.append(p_date)
+                                        if newer_dates:
+                                            first_newer_rel_date = min(newer_dates)
+
+                                    age_days = (today - first_newer_rel_date).days if first_newer_rel_date else 999
                                     if age_days < 14:
                                         pending_notes.append(f"{wf_file}:{line_no}: Action '{action_name}' pending latest release {latest_tag} ({age_days} days old)")
                                     else:
@@ -664,7 +690,14 @@ def main():
                                 newest_lts = lts_releases[0]
                                 lts_ver = newest_lts.get('version', '').lstrip('v')
                                 lts_major = lts_ver.split('.')[0]
-                                lts_date = parse_date(newest_lts.get('date'))
+                                # Find date the major first became LTS (oldest release with this lts_major) (Fix 3.1)
+                                first_lts_date = None
+                                for rel in reversed(lts_releases):
+                                    v = rel.get('version', '').lstrip('v')
+                                    if v.split('.')[0] == lts_major:
+                                        first_lts_date = parse_date(rel.get('date'))
+                                        break
+                                lts_date = first_lts_date or parse_date(newest_lts.get('date'))
                                 if node_val != lts_major:
                                     age_days = (today - lts_date).days if lts_date else 999
                                     if age_days < 14:
@@ -714,14 +747,31 @@ def main():
                             # Query npm registry
                             npm_pkg_url = f"{args.npm_registry.rstrip('/')}/{npm_pkg}"
                             npm_pkg_data = fetch_json(npm_pkg_url)
-                            pub_time = npm_pkg_data.get('time', {}).get(lat_npm_v)
-                            lat_npm_date = parse_date(pub_time) if pub_time else None
-                            age_days = (today - lat_npm_date).days if lat_npm_date else 999
+                            # Find publish date of FIRST newer version > curr_npm_v (Fix 3.1)
+                            time_dict = npm_pkg_data.get('time', {})
+                            first_newer_date = None
+                            first_newer_ver = None
+                            for v_str, time_str in time_dict.items():
+                                if v_str not in ('created', 'modified'):
+                                    try:
+                                        if semver_cmp(v_str, curr_npm_v) > 0 and semver_cmp(v_str, lat_npm_v) <= 0:
+                                            d = parse_date(time_str)
+                                            if d and (first_newer_date is None or d < first_newer_date):
+                                                first_newer_date = d
+                                                first_newer_ver = v_str
+                                    except Exception:
+                                        pass
+                            if not first_newer_date:
+                                pub_time = time_dict.get(lat_npm_v)
+                                first_newer_date = parse_date(pub_time) if pub_time else None
+                                first_newer_ver = lat_npm_v
+
+                            age_days = (today - first_newer_date).days if first_newer_date else 999
                             if age_days < 14:
                                 pending_notes.append(f"npm package '{npm_pkg}' pending {lat_npm_v} ({age_days} days old)")
                             else:
                                 if not check_exception('N1', npm_pkg, curr_npm_v):
-                                    failures.append(f"N1: npm package '{npm_pkg}' current {curr_npm_v} is behind latest {lat_npm_v} (published {lat_npm_date}, {age_days} days old)")
+                                    failures.append(f"N1: npm package '{npm_pkg}' current {curr_npm_v} is behind latest {lat_npm_v} (first newer release {first_newer_ver} published {first_newer_date}, {age_days} days old)")
         except Exception as e:
             failures.append(f"N1: Failed to read or parse npm outdated JSON in '{args.npm_outdated}': {e}")
 

@@ -43,8 +43,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(b'Internal Server Error')
             return
 
-        path = self.path.split('?')[0].rstrip('/')
-        json_file = os.path.join(root, path.lstrip('/') + '.json')
+        # Always check for .json file first before super().do_GET() redirects directories
+        req_path = self.path.split('?')[0].rstrip('/')
+        json_file = os.path.join(root, req_path.lstrip('/') + '.json')
         if os.path.isfile(json_file):
             with open(json_file, 'rb') as f:
                 data = f.read()
@@ -205,6 +206,14 @@ EOF
   "published_at": "2026-05-10T12:00:00Z"
 }
 EOF_ACT
+      cat << EOF_ACT > "$HTTP_ROOT/repos/$action/releases.json"
+[
+  {
+    "tag_name": "$tag",
+    "published_at": "2026-05-10T12:00:00Z"
+  }
+]
+EOF_ACT
       cat << EOF_ACT > "$HTTP_ROOT/repos/$action/git/ref/tags/$tag.json"
 {
   "object": {
@@ -259,6 +268,14 @@ EOF
   "published_at": "2026-07-20T15:00:00Z"
 }
 EOF
+  cat << 'EOF' > "$HTTP_ROOT/repos/actions/checkout/releases.json"
+[
+  {
+    "tag_name": "v7.0.1",
+    "published_at": "2026-07-20T15:00:00Z"
+  }
+]
+EOF
   cat << 'EOF' > "$HTTP_ROOT/repos/actions/checkout/git/ref/tags/v7.0.1.json"
 {
   "object": {
@@ -276,6 +293,14 @@ EOF
   "published_at": "2026-05-10T12:00:00Z"
 }
 EOF
+  cat << 'EOF' > "$HTTP_ROOT/repos/dart-lang/setup-dart/releases.json"
+[
+  {
+    "tag_name": "v1.8.1",
+    "published_at": "2026-05-10T12:00:00Z"
+  }
+]
+EOF
   cat << 'EOF' > "$HTTP_ROOT/repos/dart-lang/setup-dart/git/ref/tags/v1.8.1.json"
 {
   "object": {
@@ -292,6 +317,14 @@ EOF
   "tag_name": "v4.4.0",
   "published_at": "2026-05-10T12:00:00Z"
 }
+EOF
+  cat << 'EOF' > "$HTTP_ROOT/repos/actions/setup-node/releases.json"
+[
+  {
+    "tag_name": "v4.4.0",
+    "published_at": "2026-05-10T12:00:00Z"
+  }
+]
 EOF
   cat << 'EOF' > "$HTTP_ROOT/repos/actions/setup-node/git/ref/tags/v4.4.0.json"
 {
@@ -1376,4 +1409,196 @@ rc49=$?
 set -e
 [ "$rc49" -ne 0 ] || { echo "FAIL DC49: expected failure"; exit 1; }
 
-echo "All 49 dependency check self-tests (DC1 - DC49) passed successfully!"
+
+# DC50: pub package wait count measured from first newer release date (not newest)
+echo "Running DC50..."
+d50="$TMP_DIR/dc50"; setup_base_fixtures "$d50"
+mkdir -p "$HTTP_ROOT/api/packages/pkg_multi_pub"
+cat << 'EOF2' > "$HTTP_ROOT/api/packages/pkg_multi_pub.json"
+{
+  "name": "pkg_multi_pub",
+  "latest": {"version": "1.2.0", "published": "2026-11-09T00:00:00Z"},
+  "versions": [
+    {"version": "1.0.0", "published": "2026-01-01T00:00:00Z"},
+    {"version": "1.1.0", "published": "2026-10-01T00:00:00Z"},
+    {"version": "1.2.0", "published": "2026-11-09T00:00:00Z"}
+  ]
+}
+EOF2
+cat << 'EOF2' > "$HTTP_ROOT/api/packages/pkg_multi_pub/advisories.json"
+{"advisories": []}
+EOF2
+cat << 'EOF2' > "$d50/pub_outdated.json"
+{
+  "packages": [
+    {
+      "package": "pkg_multi_pub",
+      "kind": "direct",
+      "isDiscontinued": false,
+      "isCurrentRetracted": false,
+      "isCurrentAffectedByAdvisory": false,
+      "current": {"version": "1.0.0"},
+      "resolvable": {"version": "1.2.0"},
+      "latest": {"version": "1.2.0"}
+    }
+  ]
+}
+EOF2
+echo "  pkg_multi_pub: ^1.0.0" >> "$d50/pubspec.yaml"
+set +e
+out50=$(run_check "$d50" --today 2026-11-10 2>&1)
+rc50=$?
+set -e
+[ "$rc50" -ne 0 ] || { echo "FAIL DC50: expected failure for package behind older intermediate release"; exit 1; }
+[[ "$out50" == *"D1:"* && "$out50" == *"pkg_multi_pub"* ]] || { echo "FAIL DC50 output: $out50"; exit 1; }
+
+# DC51: Action wait count measured from first newer release date
+echo "Running DC51..."
+d51="$TMP_DIR/dc51"; setup_base_fixtures "$d51"
+mkdir -p "$HTTP_ROOT/repos/actions/checkout/releases"
+cat << 'EOF2' > "$HTTP_ROOT/repos/actions/checkout/releases.json"
+[
+  {"tag_name": "v7.0.1", "published_at": "2026-11-08T00:00:00Z"},
+  {"tag_name": "v7.0.0", "published_at": "2026-10-01T00:00:00Z"},
+  {"tag_name": "v6.0.0", "published_at": "2026-01-01T00:00:00Z"}
+]
+EOF2
+cat << 'EOF2' > "$d51/.github/workflows/ci.yml"
+name: CI
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v6.0.0
+EOF2
+set +e
+out51=$(run_check "$d51" --today 2026-11-10 2>&1)
+rc51=$?
+set -e
+[ "$rc51" -ne 0 ] || { echo "FAIL DC51: expected failure for action behind older intermediate release"; exit 1; }
+[[ "$out51" == *"A1:"* ]] || { echo "FAIL DC51 output: $out51"; exit 1; }
+
+# DC52: npm package wait count measured from first newer release date
+echo "Running DC52..."
+d52="$TMP_DIR/dc52"; setup_base_fixtures "$d52"
+mkdir -p "$d52/npm_dir" "$HTTP_ROOT/pkg_multi_npm"
+echo '{"name": "test"}' > "$d52/npm_dir/package.json"
+echo '{"name": "test", "lockfileVersion": 3}' > "$d52/npm_dir/package-lock.json"
+echo '{"metadata":{"vulnerabilities":{"moderate":0,"high":0,"critical":0}}}' > "$d52/npm_audit.json"
+cat << 'EOF2' > "$HTTP_ROOT/pkg_multi_npm.json"
+{
+  "name": "pkg_multi_npm",
+  "time": {
+    "1.0.0": "2026-01-01T00:00:00Z",
+    "1.1.0": "2026-10-01T00:00:00Z",
+    "1.2.0": "2026-11-09T00:00:00Z"
+  }
+}
+EOF2
+cat << 'EOF2' > "$d52/npm_outdated.json"
+{
+  "pkg_multi_npm": {
+    "current": "1.0.0",
+    "latest": "1.2.0"
+  }
+}
+EOF2
+set +e
+out52=$(run_check "$d52" --npm-dir "$d52/npm_dir" --npm-outdated "$d52/npm_outdated.json" --npm-audit "$d52/npm_audit.json" --today 2026-11-10 2>&1)
+rc52=$?
+set -e
+[ "$rc52" -ne 0 ] || { echo "FAIL DC52: expected failure for npm pkg behind older intermediate release"; exit 1; }
+[[ "$out52" == *"N1:"* ]] || { echo "FAIL DC52 output: $out52"; exit 1; }
+
+# DC53: Dart SDK wait count measured from first Flutter stable release shipping target Dart
+echo "Running DC53..."
+d53="$TMP_DIR/dc53"; setup_base_fixtures "$d53"
+cat << 'EOF2' > "$HTTP_ROOT/releases_linux_dc53.json"
+{
+  "releases": [
+    {
+      "version": "3.47.9",
+      "release_date": "2026-11-09T00:00:00Z",
+      "channel": "stable",
+      "dart_sdk_version": "3.13.7"
+    },
+    {
+      "version": "3.47.0",
+      "release_date": "2026-10-01T00:00:00Z",
+      "channel": "stable",
+      "dart_sdk_version": "3.13.7"
+    }
+  ]
+}
+EOF2
+if ls "$d53"/.github/workflows/*.yml 1> /dev/null 2>&1; then
+  for f in "$d53"/.github/workflows/*.yml; do
+    python3 -c "
+with open('$f') as file:
+    content = file.read()
+import re
+content = re.sub(r'sdk:\s*[\'\"]?3\.\d+\.\d+[\'\"]?', 'sdk: 3.12.0', content)
+with open('$f', 'w') as file:
+    file.write(content)
+"
+  done
+fi
+set +e
+out53=$(run_check "$d53" --flutter-releases "$SERVER_URL/releases_linux_dc53.json" --today 2026-11-10 2>&1)
+rc53=$?
+set -e
+[ "$rc53" -ne 0 ] || { echo "FAIL DC53: expected failure for setup-dart behind first release"; exit 1; }
+[[ "$out53" == *"T2:"* || "$out53" == *"T3:"* ]] || { echo "FAIL DC53 output: $out53"; exit 1; }
+
+# DC54: Node LTS wait count measured from date version became LTS
+echo "Running DC54..."
+d54="$TMP_DIR/dc54"; setup_base_fixtures "$d54"
+cat << 'EOF2' > "$HTTP_ROOT/dist/index_dc54.json"
+[
+  {
+    "version": "v26.1.0",
+    "date": "2026-11-09",
+    "lts": "Iron"
+  },
+  {
+    "version": "v26.0.0",
+    "date": "2026-10-01",
+    "lts": "Iron"
+  }
+]
+EOF2
+cat << 'EOF2' > "$d54/.github/workflows/ci.yml"
+name: CI
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v4.4.0
+        with:
+          node-version: 24
+EOF2
+set +e
+out54=$(run_check "$d54" --node-dist "$SERVER_URL/dist/index_dc54.json" --today 2026-11-10 2>&1)
+rc54=$?
+set -e
+[ "$rc54" -ne 0 ] || { echo "FAIL DC54: expected failure for node-version behind first LTS release"; exit 1; }
+[[ "$out54" == *"N3:"* ]] || { echo "FAIL DC54 output: $out54"; exit 1; }
+
+# DC55: Version floors current in pubspec: exact floor matches target minor
+echo "Running DC55..."
+d55="$TMP_DIR/dc55"; setup_base_fixtures "$d55"
+cat << 'EOF2' > "$d55/pubspec.yaml"
+name: test_pkg
+environment:
+  sdk: '^3.12.0'
+dependencies:
+  meta: ^1.19.0
+EOF2
+set +e
+out55=$(run_check "$d55" --today 2026-12-01 2>&1)
+rc55=$?
+set -e
+[ "$rc55" -ne 0 ] || { echo "FAIL DC55: expected failure for outdated SDK floor"; exit 1; }
+[[ "$out55" == *"T3:"* ]] || { echo "FAIL DC55 output: $out55"; exit 1; }
+
+echo "All 55 dependency check self-tests (DC1 - DC55) passed successfully!"
