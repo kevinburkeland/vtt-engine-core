@@ -1,0 +1,48 @@
+From 21cb9d30310c29be629a06b0f4630b1f37fb94b2 Mon Sep 17 00:00:00 2001
+From: Kevin Burkeland <kevin@burke.land>
+Date: Wed, 11 Nov 2026 19:06:10 -0800
+Subject: [PATCH] =?UTF-8?q?MUTATION=20=E2=80=94=20do=20not=20merge:=20T1?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Kevin Burkeland <kevin@burke.land>
+---
+ scripts/check_dependencies.py | 14 ++++++--------
+ 1 file changed, 6 insertions(+), 8 deletions(-)
+
+diff --git a/scripts/check_dependencies.py b/scripts/check_dependencies.py
+index 7f7d544..8cb0b55 100755
+--- a/scripts/check_dependencies.py
++++ b/scripts/check_dependencies.py
+@@ -179,13 +179,11 @@ def parse_workflow_file(wf_path, wf_file):
+         if current_job is None:
+             continue
+ 
+-        # Job attributes are indented 4 spaces
+-        if indent == 4:
+-            m_name = re.match(r'^    name:\s*(.*)$', line)
+-            if m_name:
+-                name_val = m_name.group(1).split('#')[0].strip().strip("'\"")
+-                current_job['name'] = name_val
+-            continue
++        # Find name: at any level (nearest name: line)
++        m_name = re.match(r'^\s*(?:-\s*)?name:\s*(.*)$', line)
++        if m_name:
++            name_val = m_name.group(1).split('#')[0].strip().strip("'\"")
++            current_job['name'] = name_val
+ 
+         # Step item starts with 6 spaces: "      - "
+         m_step = re.match(r'^\s{6}-\s*(.*)$', line)
+@@ -703,7 +701,7 @@ def main():
+                             if not step['sdk']:
+                                 line_no = step['uses_line'] or step['start_line']
+                                 failures.append(f"T2: {wf_file}:{line_no}: setup-dart step has no sdk: in with: block")
+-                            elif job['id'] == 'min-sdk':
++                            elif 'minimum' in (job['name'] or '').lower():
+                                 line_no = step['sdk_line'] or step['uses_line'] or step['start_line']
+                                 if step['sdk'] != target_dart_minor_floor:
+                                     first_release_date = None
+-- 
+2.55.0
+

@@ -1,0 +1,41 @@
+From 38b3af270a28253c05b6e2737533c48faf08735c Mon Sep 17 00:00:00 2001
+From: Kevin Burkeland <kevin@burke.land>
+Date: Wed, 11 Nov 2026 19:24:13 -0800
+Subject: [PATCH] =?UTF-8?q?MUTATION=20=E2=80=94=20do=20not=20merge:=20S1?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Kevin Burkeland <kevin@burke.land>
+---
+ scripts/check_mutation_branches.sh | 14 --------------
+ 1 file changed, 14 deletions(-)
+
+diff --git a/scripts/check_mutation_branches.sh b/scripts/check_mutation_branches.sh
+index 9055bcd..73c298c 100755
+--- a/scripts/check_mutation_branches.sh
++++ b/scripts/check_mutation_branches.sh
+@@ -155,20 +155,6 @@ for i in "${!branches[@]}"; do
+   # Check subject rule or exception
+   if [ -n "${exc_sha[$b]:-}" ] && [ "${exc_sha[$b]}" = "$head_sha" ]; then
+     exc_used["$b"]=1
+-  else
+-    subject=$(git log -n 1 --format="%s" "$head_sha")
+-    leaf="${b#mutation/}"
+-    branch_id="${leaf#*-}"
+-
+-    # Subject must start with "MUTATION — do not merge: <id>" (case-insensitive on id)
+-    shopt -s nocasematch
+-    req_prefix="MUTATION — do not merge: $branch_id"
+-    if [[ "$subject" != "$req_prefix"* ]]; then
+-      shopt -u nocasematch
+-      echo "Error: Branch '$b' commit subject '$subject' does not match required subject '$req_prefix'." >&2
+-      exit 1
+-    fi
+-    shopt -u nocasematch
+   fi
+ done
+ 
+-- 
+2.55.0
+

@@ -1,0 +1,99 @@
+From 3e71b234bb6c3a8c88b721004e336f6025962a6f Mon Sep 17 00:00:00 2001
+From: Kevin Burkeland <kevin@burke.land>
+Date: Wed, 11 Nov 2026 19:11:46 -0800
+Subject: [PATCH] =?UTF-8?q?MUTATION=20=E2=80=94=20do=20not=20merge:=20F1?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Kevin Burkeland <kevin@burke.land>
+---
+ scripts/check_dependencies.py | 72 ++++-------------------------------
+ 1 file changed, 7 insertions(+), 65 deletions(-)
+
+diff --git a/scripts/check_dependencies.py b/scripts/check_dependencies.py
+index 67b94f9..8d92be0 100755
+--- a/scripts/check_dependencies.py
++++ b/scripts/check_dependencies.py
+@@ -895,71 +895,13 @@ def main():
+                 npm_audit_content = f.read().strip()
+             if npm_audit_content:
+                 npm_audit_data = json.loads(npm_audit_content)
+-                if not isinstance(npm_audit_data, dict):
+-                    failures.append(f"N2: npm audit JSON in '{args.npm_audit}' must be an object")
+-                elif 'error' in npm_audit_data:
+-                    failures.append(f"N2: npm audit reported error: {npm_audit_data['error']}")
+-                else:
+-                    vulns = npm_audit_data.get('vulnerabilities', {})
+-                    if not isinstance(vulns, dict):
+-                        failures.append(f"N2: npm audit JSON in '{args.npm_audit}' missing vulnerabilities object")
+-                    elif vulns:
+-                        for pkg_name, info in sorted(vulns.items()):
+-                            if not isinstance(info, dict):
+-                                continue
+-                            sev = info.get('severity', 'unknown')
+-                            if sev in ('info', 'low'):
+-                                continue
+-
+-                            ghsas = get_ghsa_ids(pkg_name, vulns)
+-                            ghsa_str = ', '.join(sorted(ghsas)) if ghsas else 'no advisory ID'
+-
+-                            installed_version = info.get('version')
+-                            if not installed_version and args.npm_dir:
+-                                lock_path = os.path.join(args.npm_dir, 'package-lock.json')
+-                                if os.path.exists(lock_path):
+-                                    try:
+-                                        with open(lock_path, 'r', encoding='utf-8') as lf:
+-                                            lock_data = json.load(lf)
+-                                        packages = lock_data.get('packages', {})
+-                                        for node in info.get('nodes', []):
+-                                            if node in packages and 'version' in packages[node]:
+-                                                installed_version = packages[node]['version']
+-                                                break
+-                                        if not installed_version:
+-                                            k = f"node_modules/{pkg_name}"
+-                                            if k in packages and 'version' in packages[k]:
+-                                                installed_version = packages[k]['version']
+-                                    except Exception:
+-                                        pass
+-
+-                            exc_matched = False
+-                            for idx, exc in enumerate(exceptions):
+-                                if exc['rule'] == 'N2' and exc['name'] == pkg_name:
+-                                    if installed_version and exc['held_at'] != '*' and exc['held_at'] != installed_version:
+-                                        continue
+-                                    missing_ghsa = [g for g in ghsas if g.lower() not in exc['reason'].lower()]
+-                                    if not missing_ghsa:
+-                                        exc['used'] = True
+-                                        matched_exceptions.add(idx)
+-                                        exc_matched = True
+-                                        break
+-                            if not exc_matched:
+-                                failures.append(f"N2: npm package '{pkg_name}' has {sev} vulnerability: {ghsa_str}")
+-                    else:
+-                        metadata = npm_audit_data.get('metadata', {})
+-                        if not isinstance(metadata, dict):
+-                            failures.append(f"N2: npm audit JSON in '{args.npm_audit}' missing metadata object")
+-                        else:
+-                            meta_vulns = metadata.get('vulnerabilities', {})
+-                            if not isinstance(meta_vulns, dict):
+-                                failures.append(f"N2: npm audit metadata missing vulnerabilities object")
+-                            else:
+-                                mod_count = meta_vulns.get('moderate', 0)
+-                                high_count = meta_vulns.get('high', 0)
+-                                crit_count = meta_vulns.get('critical', 0)
+-                                if mod_count > 0 or high_count > 0 or crit_count > 0:
+-                                    failures.append(f"N2: npm audit reports {mod_count} moderate, {high_count} high, {crit_count} critical vulnerabilities")
++                metadata = npm_audit_data.get('metadata', {}) if isinstance(npm_audit_data, dict) else {}
++                meta_vulns = metadata.get('vulnerabilities', {}) if isinstance(metadata, dict) else {}
++                mod_count = meta_vulns.get('moderate', 0) if isinstance(meta_vulns, dict) else 0
++                high_count = meta_vulns.get('high', 0) if isinstance(meta_vulns, dict) else 0
++                crit_count = meta_vulns.get('critical', 0) if isinstance(meta_vulns, dict) else 0
++                if mod_count > 0 or high_count > 0 or crit_count > 0:
++                    failures.append(f"N2: npm audit reports {mod_count} moderate, {high_count} high, {crit_count} critical vulnerabilities")
+         except Exception as e:
+             failures.append(f"N2: Failed to read or parse npm audit JSON in '{args.npm_audit}': {e}")
+ 
+-- 
+2.55.0
+

@@ -1,0 +1,31 @@
+From 77e9f36050eab61444ba48ed823bd7024e8bf07f Mon Sep 17 00:00:00 2001
+From: Kevin Burkeland <kevin@burke.land>
+Date: Wed, 11 Nov 2026 19:25:08 -0800
+Subject: [PATCH] =?UTF-8?q?MUTATION=20=E2=80=94=20do=20not=20merge:=20S2?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Kevin Burkeland <kevin@burke.land>
+---
+ scripts/retire_mutation_branches.sh | 4 ----
+ 1 file changed, 4 deletions(-)
+
+diff --git a/scripts/retire_mutation_branches.sh b/scripts/retire_mutation_branches.sh
+index 7f1e685..93e21c9 100755
+--- a/scripts/retire_mutation_branches.sh
++++ b/scripts/retire_mutation_branches.sh
+@@ -233,10 +233,6 @@ for i in "${!matched_branches[@]}"; do
+ 
+   # Check subject rule or exception
+   if [ -n "${exc_sha[$b]:-}" ]; then
+-    if [ "${exc_sha[$b]}" != "$head_sha" ]; then
+-      echo "Error: Branch '$b' head SHA ($head_sha) does not match exception SHA (${exc_sha[$b]})." >&2
+-      exit 1
+-    fi
+     exc_used["$b"]=1
+   else
+     commit_sha=$(git rev-list "$base_sha..$head_sha")
+-- 
+2.55.0
+

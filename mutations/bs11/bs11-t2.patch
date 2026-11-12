@@ -1,0 +1,29 @@
+From a83f50f76fd15665d3e8444d8c5864a9377280d0 Mon Sep 17 00:00:00 2001
+From: Kevin Burkeland <kevin@burke.land>
+Date: Wed, 11 Nov 2026 19:10:10 -0800
+Subject: [PATCH] =?UTF-8?q?MUTATION=20=E2=80=94=20do=20not=20merge:=20T2?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Kevin Burkeland <kevin@burke.land>
+---
+ .github/workflows/ci.yml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 806006c..509b053 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -66,7 +66,7 @@ jobs:
+       - name: 🎯 Set up Dart SDK (3.13.0)
+         uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+         with:
+-          sdk: '3.13.0'
++          sdk: '3.12.0'
+ 
+       - name: 📦 Install Dependencies
+         run: dart pub get
+-- 
+2.55.0
+
