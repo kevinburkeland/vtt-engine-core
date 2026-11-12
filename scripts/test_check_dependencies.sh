@@ -1925,4 +1925,16 @@ rc69=$?; set -e
 [ "$rc69" -ne 0 ] || { echo "FAIL DC69: expected failure for missing GHSA ID"; exit 1; }
 [[ "$out69" == *"N2"* ]] || { echo "FAIL DC69 output: $out69"; exit 1; }
 
-echo "All 69 dependency check self-tests (DC1 - DC69) passed successfully!"
+# DC70: Flutter releases with no stable releases -> fails (Fix 2.2)
+echo "Running DC70..."
+d70="$TMP_DIR/dc70"; setup_base_fixtures "$d70"
+cat << 'EOF2' > "$HTTP_ROOT/releases_linux_dc70.json"
+{}
+EOF2
+set +e
+out70=$(run_check "$d70" --flutter-releases "$SERVER_URL/releases_linux_dc70.json" --today 2026-11-10 2>&1)
+rc70=$?; set -e
+[ "$rc70" -ne 0 ] || { echo "FAIL DC70: expected failure for empty flutter releases"; exit 1; }
+[[ "$out70" == *"T1:"* && "$out70" == *"releases"* ]] || { echo "FAIL DC70 output: $out70"; exit 1; }
+
+echo "All 70 dependency check self-tests (DC1 - DC70) passed successfully!"

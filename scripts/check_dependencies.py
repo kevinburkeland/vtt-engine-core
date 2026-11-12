@@ -642,7 +642,13 @@ def main():
 
     # Target Flutter and Target Dart (T1, T2, T3)
     flutter_data = fetch_json(args.flutter_releases)
-    stable_releases = [r for r in flutter_data.get('releases', []) if r.get('channel') == 'stable']
+    if not isinstance(flutter_data, dict) or 'releases' not in flutter_data or not isinstance(flutter_data['releases'], list):
+        failures.append(f"T1: Flutter releases from '{args.flutter_releases}' has no releases list")
+        stable_releases = []
+    else:
+        stable_releases = [r for r in flutter_data.get('releases', []) if r.get('channel') == 'stable']
+        if not stable_releases:
+            failures.append(f"T1: Flutter releases from '{args.flutter_releases}' contains no stable releases")
     newest_flutter = stable_releases[0] if stable_releases else None
     
     if newest_flutter:
