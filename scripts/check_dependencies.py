@@ -775,23 +775,7 @@ def main():
                                     commit_sha = tag_data.get('object', {}).get('sha', commit_sha)
 
                                 if action_sha != commit_sha or action_comment != latest_tag:
-                                    # Query releases list to find date of first newer release tag (Fix 3.1)
-                                    first_newer_rel_date = rel_date
-                                    gh_all_rels_url = f"{args.github_api.rstrip('/')}/repos/{action_name}/releases"
-                                    gh_all_rels = fetch_json(gh_all_rels_url, headers=github_headers)
-                                    if isinstance(gh_all_rels, list):
-                                        newer_dates = []
-                                        for r in gh_all_rels:
-                                            if r.get('draft') or r.get('prerelease'):
-                                                continue
-                                            tag = r.get('tag_name')
-                                            p_date = parse_date(r.get('published_at'))
-                                            if tag and p_date and semver_cmp(tag, action_comment) > 0:
-                                                newer_dates.append(p_date)
-                                        if newer_dates:
-                                            first_newer_rel_date = min(newer_dates)
-
-                                    age_days = (today - first_newer_rel_date).days if first_newer_rel_date else 999
+                                    age_days = (today - rel_date).days if rel_date else 999
                                     if age_days < 14:
                                         pending_notes.append(f"{wf_file}:{line_no}: Action '{action_name}' pending latest release {latest_tag} ({age_days} days old)")
                                     else:
