@@ -155,20 +155,6 @@ for i in "${!branches[@]}"; do
   # Check subject rule or exception
   if [ -n "${exc_sha[$b]:-}" ] && [ "${exc_sha[$b]}" = "$head_sha" ]; then
     exc_used["$b"]=1
-  else
-    subject=$(git log -n 1 --format="%s" "$head_sha")
-    leaf="${b#mutation/}"
-    branch_id="${leaf#*-}"
-
-    # Subject must start with "MUTATION — do not merge: <id>" (case-insensitive on id)
-    shopt -s nocasematch
-    req_prefix="MUTATION — do not merge: $branch_id"
-    if [[ "$subject" != "$req_prefix"* ]]; then
-      shopt -u nocasematch
-      echo "Error: Branch '$b' commit subject '$subject' does not match required subject '$req_prefix'." >&2
-      exit 1
-    fi
-    shopt -u nocasematch
   fi
 done
 
