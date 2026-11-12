@@ -651,6 +651,15 @@ def main():
         target_dart = newest_flutter.get('dart_sdk_version')
         target_dart_minor_floor = f"3.{semver_tuple(target_dart)[1]}.0"
 
+        # Previous stable target Dart and minor floor (for 14-day grace window validation)
+        prev_target_dart = None
+        for rel in stable_releases:
+            d_ver = rel.get('dart_sdk_version')
+            if d_ver and semver_cmp(d_ver, target_dart) < 0:
+                prev_target_dart = d_ver
+                break
+        prev_floor = f"3.{semver_tuple(prev_target_dart)[1]}.0" if prev_target_dart else None
+
         # T1: Flutter version in pubspec (if specified)
         if flutter_constraint:
             if flutter_constraint != newest_flutter_ver:
@@ -676,7 +685,7 @@ def main():
                         first_release_date = parse_date(rel.get('release_date'))
                         break
                 age_days = (today - first_release_date).days if first_release_date else (today - newest_flutter_date).days if newest_flutter_date else 999
-                if age_days < 14:
+                if age_days < 14 and actual_floor_ver and prev_floor and semver_cmp(actual_floor_ver, prev_floor) >= 0:
                     pending_notes.append(f"SDK constraint floor '{sdk_constraint}' pending target floor ^{expected_floor} ({age_days} days old)")
                 else:
                     if not check_exception('T3', 'dart', sdk_constraint):
@@ -713,7 +722,7 @@ def main():
                                             first_release_date = parse_date(rel.get('release_date'))
                                             break
                                     age_days = (today - first_release_date).days if first_release_date else (today - newest_flutter_date).days if newest_flutter_date else 999
-                                    if age_days < 14:
+                                    if age_days < 14 and prev_floor and semver_cmp(step['sdk'], prev_floor) >= 0:
                                         pending_notes.append(f"{wf_file}:{line_no}: Minimum SDK job sdk '{step['sdk']}' pending target floor '{target_dart_minor_floor}' ({age_days} days old)")
                                     else:
                                         if not check_exception('T3', 'dart', step['sdk']):
@@ -728,7 +737,7 @@ def main():
                                             first_target_dart_date = parse_date(rel.get('release_date'))
                                             break
                                     age_days = (today - first_target_dart_date).days if first_target_dart_date else (today - newest_flutter_date).days if newest_flutter_date else 999
-                                    if age_days < 14:
+                                    if age_days < 14 and prev_target_dart and semver_cmp(step['sdk'], prev_target_dart) >= 0:
                                         pending_notes.append(f"{wf_file}:{line_no}: setup-dart sdk '{step['sdk']}' pending target Dart '{target_dart}' ({age_days} days old)")
                                     else:
                                         if not check_exception('T2', 'dart', step['sdk']):
