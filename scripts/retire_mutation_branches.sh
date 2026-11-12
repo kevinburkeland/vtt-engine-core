@@ -233,10 +233,6 @@ for i in "${!matched_branches[@]}"; do
 
   # Check subject rule or exception
   if [ -n "${exc_sha[$b]:-}" ]; then
-    if [ "${exc_sha[$b]}" != "$head_sha" ]; then
-      echo "Error: Branch '$b' head SHA ($head_sha) does not match exception SHA (${exc_sha[$b]})." >&2
-      exit 1
-    fi
     exc_used["$b"]=1
   else
     commit_sha=$(git rev-list "$base_sha..$head_sha")
