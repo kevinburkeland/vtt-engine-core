@@ -862,9 +862,6 @@ def main():
                         curr_npm_v = details.get('current')
                         lat_npm_v = details.get('latest')
                         if curr_npm_v and lat_npm_v and curr_npm_v != lat_npm_v:
-                            if semver_cmp(curr_npm_v, lat_npm_v) > 0:
-                                print(f"npm package '{npm_pkg}' version {curr_npm_v} ahead of latest tag {lat_npm_v}")
-                                continue
                             # Query npm registry
                             npm_pkg_url = f"{args.npm_registry.rstrip('/')}/{npm_pkg}"
                             npm_pkg_data = fetch_json(npm_pkg_url)
