@@ -333,6 +333,26 @@ def read_pubspec(pubspec_path):
 
     return sdk_constraint, flutter_constraint, direct_exact_pins, dev_exact_pins, direct_deps, dev_deps, non_hosted_deps, declared_floors
 
+def get_ghsa_ids(pkg_name, all_vulns, visited=None):
+    if visited is None:
+        visited = set()
+    if pkg_name in visited:
+        return set()
+    visited.add(pkg_name)
+    ghsas = set()
+    pkg_info = all_vulns.get(pkg_name, {})
+    if not isinstance(pkg_info, dict):
+        return set()
+    vias = pkg_info.get('via', [])
+    for v in vias:
+        if isinstance(v, dict):
+            for field in [v.get('url', ''), v.get('title', ''), str(v)]:
+                for m in re.findall(r'GHSA-[a-zA-Z0-9\-]+', field, re.IGNORECASE):
+                    ghsas.add(m.upper())
+        elif isinstance(v, str):
+            ghsas.update(get_ghsa_ids(v, all_vulns, visited))
+    return ghsas
+
 def main():
     parser = argparse.ArgumentParser(description='Enforce dependency currency and security invariances.')
     parser.add_argument('--pub-outdated', required=True, help='Path to pub outdated JSON file')
@@ -420,12 +440,12 @@ def main():
                     exception_failures.append(f"E1: {args.exceptions}:{line_no}: Exception reason too short (under 20 characters): '{reason}'")
                 if review_by < today:
                     exception_failures.append(f"E1: {args.exceptions}:{line_no}: Exception review_by date {review_by} is in the past (today is {today})")
-                max_days = 30 if rule_id == 'D2' else 90
+                max_days = 30 if rule_id in ('D2', 'N2', 'N4') else 90
                 if review_by > today + timedelta(days=max_days):
                     exception_failures.append(f"E1: {args.exceptions}:{line_no}: Exception review_by date {review_by} is more than {max_days} days in future")
-                if rule_id == 'D2':
+                if rule_id in ('D2', 'N2', 'N4'):
                     if not re.search(r'GHSA-[a-z0-9\-]+', reason, re.IGNORECASE):
-                        exception_failures.append(f"E1: {args.exceptions}:{line_no}: D2 exception reason must include advisory ID: '{reason}'")
+                        exception_failures.append(f"E1: {args.exceptions}:{line_no}: {rule_id} exception reason must include advisory ID: '{reason}'")
 
                 exceptions.append({
                     'line_no': line_no,
@@ -871,21 +891,121 @@ def main():
                 elif 'error' in npm_audit_data:
                     failures.append(f"N2: npm audit reported error: {npm_audit_data['error']}")
                 else:
-                    metadata = npm_audit_data.get('metadata', {})
-                    if not isinstance(metadata, dict):
-                        failures.append(f"N2: npm audit JSON in '{args.npm_audit}' missing metadata object")
+                    vulns = npm_audit_data.get('vulnerabilities', {})
+                    if not isinstance(vulns, dict):
+                        failures.append(f"N2: npm audit JSON in '{args.npm_audit}' missing vulnerabilities object")
+                    elif vulns:
+                        for pkg_name, info in sorted(vulns.items()):
+                            if not isinstance(info, dict):
+                                continue
+                            sev = info.get('severity', 'unknown')
+                            if sev in ('info', 'low'):
+                                continue
+
+                            ghsas = get_ghsa_ids(pkg_name, vulns)
+                            ghsa_str = ', '.join(sorted(ghsas)) if ghsas else 'no advisory ID'
+
+                            installed_version = info.get('version')
+                            if not installed_version and args.npm_dir:
+                                lock_path = os.path.join(args.npm_dir, 'package-lock.json')
+                                if os.path.exists(lock_path):
+                                    try:
+                                        with open(lock_path, 'r', encoding='utf-8') as lf:
+                                            lock_data = json.load(lf)
+                                        packages = lock_data.get('packages', {})
+                                        for node in info.get('nodes', []):
+                                            if node in packages and 'version' in packages[node]:
+                                                installed_version = packages[node]['version']
+                                                break
+                                        if not installed_version:
+                                            k = f"node_modules/{pkg_name}"
+                                            if k in packages and 'version' in packages[k]:
+                                                installed_version = packages[k]['version']
+                                    except Exception:
+                                        pass
+
+                            exc_matched = False
+                            for idx, exc in enumerate(exceptions):
+                                if exc['rule'] == 'N2' and exc['name'] == pkg_name:
+                                    if installed_version and exc['held_at'] != '*' and exc['held_at'] != installed_version:
+                                        continue
+                                    missing_ghsa = [g for g in ghsas if g.lower() not in exc['reason'].lower()]
+                                    if not missing_ghsa:
+                                        exc['used'] = True
+                                        matched_exceptions.add(idx)
+                                        exc_matched = True
+                                        break
+                            if not exc_matched:
+                                failures.append(f"N2: npm package '{pkg_name}' has {sev} vulnerability: {ghsa_str}")
                     else:
-                        vulns = metadata.get('vulnerabilities', {})
-                        if not isinstance(vulns, dict):
-                            failures.append(f"N2: npm audit metadata missing vulnerabilities object")
+                        metadata = npm_audit_data.get('metadata', {})
+                        if not isinstance(metadata, dict):
+                            failures.append(f"N2: npm audit JSON in '{args.npm_audit}' missing metadata object")
                         else:
-                            mod_count = vulns.get('moderate', 0)
-                            high_count = vulns.get('high', 0)
-                            crit_count = vulns.get('critical', 0)
-                            if mod_count > 0 or high_count > 0 or crit_count > 0:
-                                failures.append(f"N2: npm audit reports {mod_count} moderate, {high_count} high, {crit_count} critical vulnerabilities")
+                            meta_vulns = metadata.get('vulnerabilities', {})
+                            if not isinstance(meta_vulns, dict):
+                                failures.append(f"N2: npm audit metadata missing vulnerabilities object")
+                            else:
+                                mod_count = meta_vulns.get('moderate', 0)
+                                high_count = meta_vulns.get('high', 0)
+                                crit_count = meta_vulns.get('critical', 0)
+                                if mod_count > 0 or high_count > 0 or crit_count > 0:
+                                    failures.append(f"N2: npm audit reports {mod_count} moderate, {high_count} high, {crit_count} critical vulnerabilities")
         except Exception as e:
             failures.append(f"N2: Failed to read or parse npm audit JSON in '{args.npm_audit}': {e}")
+
+        # N4: npm overrides declared
+        pkg_json_path = os.path.join(args.npm_dir, 'package.json')
+        if os.path.exists(pkg_json_path):
+            try:
+                with open(pkg_json_path, 'r', encoding='utf-8') as f:
+                    pkg_json_data = json.load(f)
+                if not isinstance(pkg_json_data, dict):
+                    failures.append(f"N4: {pkg_json_path} must be a JSON object")
+                elif 'overrides' in pkg_json_data:
+                    overrides = pkg_json_data['overrides']
+                    if not isinstance(overrides, dict):
+                        failures.append(f"N4: 'overrides' in {pkg_json_path} must be an object")
+                    else:
+                        for override_pkg, override_val in sorted(overrides.items()):
+                            if not isinstance(override_val, str) or not re.match(r'^\d+\.\d+\.\d+$', override_val):
+                                failures.append(f"N4: npm override '{override_pkg}' value must be a plain exact version string, got '{override_val}'")
+                                continue
+
+                            # Freshness check within its major
+                            major = override_val.split('.')[0]
+                            npm_pkg_url = f"{args.npm_registry.rstrip('/')}/{override_pkg}"
+                            npm_pkg_data = fetch_json(npm_pkg_url)
+                            time_dict = npm_pkg_data.get('time', {}) if isinstance(npm_pkg_data, dict) else {}
+                            same_major_newer = []
+                            for v, ptime in time_dict.items():
+                                if '-' in v or v in ('modified', 'created'):
+                                    continue
+                                if v.split('.')[0] == major and semver_cmp(v, override_val) > 0:
+                                    same_major_newer.append((v, parse_date(ptime)))
+
+                            if same_major_newer:
+                                same_major_newer.sort(key=lambda x: [int(p) if p.isdigit() else 0 for p in x[0].split('.')])
+                                first_newer_ver, first_newer_date = same_major_newer[0]
+                                newest_in_major = same_major_newer[-1][0]
+                                age_days = (today - first_newer_date).days if first_newer_date else 999
+                                if age_days < 14:
+                                    pending_notes.append(f"npm override '{override_pkg}' pending {newest_in_major} ({age_days} days old)")
+                                else:
+                                    failures.append(f"N4: npm override '{override_pkg}' version '{override_val}' is behind newest in major {major} '{newest_in_major}' (first newer release {first_newer_ver} published {first_newer_date}, {age_days} days old)")
+
+                            # Check exception row
+                            exc_found = False
+                            for idx, exc in enumerate(exceptions):
+                                if exc['rule'] == 'N4' and exc['name'] == override_pkg and exc['held_at'] == override_val:
+                                    exc['used'] = True
+                                    matched_exceptions.add(idx)
+                                    exc_found = True
+                                    break
+                            if not exc_found:
+                                failures.append(f"N4: npm override '{override_pkg}' version '{override_val}' is undeclared in exceptions")
+            except Exception as e:
+                failures.append(f"N4: Failed to read or parse '{pkg_json_path}': {e}")
 
     # E1: Check for stale exceptions
     for idx, exc in enumerate(exceptions):

@@ -137,6 +137,7 @@ EOF
 
   # Base npm dir
   mkdir -p "$case_dir/npm"
+  echo "{}" > "$case_dir/npm/package.json"
   echo "{}" > "$case_dir/npm/outdated.json"
   cat << 'EOF' > "$case_dir/npm/audit.json"
 {
@@ -331,6 +332,26 @@ EOF
   "object": {
     "sha": "49933ea5288caeca8642d1e84afbd3f7d6820020",
     "type": "commit"
+  }
+}
+EOF
+
+  # Mock npm registry endpoints for overrides
+  cat << 'EOF' > "$HTTP_ROOT/pkg_override.json"
+{
+  "name": "pkg_override",
+  "time": {
+    "1.0.0": "2026-11-01T00:00:00Z"
+  }
+}
+EOF
+
+  cat << 'EOF' > "$HTTP_ROOT/pkg_lag.json"
+{
+  "name": "pkg_lag",
+  "time": {
+    "1.0.0": "2026-10-01T00:00:00Z",
+    "1.0.1": "2026-10-21T00:00:00Z"
   }
 }
 EOF
@@ -1723,4 +1744,185 @@ out59=$(run_check "$d59" --today 2026-11-10 2>&1)
 rc59=$?; set -e
 [ "$rc59" -eq 0 ] || { echo "FAIL DC59: expected pass for git/sdk dependencies: $out59"; exit 1; }
 
-echo "All 59 dependency check self-tests (DC1 - DC59) passed successfully!"
+# DC60: an undeclared override -> fails N4 naming it
+echo "Running DC60..."
+d60="$TMP_DIR/dc60"; setup_base_fixtures "$d60"
+cat << 'EOF' > "$d60/npm/package.json"
+{
+  "overrides": {
+    "pkg_override": "1.0.0"
+  }
+}
+EOF
+set +e
+out60=$(run_check "$d60" --today 2026-11-10 2>&1)
+rc60=$?; set -e
+[ "$rc60" -ne 0 ] || { echo "FAIL DC60: expected failure for undeclared override"; exit 1; }
+[[ "$out60" == *"N4"* && "$out60" == *"pkg_override"* ]] || { echo "FAIL DC60 output: $out60"; exit 1; }
+
+# DC61: a declared override -> pass
+echo "Running DC61..."
+d61="$TMP_DIR/dc61"; setup_base_fixtures "$d61"
+cat << 'EOF' > "$d61/npm/package.json"
+{
+  "overrides": {
+    "pkg_override": "1.0.0"
+  }
+}
+EOF
+printf "N4\tpkg_override\t1.0.0\t2026-11-20\tRemoves GHSA-1111-2222-3333 in top-level parent\n" > "$d61/dependency_exceptions.tsv"
+out61=$(run_check "$d61" --today 2026-11-10)
+[[ "$out61" == *"Summary"* ]] || { echo "FAIL DC61: $out61"; exit 1; }
+
+# DC62: an override one patch behind the newest in its major, newer release 20 days old -> fails
+echo "Running DC62..."
+d62="$TMP_DIR/dc62"; setup_base_fixtures "$d62"
+cat << 'EOF' > "$d62/npm/package.json"
+{
+  "overrides": {
+    "pkg_lag": "1.0.0"
+  }
+}
+EOF
+printf "N4\tpkg_lag\t1.0.0\t2026-11-20\tRemoves GHSA-1111-2222-3333 in top-level parent\n" > "$d62/dependency_exceptions.tsv"
+set +e
+out62=$(run_check "$d62" --today 2026-11-10 2>&1)
+rc62=$?; set -e
+[ "$rc62" -ne 0 ] || { echo "FAIL DC62: expected failure for lag override"; exit 1; }
+[[ "$out62" == *"N4"* && "$out62" == *"pkg_lag"* ]] || { echo "FAIL DC62 output: $out62"; exit 1; }
+
+# DC63: a range value (^11.0.0) -> fails
+echo "Running DC63..."
+d63="$TMP_DIR/dc63"; setup_base_fixtures "$d63"
+cat << 'EOF' > "$d63/npm/package.json"
+{
+  "overrides": {
+    "pkg_override": "^11.0.0"
+  }
+}
+EOF
+printf "N4\tpkg_override\t^11.0.0\t2026-11-20\tRemoves GHSA-1111-2222-3333 in top-level parent\n" > "$d63/dependency_exceptions.tsv"
+set +e
+out63=$(run_check "$d63" --today 2026-11-10 2>&1)
+rc63=$?; set -e
+[ "$rc63" -ne 0 ] || { echo "FAIL DC63: expected failure for range override"; exit 1; }
+[[ "$out63" == *"N4"* ]] || { echo "FAIL DC63 output: $out63"; exit 1; }
+
+# DC64: a nested object -> fails
+echo "Running DC64..."
+d64="$TMP_DIR/dc64"; setup_base_fixtures "$d64"
+cat << 'EOF' > "$d64/npm/package.json"
+{
+  "overrides": {
+    "parent_pkg": {
+      "child_pkg": "1.0.0"
+    }
+  }
+}
+EOF
+set +e
+out64=$(run_check "$d64" --today 2026-11-10 2>&1)
+rc64=$?; set -e
+[ "$rc64" -ne 0 ] || { echo "FAIL DC64: expected failure for nested object override"; exit 1; }
+[[ "$out64" == *"N4"* ]] || { echo "FAIL DC64 output: $out64"; exit 1; }
+
+# DC65: an N4 row 31 days out -> fails E1
+echo "Running DC65..."
+d65="$TMP_DIR/dc65"; setup_base_fixtures "$d65"
+cat << 'EOF' > "$d65/npm/package.json"
+{
+  "overrides": {
+    "pkg_override": "1.0.0"
+  }
+}
+EOF
+# today is 2026-11-10; 31 days out is 2026-12-11
+printf "N4\tpkg_override\t1.0.0\t2026-12-12\tRemoves GHSA-1111-2222-3333 in top-level parent\n" > "$d65/dependency_exceptions.tsv"
+set +e
+out65=$(run_check "$d65" --today 2026-11-10 2>&1)
+rc65=$?; set -e
+[ "$rc65" -ne 0 ] || { echo "FAIL DC65: expected failure for > 30 days review_by"; exit 1; }
+[[ "$out65" == *"E1"* ]] || { echo "FAIL DC65 output: $out65"; exit 1; }
+
+# DC66: a stale N4 row -> fails E1
+echo "Running DC66..."
+d66="$TMP_DIR/dc66"; setup_base_fixtures "$d66"
+printf "N4\tpkg_override\t1.0.0\t2026-11-20\tRemoves GHSA-1111-2222-3333 in top-level parent\n" > "$d66/dependency_exceptions.tsv"
+set +e
+out66=$(run_check "$d66" --today 2026-11-10 2>&1)
+rc66=$?; set -e
+[ "$rc66" -ne 0 ] || { echo "FAIL DC66: expected failure for stale N4 row"; exit 1; }
+[[ "$out66" == *"E1"* && "$out66" == *"stale exception"* ]] || { echo "FAIL DC66 output: $out66"; exit 1; }
+
+# DC67: one moderate in npm audit -> fails naming package and GHSA
+echo "Running DC67..."
+d67="$TMP_DIR/dc67"; setup_base_fixtures "$d67"
+cat << 'EOF' > "$d67/npm/audit.json"
+{
+  "vulnerabilities": {
+    "vuln_pkg": {
+      "name": "vuln_pkg",
+      "severity": "moderate",
+      "version": "1.0.0",
+      "via": [
+        {
+          "source": 1001,
+          "name": "vuln_pkg",
+          "url": "https://github.com/advisories/GHSA-1234-5678-90ab",
+          "severity": "moderate"
+        }
+      ]
+    }
+  }
+}
+EOF
+set +e
+out67=$(run_check "$d67" --today 2026-11-10 2>&1)
+rc67=$?; set -e
+[ "$rc67" -ne 0 ] || { echo "FAIL DC67: expected failure for moderate audit vuln"; exit 1; }
+[[ "$out67" == *"N2"* && "$out67" == *"vuln_pkg"* && "$out67" == *"GHSA-1234-5678-90AB"* ]] || { echo "FAIL DC67 output: $out67"; exit 1; }
+
+# DC68: same with a matching N2 row -> pass
+echo "Running DC68..."
+d68="$TMP_DIR/dc68"; setup_base_fixtures "$d68"
+cp "$d67/npm/audit.json" "$d68/npm/audit.json"
+printf "N2\tvuln_pkg\t1.0.0\t2026-11-20\tExcused for GHSA-1234-5678-90ab in vuln_pkg\n" > "$d68/dependency_exceptions.tsv"
+out68=$(run_check "$d68" --today 2026-11-10)
+[[ "$out68" == *"Summary"* ]] || { echo "FAIL DC68: $out68"; exit 1; }
+
+# DC69: an N2 row missing one of two GHSA ids -> fails
+echo "Running DC69..."
+d69="$TMP_DIR/dc69"; setup_base_fixtures "$d69"
+cat << 'EOF' > "$d69/npm/audit.json"
+{
+  "vulnerabilities": {
+    "vuln_pkg": {
+      "name": "vuln_pkg",
+      "severity": "moderate",
+      "version": "1.0.0",
+      "via": [
+        {
+          "source": 1001,
+          "name": "vuln_pkg",
+          "url": "https://github.com/advisories/GHSA-1234-5678-90ab",
+          "severity": "moderate"
+        },
+        {
+          "source": 1002,
+          "name": "vuln_pkg",
+          "url": "https://github.com/advisories/GHSA-9999-8888-7777",
+          "severity": "moderate"
+        }
+      ]
+    }
+  }
+}
+EOF
+printf "N2\tvuln_pkg\t1.0.0\t2026-11-20\tExcused for GHSA-1234-5678-90ab only\n" > "$d69/dependency_exceptions.tsv"
+set +e
+out69=$(run_check "$d69" --today 2026-11-10 2>&1)
+rc69=$?; set -e
+[ "$rc69" -ne 0 ] || { echo "FAIL DC69: expected failure for missing GHSA ID"; exit 1; }
+[[ "$out69" == *"N2"* ]] || { echo "FAIL DC69 output: $out69"; exit 1; }
+
+echo "All 69 dependency check self-tests (DC1 - DC69) passed successfully!"
