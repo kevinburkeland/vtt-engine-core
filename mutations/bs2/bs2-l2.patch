@@ -1,0 +1,32 @@
+From 7231effd54c0855212de61dd3bd682d441eb76f9 Mon Sep 17 00:00:00 2001
+From: Kevin Burkeland <kevin@burke.land>
+Date: Thu, 12 Nov 2026 03:03:28 -0800
+Subject: [PATCH] =?UTF-8?q?MUTATION=20=E2=80=94=20do=20not=20merge:=20L2?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Kevin Burkeland <kevin@burke.land>
+---
+ scripts/check_dependencies.py | 4 +---
+ 1 file changed, 1 insertion(+), 3 deletions(-)
+
+diff --git a/scripts/check_dependencies.py b/scripts/check_dependencies.py
+index 5953ac1..3124f70 100755
+--- a/scripts/check_dependencies.py
++++ b/scripts/check_dependencies.py
+@@ -666,10 +666,8 @@ def main():
+             adv_data = fetch_json(adv_url)
+             if not isinstance(adv_data, dict):
+                 failures.append(f"D2: pub.dev advisories response from '{adv_url}' must be a JSON object")
+-            elif 'advisories' not in adv_data or not isinstance(adv_data['advisories'], list):
+-                failures.append(f"D2: pub.dev advisories response from '{adv_url}' missing 'advisories' list")
+             else:
+-                for adv in adv_data['advisories']:
++                for adv in adv_data.get('advisories', []):
+                     if not isinstance(adv, dict):
+                         failures.append(f"D2: pub.dev advisory entry from '{adv_url}' must be a JSON object")
+                         continue
+-- 
+2.55.0
+

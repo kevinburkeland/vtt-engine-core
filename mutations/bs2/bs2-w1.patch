@@ -1,0 +1,29 @@
+From f3e9b83be6eb044b1c611e8bac0b520522d1cfe5 Mon Sep 17 00:00:00 2001
+From: Kevin Burkeland <kevin@burke.land>
+Date: Thu, 12 Nov 2026 03:08:32 -0800
+Subject: [PATCH] =?UTF-8?q?MUTATION=20=E2=80=94=20do=20not=20merge:=20W1?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Kevin Burkeland <kevin@burke.land>
+---
+ scripts/check_dependencies.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/scripts/check_dependencies.py b/scripts/check_dependencies.py
+index 5953ac1..eb2ab9a 100755
+--- a/scripts/check_dependencies.py
++++ b/scripts/check_dependencies.py
+@@ -536,7 +536,7 @@ def main():
+                     if not re.search(r'GHSA-[a-z0-9\-]+', reason, re.IGNORECASE):
+                         exception_failures.append(f"E1: {args.exceptions}:{line_no}: {rule_id} exception reason must include advisory ID: '{reason}'")
+                 if rule_id == 'N2':
+-                    if not re.match(r'^\d+\.\d+\.\d+$', held_at):
++                    if held_at != '*' and not re.match(r'^\d+\.\d+\.\d+$', held_at):
+                         exception_failures.append(f"E1: {args.exceptions}:{line_no}: N2 exception held_at must be an exact version string (e.g. 1.2.3), got '{held_at}'")
+ 
+                 exceptions.append({
+-- 
+2.55.0
+
