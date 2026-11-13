@@ -3,6 +3,9 @@
 One line per slice, newest first. Each line: date, slice name, what changed for a user or a developer.
 Work before Map slice 1.1 (hardening passes 0 to 12) is in the git history.
 
+## 2026-11-13
+- Cleanup slice 11: Update dart-lang/setup-dart workflow action pins to v1.8.2 (2286a0c042b44434fe26d292bbce8d34f7ec662b).
+
 ## 2026-11-12
 - Bonus slice 2: Move environment SDK to ^3.14.0 and workflows setup-dart to 3.14.0, and update DC36 in test_check_dependencies.sh to dynamically read repo target SDK.
 
