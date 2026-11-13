@@ -383,5 +383,137 @@ EOF
   fi
 )
 
-echo "All test name ratchet self-tests passed (TN1 - TN11)."
+# TN12: a row in test/removed_test_names.txt for a live test fails, naming the row as live.
+(
+  repo="$TMP_DIR/repo_tn12"
+  setup_repo "$repo"
+  mkdir -p test
+  cat << 'EOF' > test/live_test.dart
+void main() {
+  test('currently live test', () {});
+}
+EOF
+  git add test/live_test.dart
+  git commit -m "add live test" >/dev/null
+
+  cat << 'EOF' > test/removed_test_names.txt
+currently live test | removed for test reasons
+EOF
+  git add test/removed_test_names.txt
+  git commit -m "add whitelist row for live test" >/dev/null
+
+  set +e
+  out=$(python3 -I "$CHECK_SCRIPT" HEAD~1 HEAD 2>&1)
+  rc=$?
+  set -e
+  if [ "$rc" -eq 0 ]; then
+    echo "FAIL: TN12 expected failure for row excusing a live test" >&2
+    exit 1
+  fi
+  if [[ "$out" != *"row excuses a live test"* ]] || [[ "$out" != *"currently live test"* ]]; then
+    echo "FAIL: TN12 expected error message mentioning 'row excuses a live test' and 'currently live test', got: $out" >&2
+    exit 1
+  fi
+)
+
+# TN13: a row in test/removed_test_names.txt for a name that never existed fails.
+(
+  repo="$TMP_DIR/repo_tn13"
+  setup_repo "$repo"
+  mkdir -p test
+  cat << 'EOF' > test/some_test.dart
+void main() {
+  test('real test', () {});
+}
+EOF
+  git add test/some_test.dart
+  git commit -m "add real test" >/dev/null
+
+  cat << 'EOF' > test/removed_test_names.txt
+completely invented test name | removed for reasons
+EOF
+  git add test/removed_test_names.txt
+  git commit -m "add bogus whitelist row" >/dev/null
+
+  set +e
+  out=$(python3 -I "$CHECK_SCRIPT" HEAD~1 HEAD 2>&1)
+  rc=$?
+  set -e
+  if [ "$rc" -eq 0 ]; then
+    echo "FAIL: TN13 expected failure for row naming a test that never existed" >&2
+    exit 1
+  fi
+  if [[ "$out" != *"row names a test that never existed"* ]] || [[ "$out" != *"completely invented test name"* ]]; then
+    echo "FAIL: TN13 expected error message mentioning 'row names a test that never existed', got: $out" >&2
+    exit 1
+  fi
+)
+
+# TN14: a row in test/removed_test_names.txt for a really removed test passes.
+(
+  repo="$TMP_DIR/repo_tn14"
+  setup_repo "$repo"
+  mkdir -p test
+  cat << 'EOF' > test/remove_me_test.dart
+void main() {
+  test('truly removed test', () {});
+}
+EOF
+  git add test/remove_me_test.dart
+  git commit -m "add test" >/dev/null
+
+  cat << 'EOF' > test/remove_me_test.dart
+void main() {}
+EOF
+  cat << 'EOF' > test/removed_test_names.txt
+truly removed test | legitimately deleted
+EOF
+  git add test/remove_me_test.dart test/removed_test_names.txt
+  git commit -m "delete test and whitelist it" >/dev/null
+
+  set +e
+  out=$(python3 -I "$CHECK_SCRIPT" HEAD~1 HEAD 2>&1)
+  rc=$?
+  set -e
+  if [ "$rc" -ne 0 ]; then
+    echo "FAIL: TN14 expected pass for really removed test with row, got rc $rc: $out" >&2
+    exit 1
+  fi
+)
+
+# TN15: a row in test/removed_test_names.txt for a renamed test (old name gone, new name present) passes.
+(
+  repo="$TMP_DIR/repo_tn15"
+  setup_repo "$repo"
+  mkdir -p test
+  cat << 'EOF' > test/rename_test.dart
+void main() {
+  test('old name test', () {});
+}
+EOF
+  git add test/rename_test.dart
+  git commit -m "add old test" >/dev/null
+
+  cat << 'EOF' > test/rename_test.dart
+void main() {
+  test('new name test', () {});
+}
+EOF
+  cat << 'EOF' > test/removed_test_names.txt
+old name test | renamed to new name test
+EOF
+  git add test/rename_test.dart test/removed_test_names.txt
+  git commit -m "rename test and whitelist old name" >/dev/null
+
+  set +e
+  out=$(python3 -I "$CHECK_SCRIPT" HEAD~1 HEAD 2>&1)
+  rc=$?
+  set -e
+  if [ "$rc" -ne 0 ]; then
+    echo "FAIL: TN15 expected pass for renamed test with row for old name, got rc $rc: $out" >&2
+    exit 1
+  fi
+)
+
+echo "All test name ratchet self-tests passed (TN1 - TN15)."
 

@@ -178,6 +178,39 @@ def get_git_file_content(rev, path):
     return None
 
 
+def get_all_test_names_at_rev(rev):
+    tree_res = subprocess.run(['git', 'ls-tree', '-r', rev, 'test'], capture_output=True, text=True)
+    if tree_res.returncode != 0:
+        return set()
+    files = []
+    for line in tree_res.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 4 and parts[1] == 'blob':
+            sha = parts[2]
+            path = parts[3]
+            if is_test_file(path):
+                files.append((sha, path))
+    if not files:
+        return set()
+
+    p = subprocess.Popen(['git', 'cat-file', '--batch'],
+                         stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    for sha, path in files:
+        p.stdin.write(f"{sha}\n".encode())
+    p.stdin.flush()
+
+    names = set()
+    for sha, path in files:
+        header = p.stdout.readline().decode()
+        size = int(header.split()[2])
+        content = p.stdout.read(size).decode('utf-8', 'replace')
+        p.stdout.read(1)
+        names.update(extract_test_names(content, path))
+    p.stdin.close()
+    p.wait()
+    return names
+
+
 def main():
     if len(sys.argv) < 3:
         print("Usage: check_test_names.py <baseline> <head>", file=sys.stderr)
@@ -189,13 +222,15 @@ def main():
     # Parse removed_test_names.txt at <head>
     allowed_removals = {}
     file_problems = []
-    removed_content = get_git_file_content(head, 'test/removed_test_names.txt')
-    if removed_content is None and os.path.exists('test/removed_test_names.txt'):
+    removed_content = None
+    if head == 'HEAD' and os.path.exists('test/removed_test_names.txt'):
         try:
             with open('test/removed_test_names.txt', 'r', encoding='utf-8') as f:
                 removed_content = f.read()
         except Exception:
             removed_content = None
+    if removed_content is None:
+        removed_content = get_git_file_content(head, 'test/removed_test_names.txt')
 
     if removed_content is not None:
         for line_num, raw_line in enumerate(removed_content.splitlines(), start=1):
@@ -219,7 +254,15 @@ def main():
                     f"test/removed_test_names.txt:{line_num}: invalid entry: empty name"
                 )
             else:
-                allowed_removals[name] = reason
+                allowed_removals[name] = (line_num, reason)
+
+    # Check (a): row excuses a live test
+    live_test_names_at_head = get_all_test_names_at_rev(head)
+    for name, (line_num, reason) in allowed_removals.items():
+        if name in live_test_names_at_head:
+            file_problems.append(
+                f"test/removed_test_names.txt:{line_num}: row excuses a live test '{name}'"
+            )
 
     # List commits
     rev_range = f"{baseline}..{head}"
@@ -230,6 +273,9 @@ def main():
 
     commits = [c.strip() for c in rev_list_res.stdout.splitlines() if c.strip()]
     total_commits = len(commits)
+
+    ever_existed_names = set(get_all_test_names_at_rev(baseline))
+    ever_existed_names.update(live_test_names_at_head)
 
     problems = list(file_problems)
 
@@ -264,6 +310,9 @@ def main():
             file_counts_c[path] = cnt_c
             names_c.update(cnt_c)
 
+        ever_existed_names.update(names_p.keys())
+        ever_existed_names.update(names_c.keys())
+
         for name, count_p in names_p.items():
             count_c = names_c.get(name, 0)
             if count_p > count_c:
@@ -277,10 +326,17 @@ def main():
                         left_files.append(path)
                 left_file_str = ", ".join(left_files) if left_files else "unknown"
 
-                if name not in allowed_removals:
+                if name not in allowed_removals and name not in live_test_names_at_head:
                     problems.append(
                         f"{short_c}: test '{name}' removed from {left_file_str}"
                     )
+
+    # Check (b): row names a test that never existed in the range walked
+    for name, (line_num, reason) in allowed_removals.items():
+        if name not in ever_existed_names:
+            problems.append(
+                f"test/removed_test_names.txt:{line_num}: row names a test that never existed '{name}'"
+            )
 
     if problems:
         for prob in problems:
