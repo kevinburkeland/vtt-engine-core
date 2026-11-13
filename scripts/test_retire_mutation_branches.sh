@@ -28,6 +28,10 @@ setup_test_env() {
     mkdir -p scripts mutations
     cp "$RETIRE_SCRIPT" scripts/retire_mutation_branches.sh
     chmod +x scripts/retire_mutation_branches.sh
+    if [ -f "$SCRIPT_DIR/check_mutation_branches.sh" ]; then
+      cp "$SCRIPT_DIR/check_mutation_branches.sh" scripts/check_mutation_branches.sh
+      chmod +x scripts/check_mutation_branches.sh
+    fi
     echo "# Test Repo" > README.md
     git add .
     git commit -s -m "Initial commit on main" >/dev/null 2>&1
@@ -533,4 +537,79 @@ set -e
 [ "$rc20" -ne 0 ] || { echo "FAIL RM20: expected failure on past review_by"; exit 1; }
 [[ "$out20" == *"is in the past"* ]] || { echo "FAIL RM20: unexpected error: $out20"; exit 1; }
 
-echo "All retire mutation branch self-tests passed (RM1 - RM20)."
+# ------------------------------------------------------------------------------
+# RM21: retiring a prefix with rows in mutation_subject_exceptions.tsv removes
+# them in the archive commit, preserves other rows, and check_mutation_branches passes.
+# ------------------------------------------------------------------------------
+echo "Running RM21..."
+env21=$(setup_test_env "rm21")
+repo21="$env21/local"
+bare21="$env21/origin.git"
+create_branch "$repo21" "cs2-a"
+create_branch "$repo21" "cs2-b"
+create_branch "$repo21" "other-x"
+
+(
+  cd "$repo21"
+  head_a21=$(git -C "$bare21" rev-parse refs/heads/mutation/cs2-a)
+  head_b21=$(git -C "$bare21" rev-parse refs/heads/mutation/cs2-b)
+  head_other=$(git -C "$bare21" rev-parse refs/heads/mutation/other-x)
+  printf "# Header\nmutation/cs2-a\t%s\t2027-02-01\tRow 1\nmutation/other-x\t%s\t2027-02-01\tKeep this\nmutation/cs2-b\t%s\t2027-02-01\tRow 2\n" "$head_a21" "$head_other" "$head_b21" > mutation_subject_exceptions.tsv
+  git add mutation_subject_exceptions.tsv
+  git commit -s -m "Add exceptions" >/dev/null 2>&1
+  git push origin main >/dev/null 2>&1
+)
+
+(cd "$repo21" && ./scripts/retire_mutation_branches.sh cs2)
+# Check that the two cs2 rows were removed from mutation_subject_exceptions.tsv in main
+grep -q "mutation/cs2-a" "$repo21/mutation_subject_exceptions.tsv" && { echo "FAIL RM21: cs2-a still in exceptions"; exit 1; }
+grep -q "mutation/cs2-b" "$repo21/mutation_subject_exceptions.tsv" && { echo "FAIL RM21: cs2-b still in exceptions"; exit 1; }
+grep -q "mutation/other-x" "$repo21/mutation_subject_exceptions.tsv" || { echo "FAIL RM21: other-x missing from exceptions"; exit 1; }
+# check_mutation_branches passes afterwards
+(cd "$repo21" && ./scripts/check_mutation_branches.sh 20) || { echo "FAIL RM21: check_mutation_branches failed after retirement"; exit 1; }
+
+# ------------------------------------------------------------------------------
+# RM22: --dry-run shows removed exception rows and does not edit files.
+# ------------------------------------------------------------------------------
+echo "Running RM22..."
+env22=$(setup_test_env "rm22")
+repo22="$env22/local"
+bare22="$env22/origin.git"
+create_branch "$repo22" "cs2-a"
+
+(
+  cd "$repo22"
+  head_a22=$(git -C "$bare22" rev-parse refs/heads/mutation/cs2-a)
+  printf "mutation/cs2-a\t%s\t2027-02-01\tRow 1\n" "$head_a22" > mutation_subject_exceptions.tsv
+  git add mutation_subject_exceptions.tsv
+  git commit -s -m "Add exception" >/dev/null 2>&1
+  git push origin main >/dev/null 2>&1
+)
+
+out22=$(cd "$repo22" && ./scripts/retire_mutation_branches.sh cs2 --dry-run)
+[[ "$out22" == *"Would remove from mutation_subject_exceptions.tsv:"* ]] || { echo "FAIL RM22: missing dry-run notice: $out22"; exit 1; }
+[[ "$out22" == *"mutation/cs2-a"* ]] || { echo "FAIL RM22: missing branch name in dry-run output"; exit 1; }
+grep -q "mutation/cs2-a" "$repo22/mutation_subject_exceptions.tsv" || { echo "FAIL RM22: dry-run modified exceptions file"; exit 1; }
+
+# ------------------------------------------------------------------------------
+# RM23: prefix with no rows leaves mutation_subject_exceptions.tsv byte-identical.
+# ------------------------------------------------------------------------------
+echo "Running RM23..."
+env23=$(setup_test_env "rm23")
+repo23="$env23/local"
+bare23="$env23/origin.git"
+create_branch "$repo23" "cs2-a"
+
+(
+  cd "$repo23"
+  printf "# Header\nmutation/other-x\t0123456789abcdef0123456789abcdef01234567\t2027-02-01\tKeep this\n" > mutation_subject_exceptions.tsv
+  git add mutation_subject_exceptions.tsv
+  git commit -s -m "Add exception" >/dev/null 2>&1
+  git push origin main >/dev/null 2>&1
+)
+hash_before=$(sha256sum "$repo23/mutation_subject_exceptions.tsv" | awk '{print $1}')
+(cd "$repo23" && ./scripts/retire_mutation_branches.sh cs2)
+hash_after=$(sha256sum "$repo23/mutation_subject_exceptions.tsv" | awk '{print $1}')
+[ "$hash_before" = "$hash_after" ] || { echo "FAIL RM23: exceptions file changed"; exit 1; }
+
+echo "All retire mutation branch self-tests passed (RM1 - RM23)."

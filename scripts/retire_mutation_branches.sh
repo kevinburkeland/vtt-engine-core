@@ -344,19 +344,54 @@ if [ "$any_needs_archive" -eq 1 ]; then
   done
 fi
 
+# Track exceptions matching slice_id to remove from mutation_subject_exceptions.tsv
+removed_exceptions=()
+target_exceptions_file="$run_root/mutation_subject_exceptions.tsv"
+if [ -f "$target_exceptions_file" ]; then
+  temp_exc_file=$(mktemp)
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [ -z "$line" ] || [[ "$line" =~ ^# ]]; then
+      echo "$line" >> "$temp_exc_file"
+      continue
+    fi
+    row_branch=$(echo "$line" | cut -f1)
+    row_clean="${row_branch#refs/heads/}"
+    if [[ "$row_clean" == "mutation/${slice_id}-"* ]]; then
+      removed_exceptions+=("$row_clean")
+    else
+      echo "$line" >> "$temp_exc_file"
+    fi
+  done < "$target_exceptions_file"
+  if [ "${#removed_exceptions[@]}" -gt 0 ]; then
+    cp "$temp_exc_file" "$target_exceptions_file"
+  fi
+  rm -f "$temp_exc_file"
+fi
+
 if [ "$dry_run" -eq 1 ]; then
   echo "Dry-run completed successfully."
   echo "Would commit archive for slice '$slice_id':"
-  if [ "$any_needs_archive" -eq 1 ]; then
+  if [ "$any_needs_archive" -eq 1 ] || [ "${#removed_exceptions[@]}" -gt 0 ]; then
     for b in "${matched_branches[@]}"; do
       if [ "${branch_needs_archive[$b]}" -eq 1 ]; then
         leaf="${b#mutation/}"
         echo "  mutations/$slice_id/$leaf.patch"
       fi
     done
-    echo "  mutations/MANIFEST.tsv"
+    if [ "$any_needs_archive" -eq 1 ]; then
+      echo "  mutations/MANIFEST.tsv"
+    fi
+    if [ "${#removed_exceptions[@]}" -gt 0 ]; then
+      echo "  mutation_subject_exceptions.tsv"
+    fi
   else
     echo "  (All branches already archived in MANIFEST.tsv; no new commit needed)"
+  fi
+  if [ "${#removed_exceptions[@]}" -gt 0 ]; then
+    echo "Would remove from mutation_subject_exceptions.tsv:"
+    for exc_row in "${removed_exceptions[@]}"; do
+      echo "  $exc_row"
+    done
   fi
   echo "Would create archive tags:"
   for i in "${!matched_branches[@]}"; do
@@ -374,12 +409,17 @@ if [ "$dry_run" -eq 1 ]; then
 fi
 
 # 7. Commit and push the archive
-if [ "$any_needs_archive" -eq 1 ]; then
-  git add mutations/
-  # Ensure no changes outside mutations/
-  status_outside=$(git status --porcelain | grep -v '^.. mutations/' || true)
+if [ "$any_needs_archive" -eq 1 ] || [ "${#removed_exceptions[@]}" -gt 0 ]; then
+  if [ "$any_needs_archive" -eq 1 ]; then
+    git add mutations/
+  fi
+  if [ "${#removed_exceptions[@]}" -gt 0 ]; then
+    git add mutation_subject_exceptions.tsv
+  fi
+  # Ensure no unexpected changes outside mutations/ and mutation_subject_exceptions.tsv
+  status_outside=$(git status --porcelain | grep -v '^.. mutations/' | grep -v '^.. mutation_subject_exceptions.tsv' || true)
   if [ -n "$status_outside" ]; then
-    echo "Error: Unexpected uncommitted changes outside mutations/ directory." >&2
+    echo "Error: Unexpected uncommitted changes outside mutations/ directory and mutation_subject_exceptions.tsv." >&2
     exit 1
   fi
 
