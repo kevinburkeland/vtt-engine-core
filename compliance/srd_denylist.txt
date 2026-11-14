@@ -1,0 +1,44 @@
+# SRD Compliance Denylist
+# One term per line in plain words. Case-insensitive word matching.
+# Matches across camelCase, snake_case, kebab-case, punctuation, and spaces.
+acererak
+baldur's gate
+beholder
+bigby
+booming blade
+carrion crawler
+displacer beast
+drawmij
+drizzt
+elminster
+elven accuracy
+evard
+firbolg
+githyanki
+githzerai
+great weapon master
+green-flame blade
+illithid
+kuo-toa
+leomund
+melf
+mind flayer
+mind sliver
+mordenkainen
+neverwinter
+nystul
+otiluke
+polearm master
+primal savagery
+shadow blade
+sharpshooter
+slaad
+strahd
+tasha
+tenser
+toll the dead
+umber hulk
+war caster
+waterdeep
+word of radiance
+yuan-ti
