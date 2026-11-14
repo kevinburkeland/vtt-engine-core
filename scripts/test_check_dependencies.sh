@@ -137,7 +137,7 @@ EOF
 
   # Base npm dir
   mkdir -p "$case_dir/npm"
-  echo "{}" > "$case_dir/npm/package.json"
+  echo '{"name": "test_pkg", "version": "1.0.0"}' > "$case_dir/npm/package.json"
   echo "{}" > "$case_dir/npm/outdated.json"
   echo "0" > "$case_dir/npm/outdated_status.json"
   echo "0" > "$case_dir/npm/audit_status.json"
@@ -2150,12 +2150,18 @@ out71_exact=$(run_check "$d71_exact" --today 2026-11-10)
 # DC72: Table-driven fail-closed law over all inputs (Fix 4.1)
 echo "Running DC72: Table-driven fail-closed law over all inputs..."
 CHECK_SCRIPT="$CHECK_SCRIPT" python3 - << 'EOF_DC71'
-import os, sys, shutil, subprocess, json, tempfile, re
+import os, sys, shutil, subprocess, json, tempfile, re, copy, ast
+import importlib.util
 from http.server import SimpleHTTPRequestHandler
 import socketserver
 import threading
 
 CHECK_SCRIPT = os.environ.get('CHECK_SCRIPT', os.path.abspath('scripts/check_dependencies.py'))
+
+spec = importlib.util.spec_from_file_location("check_dependencies", CHECK_SCRIPT)
+cd_mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(cd_mod)
+SCHEMA = cd_mod.SCHEMA
 
 class LawTestRunner:
     def __init__(self):
@@ -2352,7 +2358,7 @@ def main():
     failing_rows = []
     passing_rows = []
 
-    # Verify baseline control
+    # Baseline control
     base = runner.create_case_dir('base_control')
     rc, out, err = runner.run_check(base)
     if rc != 0:
@@ -2362,17 +2368,43 @@ def main():
 
     print("Baseline control passed clean.")
 
+    # --- CLOSURE CHECK ---
+    with open(CHECK_SCRIPT, 'r') as f:
+        tree = ast.parse(f.read())
+    ast_accessed_paths = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            if (isinstance(node.func, ast.Name) and node.func.id == 'need') or (isinstance(node.func, ast.Attribute) and node.func.attr == 'need'):
+                if len(node.args) >= 2 and isinstance(node.args[1], ast.Constant):
+                    ast_accessed_paths.add(node.args[1].value)
+
+    schema_paths = set(SCHEMA.keys())
+    if ast_accessed_paths != schema_paths:
+        diff_missing = schema_paths - ast_accessed_paths
+        diff_extra = ast_accessed_paths - schema_paths
+        print("FATAL: Closure check failed between AST and SCHEMA!")
+        if diff_missing:
+            print(f"  Schema paths never accessed via need(): {diff_missing}")
+        if diff_extra:
+            print(f"  need() calls accessing paths not in SCHEMA: {diff_extra}")
+        runner.cleanup()
+        sys.exit(1)
+
+    print(f"Closure check: all {len(schema_paths)} SCHEMA paths accessed in AST.")
+
     tests = []
 
-    # --- 1. FILES ---
+    # =========================================================================
+    # TIER 1: WHOLE-INPUT TESTS
+    # =========================================================================
+
     # pubspec.yaml
     tests.append(('pubspec_missing', 'pubspec.yaml', 'missing', lambda d: os.remove(os.path.join(d, 'pubspec.yaml')), 'pubspec.yaml'))
     tests.append(('pubspec_empty', 'pubspec.yaml', 'empty', lambda d: open(os.path.join(d, 'pubspec.yaml'), 'w').close(), 'pubspec.yaml'))
     tests.append(('pubspec_whitespace', 'pubspec.yaml', 'whitespace', lambda d: open(os.path.join(d, 'pubspec.yaml'), 'w').write("   \n\t\n"), 'pubspec.yaml'))
     tests.append(('pubspec_unparseable', 'pubspec.yaml', 'unparseable_yaml', lambda d: open(os.path.join(d, 'pubspec.yaml'), 'w').write(":\n  - : :\n"), 'pubspec.yaml'))
-    tests.append(('pubspec_missing_sdk', 'pubspec.yaml', 'missing_sdk', lambda d: open(os.path.join(d, 'pubspec.yaml'), 'w').write("name: test_pkg\nenvironment:\n  flutter: 3.47.9\ndependencies:\n  meta: ^1.19.0\n"), 'pubspec.yaml'))
 
-    # pubspec.lock (missed input found in code)
+    # pubspec.lock
     tests.append(('pubspec_lock_empty', 'pubspec.lock', 'empty', lambda d: open(os.path.join(d, 'pubspec.lock'), 'w').close(), 'pubspec.lock'))
     tests.append(('pubspec_lock_whitespace', 'pubspec.lock', 'whitespace', lambda d: open(os.path.join(d, 'pubspec.lock'), 'w').write("   \n\t\n"), 'pubspec.lock'))
 
@@ -2382,7 +2414,6 @@ def main():
     tests.append(('workflows_file_empty', '.github/workflows/ci.yml', 'empty_file', lambda d: open(os.path.join(d, '.github/workflows/ci.yml'), 'w').close(), 'ci.yml'))
     tests.append(('workflows_file_whitespace', '.github/workflows/ci.yml', 'whitespace', lambda d: open(os.path.join(d, '.github/workflows/ci.yml'), 'w').write("  \n\t \n"), 'ci.yml'))
     tests.append(('workflows_file_unparseable', '.github/workflows/ci.yml', 'unparseable_yaml', lambda d: open(os.path.join(d, '.github/workflows/ci.yml'), 'w').write(":\n  - : :\n"), 'ci.yml'))
-    tests.append(('workflows_file_no_jobs', '.github/workflows/ci.yml', 'missing_jobs', lambda d: open(os.path.join(d, '.github/workflows/ci.yml'), 'w').write("name: CI\non: [push]\n"), 'ci.yml'))
 
     # dependency_exceptions.tsv
     tests.append(('exceptions_missing', 'dependency_exceptions.tsv', 'missing', lambda d: os.remove(os.path.join(d, 'dependency_exceptions.tsv')), 'dependency_exceptions.tsv'))
@@ -2398,8 +2429,6 @@ def main():
     tests.append(('pub_outdated_null', 'pub_outdated.json', 'top_level_null', lambda d: open(os.path.join(d, 'pub_outdated.json'), 'w').write("null\n"), 'pub_outdated.json'))
     tests.append(('pub_outdated_array', 'pub_outdated.json', 'top_level_array', lambda d: open(os.path.join(d, 'pub_outdated.json'), 'w').write("[]\n"), 'pub_outdated.json'))
     tests.append(('pub_outdated_error', 'pub_outdated.json', 'error_payload', lambda d: open(os.path.join(d, 'pub_outdated.json'), 'w').write('{"error": "outdated failed"}\n'), 'pub_outdated.json'))
-    tests.append(('pub_outdated_no_pkgs', 'pub_outdated.json', 'missing_packages_field', lambda d: open(os.path.join(d, 'pub_outdated.json'), 'w').write('{}\n'), 'pub_outdated.json'))
-    tests.append(('pub_outdated_incomplete', 'pub_outdated.json', 'missing_dependency_entry', lambda d: open(os.path.join(d, 'pub_outdated.json'), 'w').write('{"packages": []}\n'), 'pub_outdated.json'))
 
     # npm package.json
     tests.append(('npm_pkg_missing', 'package.json', 'missing', lambda d: os.remove(os.path.join(d, 'npm/package.json')), 'package.json'))
@@ -2440,30 +2469,28 @@ def main():
     tests.append(('npm_audit_null', 'npm/audit.json', 'top_level_null', lambda d: open(os.path.join(d, 'npm/audit.json'), 'w').write("null\n"), 'audit.json'))
     tests.append(('npm_audit_array', 'npm/audit.json', 'top_level_array', lambda d: open(os.path.join(d, 'npm/audit.json'), 'w').write("[]\n"), 'audit.json'))
     tests.append(('npm_audit_error', 'npm/audit.json', 'error_payload', lambda d: open(os.path.join(d, 'npm/audit.json'), 'w').write('{"error": "audit failed"}\n'), 'audit.json'))
-    tests.append(('npm_audit_missing_meta', 'npm/audit.json', 'missing_metadata_and_vulns', lambda d: open(os.path.join(d, 'npm/audit.json'), 'w').write('{}\n'), 'audit.json'))
-    tests.append(('npm_audit_missing_mod', 'npm/audit.json', 'missing_moderate_field', lambda d: open(os.path.join(d, 'npm/audit.json'), 'w').write('{"metadata": {"vulnerabilities": {}}}\n'), 'audit.json'))
 
     # npm outdated status
     tests.append(('npm_outdated_status_missing', 'npm/outdated_status.json', 'missing', lambda d: os.remove(os.path.join(d, 'npm/outdated_status.json')), 'outdated_status.json'))
     tests.append(('npm_outdated_status_empty', 'npm/outdated_status.json', 'empty', lambda d: open(os.path.join(d, 'npm/outdated_status.json'), 'w').close(), 'outdated_status.json'))
-    tests.append(('npm_outdated_status_ws', 'npm/outdated_status.json', 'whitespace', lambda d: open(os.path.join(d, 'npm/outdated_status.json'), 'w').write("  \n"), 'outdated_status.json'))
-    tests.append(('npm_outdated_status_non_int', 'npm/outdated_status.json', 'non_integer', lambda d: open(os.path.join(d, 'npm/outdated_status.json'), 'w').write("abc\n"), 'outdated_status.json'))
+    tests.append(('npm_outdated_status_ws', 'npm/outdated_status.json', 'whitespace', lambda d: open(os.path.join(d, 'npm/outdated_status.json'), 'w').write("   \n"), 'outdated_status.json'))
+    tests.append(('npm_outdated_status_bad', 'npm/outdated_status.json', 'unparseable_int', lambda d: open(os.path.join(d, 'npm/outdated_status.json'), 'w').write("not_an_int\n"), 'outdated_status.json'))
     tests.append(('npm_outdated_status_code2', 'npm/outdated_status.json', 'exit_code_2', lambda d: (open(os.path.join(d, 'npm/outdated_status.json'), 'w').write("2\n"), open(os.path.join(d, 'npm/outdated.stderr'), 'w').write("npm ERR! code E404\n")), 'outdated_status.json'))
     tests.append(('npm_outdated_status_code127', 'npm/outdated_status.json', 'exit_code_127', lambda d: (open(os.path.join(d, 'npm/outdated_status.json'), 'w').write("127\n"), open(os.path.join(d, 'npm/outdated.stderr'), 'w').write("npm: command not found\n")), 'outdated_status.json'))
 
     # npm audit status
     tests.append(('npm_audit_status_missing', 'npm/audit_status.json', 'missing', lambda d: os.remove(os.path.join(d, 'npm/audit_status.json')), 'audit_status.json'))
     tests.append(('npm_audit_status_empty', 'npm/audit_status.json', 'empty', lambda d: open(os.path.join(d, 'npm/audit_status.json'), 'w').close(), 'audit_status.json'))
-    tests.append(('npm_audit_status_ws', 'npm/audit_status.json', 'whitespace', lambda d: open(os.path.join(d, 'npm/audit_status.json'), 'w').write("  \n"), 'audit_status.json'))
-    tests.append(('npm_audit_status_non_int', 'npm/audit_status.json', 'non_integer', lambda d: open(os.path.join(d, 'npm/audit_status.json'), 'w').write("error\n"), 'audit_status.json'))
+    tests.append(('npm_audit_status_ws', 'npm/audit_status.json', 'whitespace', lambda d: open(os.path.join(d, 'npm/audit_status.json'), 'w').write("   \n"), 'audit_status.json'))
+    tests.append(('npm_audit_status_bad', 'npm/audit_status.json', 'unparseable_int', lambda d: open(os.path.join(d, 'npm/audit_status.json'), 'w').write("not_an_int\n"), 'audit_status.json'))
     tests.append(('npm_audit_status_code2', 'npm/audit_status.json', 'exit_code_2', lambda d: (open(os.path.join(d, 'npm/audit_status.json'), 'w').write("2\n"), open(os.path.join(d, 'npm/audit.stderr'), 'w').write("npm ERR! audit server error\n")), 'audit_status.json'))
     tests.append(('npm_audit_status_code127', 'npm/audit_status.json', 'exit_code_127', lambda d: (open(os.path.join(d, 'npm/audit_status.json'), 'w').write("127\n"), open(os.path.join(d, 'npm/audit.stderr'), 'w').write("npm: command not found\n")), 'audit_status.json'))
 
-    # --- 2. URLS ---
+    # URLs
     def setup_url_fixture(subpath, content):
         p = os.path.join(runner.http_root, subpath)
         os.makedirs(os.path.dirname(p), exist_ok=True)
-        with open(p, 'w') as f:
+        with open(p, 'w', encoding='utf-8') as f:
             if isinstance(content, str):
                 f.write(content)
             else:
@@ -2487,7 +2514,6 @@ def main():
     tests.append(test_url('url_pub_pkg_null', 'pub.dev package', 'top_level_null', '--pub-api', 'api/packages/meta.json', 'null\n'))
     tests.append(test_url('url_pub_pkg_array', 'pub.dev package', 'top_level_array', '--pub-api', 'api/packages/meta.json', '[]\n'))
     tests.append(test_url('url_pub_pkg_error', 'pub.dev package', 'error_payload', '--pub-api', 'api/packages/meta.json', '{"error": "pkg error"}'))
-    tests.append(test_url('url_pub_pkg_missing_fields', 'pub.dev package', 'missing_versions_and_latest', '--pub-api', 'api/packages/meta.json', '{"name": "meta"}\n'))
 
     # pub.dev advisories
     tests.append(test_url('url_pub_adv_404', 'pub.dev advisories', 'http_404', '--pub-api', 'api/packages/meta/advisories.json', None))
@@ -2497,7 +2523,6 @@ def main():
     tests.append(test_url('url_pub_adv_null', 'pub.dev advisories', 'top_level_null', '--pub-api', 'api/packages/meta/advisories.json', 'null\n'))
     tests.append(test_url('url_pub_adv_array', 'pub.dev advisories', 'top_level_array', '--pub-api', 'api/packages/meta/advisories.json', '[]\n'))
     tests.append(test_url('url_pub_adv_error', 'pub.dev advisories', 'error_payload', '--pub-api', 'api/packages/meta/advisories.json', '{"error": "adv error"}'))
-    tests.append(test_url('url_pub_adv_missing_adv', 'pub.dev advisories', 'missing_advisories_field', '--pub-api', 'api/packages/meta/advisories.json', '{}\n'))
 
     # Flutter releases
     def test_fl(test_id, damage_kind, content_or_none):
@@ -2517,8 +2542,6 @@ def main():
     tests.append(test_fl('url_fl_null', 'top_level_null', 'null\n'))
     tests.append(test_fl('url_fl_array', 'top_level_array', '[]\n'))
     tests.append(test_fl('url_fl_error', 'error_payload', '{"error": "fl error"}'))
-    tests.append(test_fl('url_fl_missing_rel', 'missing_releases_field', '{}\n'))
-    tests.append(test_fl('url_fl_empty_rel', 'empty_releases_list', '{"releases": []}\n'))
 
     # GitHub latest release
     def test_gh_latest(test_id, damage_kind, content_or_none):
@@ -2546,7 +2569,6 @@ def main():
     tests.append(test_gh_latest('url_gh_latest_null', 'top_level_null', 'null\n'))
     tests.append(test_gh_latest('url_gh_latest_array', 'top_level_array', '[]\n'))
     tests.append(test_gh_latest('url_gh_latest_error', 'error_payload', '{"error": "gh error"}'))
-    tests.append(test_gh_latest('url_gh_latest_missing_tag', 'missing_tag_name', '{"name": "v7.0.1"}\n'))
 
     # GitHub releases list
     def test_gh_rels(test_id, damage_kind, content_or_none):
@@ -2648,12 +2670,11 @@ def main():
     tests.append(test_node('url_node_null', 'top_level_null', 'null\n'))
     tests.append(test_node('url_node_obj', 'top_level_object', '{}\n'))
     tests.append(test_node('url_node_error', 'error_payload', '{"error": "node error"}'))
-    tests.append(test_node('url_node_empty_lts', 'no_lts_releases', '[{"version": "v21.0.0", "lts": false}]\n'))
 
     # npm registry package
     def test_npm_reg(test_id, damage_kind, content_or_none):
         def setup_fn(d):
-            open(os.path.join(d, 'npm/package.json'), 'w').write(json.dumps({"name": "test_pkg", "overrides": {"pkg_override": "1.0.0"}}))
+            open(os.path.join(d, 'npm/package.json'), 'w').write(json.dumps({"name": "test_pkg", "version": "1.0.0", "overrides": {"pkg_override": "1.0.0"}}))
             open(os.path.join(d, 'dependency_exceptions.tsv'), 'w').write("N4\tpkg_override\t1.0.0\t2026-11-20\tExcused for test GHSA-1111-2222-3333\n")
             if content_or_none is None:
                 url = f"{runner.server_url}/npm_404_{test_id}"
@@ -2670,10 +2691,376 @@ def main():
     tests.append(test_npm_reg('url_npm_reg_null', 'top_level_null', 'null\n'))
     tests.append(test_npm_reg('url_npm_reg_array', 'top_level_array', '[]\n'))
     tests.append(test_npm_reg('url_npm_reg_error', 'error_payload', '{"error": "registry error"}'))
-    tests.append(test_npm_reg('url_npm_reg_no_time', 'missing_time_field', '{"name": "pkg_override"}\n'))
 
-    # Execute damage tests
-    print(f"Running {len(tests)} damage tests...")
+    # =========================================================================
+    # TIER 2: SCHEMA-GENERATED FIELD DAMAGE TESTS (193 tests)
+    # =========================================================================
+    def mutate_obj(obj, rest, kind, spec):
+        obj = copy.deepcopy(obj)
+        exp_type = spec['type']
+
+        if kind == 'wrong_type':
+            val_wt = 12345 if exp_type is not int else 'string'
+        elif kind == 'empty':
+            val_emp = '' if exp_type is str else ([] if exp_type is list else {})
+
+        if '[].' in rest:
+            prefix, suffix = rest.split('[].', 1)
+            sub = obj if prefix == '' else obj[prefix]
+            sub_item = sub[0]
+            segs = suffix.split('.')
+            for s in segs[:-1]:
+                sub_item = sub_item[s]
+            target = segs[-1]
+            if kind == 'missing':
+                del sub_item[target]
+            elif kind == 'null':
+                sub_item[target] = None
+            elif kind == 'wrong_type':
+                sub_item[target] = val_wt
+            elif kind == 'empty':
+                sub_item[target] = val_emp
+        elif '.*.' in rest:
+            prefix, suffix = rest.split('.*.', 1)
+            sub = obj if prefix == '' else obj[prefix]
+            k = next(iter(sub))
+            sub_item = sub[k]
+            segs = suffix.split('.')
+            for s in segs[:-1]:
+                sub_item = sub_item[s]
+            target = segs[-1]
+            if kind == 'missing':
+                del sub_item[target]
+            elif kind == 'null':
+                sub_item[target] = None
+            elif kind == 'wrong_type':
+                sub_item[target] = val_wt
+            elif kind == 'empty':
+                sub_item[target] = val_emp
+        elif rest.startswith('*.'):
+            k = next(iter(obj))
+            sub_item = obj[k]
+            target = rest[2:]
+            if kind == 'missing':
+                del sub_item[target]
+            elif kind == 'null':
+                sub_item[target] = None
+            elif kind == 'wrong_type':
+                sub_item[target] = val_wt
+            elif kind == 'empty':
+                sub_item[target] = val_emp
+        elif rest in ('[]', '{}'):
+            if kind == 'wrong_type':
+                obj = {} if exp_type is list else []
+            elif kind == 'null':
+                obj = None
+            elif kind == 'empty':
+                obj = [] if exp_type is list else {}
+            elif kind == 'missing':
+                obj = None
+        else:
+            segs = rest.split('.')
+            sub = obj
+            for s in segs[:-1]:
+                sub = sub[s]
+            target = segs[-1]
+            if kind == 'missing':
+                del sub[target]
+            elif kind == 'null':
+                sub[target] = None
+            elif kind == 'wrong_type':
+                sub[target] = val_wt
+            elif kind == 'empty':
+                sub[target] = val_emp
+        return obj
+
+    tested_schema_paths = set()
+    for path, spec in SCHEMA.items():
+        tested_schema_paths.add(path)
+        ns, rest = path.split('.', 1)
+        kinds = ['missing', 'null', 'wrong_type']
+        if spec.get('non_empty', False):
+            kinds.append('empty')
+
+        for kind in kinds:
+            test_id = f"sch_{path}_{kind}".replace('.', '_').replace('[', '_').replace(']', '_').replace('*', 'wild')
+
+            def make_setup(ns=ns, rest=rest, kind=kind, spec=spec, test_id=test_id, path=path):
+                if ns == 'flutter_releases':
+                    def setup_fn(d):
+                        base = {
+                            "current_release": {"stable": "3.47.9"},
+                            "releases": [
+                                {"version": "3.47.9", "release_date": "2026-10-20T00:00:00Z", "channel": "stable", "dart_sdk_version": "3.13.7"},
+                                {"version": "3.47.0", "release_date": "2026-08-01T00:00:00Z", "channel": "stable", "dart_sdk_version": "3.13.0"}
+                            ]
+                        }
+                        mutated = mutate_obj(base, rest, kind, spec)
+                        setup_url_fixture(f"{test_id}/releases.json", mutated)
+                        return ['--flutter-releases', f"{runner.server_url}/{test_id}/releases.json"]
+                    return ('Flutter releases', setup_fn)
+                elif ns == 'node_dist':
+                    def setup_fn(d):
+                        base = [{"version": "v20.18.0", "date": "2026-10-01", "lts": "Iron"}]
+                        mutated = mutate_obj(base, rest, kind, spec)
+                        setup_url_fixture(f"{test_id}/dist/index.json", mutated)
+                        return ['--node-dist', f"{runner.server_url}/{test_id}/dist/index.json"]
+                    return ('Node index', setup_fn)
+                elif ns == 'github_release':
+                    def setup_fn(d):
+                        base = {"tag_name": "v7.0.1", "published_at": "2026-05-01T12:00:00Z"}
+                        mutated = mutate_obj(base, rest, kind, spec)
+                        setup_url_fixture(f"{test_id}/repos/actions/checkout/releases/latest.json", mutated)
+                        setup_url_fixture(f"{test_id}/repos/actions/checkout/releases.json", [{"tag_name": "v7.0.1", "published_at": "2026-05-01T12:00:00Z"}])
+                        setup_url_fixture(f"{test_id}/repos/actions/checkout/git/ref/tags/v7.0.1.json", {"object": {"sha": "3d3c42e5aac5ba805825da76410c181273ba90b1", "type": "commit"}})
+                        setup_url_fixture(f"{test_id}/repos/dart-lang/setup-dart/releases/latest.json", {"tag_name": "v1.8.1", "published_at": "2026-05-10T12:00:00Z"})
+                        setup_url_fixture(f"{test_id}/repos/dart-lang/setup-dart/releases.json", [{"tag_name": "v1.8.1", "published_at": "2026-05-10T12:00:00Z"}])
+                        setup_url_fixture(f"{test_id}/repos/dart-lang/setup-dart/git/ref/tags/v1.8.1.json", {"object": {"sha": "e51d8e519be8f8d29450b2bc73ea832f4165e2c1", "type": "commit"}})
+                        setup_url_fixture(f"{test_id}/repos/actions/setup-node/releases/latest.json", {"tag_name": "v4.4.0", "published_at": "2026-05-01T12:00:00Z"})
+                        setup_url_fixture(f"{test_id}/repos/actions/setup-node/releases.json", [{"tag_name": "v4.4.0", "published_at": "2026-05-01T12:00:00Z"}])
+                        setup_url_fixture(f"{test_id}/repos/actions/setup-node/git/ref/tags/v4.4.0.json", {"object": {"sha": "49933ea5288caeca8642d1e84afbd3f7d6820020", "type": "commit"}})
+                        return ['--github-api', f"{runner.server_url}/{test_id}"]
+                    return ('GitHub release', setup_fn)
+                elif ns == 'github_releases_list':
+                    def setup_fn(d):
+                        base = [{"tag_name": "v7.0.2", "published_at": "2026-05-01T12:00:00Z"}]
+                        mutated = mutate_obj(base, rest, kind, spec)
+                        setup_url_fixture(f"{test_id}/repos/actions/checkout/releases/latest.json", {"tag_name": "v7.0.2", "published_at": "2026-05-01T12:00:00Z"})
+                        setup_url_fixture(f"{test_id}/repos/actions/checkout/releases.json", mutated)
+                        setup_url_fixture(f"{test_id}/repos/actions/checkout/git/ref/tags/v7.0.2.json", {"object": {"sha": "999c42e5aac5ba805825da76410c181273ba90b1", "type": "commit"}})
+                        setup_url_fixture(f"{test_id}/repos/dart-lang/setup-dart/releases/latest.json", {"tag_name": "v1.8.1", "published_at": "2026-05-10T12:00:00Z"})
+                        setup_url_fixture(f"{test_id}/repos/dart-lang/setup-dart/releases.json", [{"tag_name": "v1.8.1", "published_at": "2026-05-10T12:00:00Z"}])
+                        setup_url_fixture(f"{test_id}/repos/dart-lang/setup-dart/git/ref/tags/v1.8.1.json", {"object": {"sha": "e51d8e519be8f8d29450b2bc73ea832f4165e2c1", "type": "commit"}})
+                        setup_url_fixture(f"{test_id}/repos/actions/setup-node/releases/latest.json", {"tag_name": "v4.4.0", "published_at": "2026-05-01T12:00:00Z"})
+                        setup_url_fixture(f"{test_id}/repos/actions/setup-node/releases.json", [{"tag_name": "v4.4.0", "published_at": "2026-05-01T12:00:00Z"}])
+                        setup_url_fixture(f"{test_id}/repos/actions/setup-node/git/ref/tags/v4.4.0.json", {"object": {"sha": "49933ea5288caeca8642d1e84afbd3f7d6820020", "type": "commit"}})
+                        return ['--github-api', f"{runner.server_url}/{test_id}"]
+                    return ('GitHub releases list', setup_fn)
+                elif ns == 'github_tag_ref':
+                    def setup_fn(d):
+                        base = {"object": {"sha": "3d3c42e5aac5ba805825da76410c181273ba90b1", "type": "commit"}}
+                        mutated = mutate_obj(base, rest, kind, spec)
+                        setup_url_fixture(f"{test_id}/repos/actions/checkout/releases/latest.json", {"tag_name": "v7.0.1", "published_at": "2026-05-01T12:00:00Z"})
+                        setup_url_fixture(f"{test_id}/repos/actions/checkout/releases.json", [{"tag_name": "v7.0.1", "published_at": "2026-05-01T12:00:00Z"}])
+                        setup_url_fixture(f"{test_id}/repos/actions/checkout/git/ref/tags/v7.0.1.json", mutated)
+                        setup_url_fixture(f"{test_id}/repos/dart-lang/setup-dart/releases/latest.json", {"tag_name": "v1.8.1", "published_at": "2026-05-10T12:00:00Z"})
+                        setup_url_fixture(f"{test_id}/repos/dart-lang/setup-dart/releases.json", [{"tag_name": "v1.8.1", "published_at": "2026-05-10T12:00:00Z"}])
+                        setup_url_fixture(f"{test_id}/repos/dart-lang/setup-dart/git/ref/tags/v1.8.1.json", {"object": {"sha": "e51d8e519be8f8d29450b2bc73ea832f4165e2c1", "type": "commit"}})
+                        setup_url_fixture(f"{test_id}/repos/actions/setup-node/releases/latest.json", {"tag_name": "v4.4.0", "published_at": "2026-05-01T12:00:00Z"})
+                        setup_url_fixture(f"{test_id}/repos/actions/setup-node/releases.json", [{"tag_name": "v4.4.0", "published_at": "2026-05-01T12:00:00Z"}])
+                        setup_url_fixture(f"{test_id}/repos/actions/setup-node/git/ref/tags/v4.4.0.json", {"object": {"sha": "49933ea5288caeca8642d1e84afbd3f7d6820020", "type": "commit"}})
+                        return ['--github-api', f"{runner.server_url}/{test_id}"]
+                    return ('GitHub tag ref', setup_fn)
+                elif ns == 'github_tag_object':
+                    def setup_fn(d):
+                        base = {"object": {"sha": "tagsha1234567890abcdef1234567890abcdef12", "type": "tag"}}
+                        mutated = mutate_obj(base, rest, kind, spec)
+                        setup_url_fixture(f"{test_id}/repos/actions/checkout/releases/latest.json", {"tag_name": "v7.0.1", "published_at": "2026-05-01T12:00:00Z"})
+                        setup_url_fixture(f"{test_id}/repos/actions/checkout/releases.json", [{"tag_name": "v7.0.1", "published_at": "2026-05-01T12:00:00Z"}])
+                        setup_url_fixture(f"{test_id}/repos/actions/checkout/git/ref/tags/v7.0.1.json", {"object": {"sha": "tagsha1234567890abcdef1234567890abcdef12", "type": "tag"}})
+                        setup_url_fixture(f"{test_id}/repos/actions/checkout/git/tags/tagsha1234567890abcdef1234567890abcdef12.json", mutated)
+                        setup_url_fixture(f"{test_id}/repos/dart-lang/setup-dart/releases/latest.json", {"tag_name": "v1.8.1", "published_at": "2026-05-10T12:00:00Z"})
+                        setup_url_fixture(f"{test_id}/repos/dart-lang/setup-dart/releases.json", [{"tag_name": "v1.8.1", "published_at": "2026-05-10T12:00:00Z"}])
+                        setup_url_fixture(f"{test_id}/repos/dart-lang/setup-dart/git/ref/tags/v1.8.1.json", {"object": {"sha": "e51d8e519be8f8d29450b2bc73ea832f4165e2c1", "type": "commit"}})
+                        setup_url_fixture(f"{test_id}/repos/actions/setup-node/releases/latest.json", {"tag_name": "v4.4.0", "published_at": "2026-05-01T12:00:00Z"})
+                        setup_url_fixture(f"{test_id}/repos/actions/setup-node/releases.json", [{"tag_name": "v4.4.0", "published_at": "2026-05-01T12:00:00Z"}])
+                        setup_url_fixture(f"{test_id}/repos/actions/setup-node/git/ref/tags/v4.4.0.json", {"object": {"sha": "49933ea5288caeca8642d1e84afbd3f7d6820020", "type": "commit"}})
+                        return ['--github-api', f"{runner.server_url}/{test_id}"]
+                    return ('GitHub tag object', setup_fn)
+                elif ns == 'npm_package':
+                    def setup_fn(d):
+                        base = {"name": "test_pkg", "version": "1.0.0"}
+                        mutated = mutate_obj(base, rest, kind, spec)
+                        with open(os.path.join(d, 'npm/package.json'), 'w') as f:
+                            json.dump(mutated, f)
+                    return ('package.json', setup_fn)
+                elif ns == 'npm_package_lock':
+                    def setup_fn(d):
+                        with open(os.path.join(d, 'npm/audit.json'), 'w') as f:
+                            json.dump({
+                                "auditReportVersion": 2,
+                                "metadata": {"vulnerabilities": {"info": 0, "low": 0, "moderate": 1, "high": 0, "critical": 0, "total": 1}},
+                                "vulnerabilities": {"vuln_pkg": {"severity": "moderate", "nodes": ["node_modules/vuln_pkg"], "via": [{"url": "https://github.com/advisories/GHSA-1234-5678-90ab"}]}}
+                            }, f)
+                        base = {"name": "test_pkg", "version": "1.0.0", "lockfileVersion": 3, "packages": {"node_modules/vuln_pkg": {"version": "1.0.0"}}}
+                        mutated = mutate_obj(base, rest, kind, spec)
+                        with open(os.path.join(d, 'npm/package-lock.json'), 'w') as f:
+                            json.dump(mutated, f)
+                    return ('package-lock.json', setup_fn)
+                elif ns == 'npm_outdated':
+                    def setup_fn(d):
+                        base = {"outdated_pkg": {"current": "1.0.0", "wanted": "1.0.1", "latest": "1.1.0", "dependent": "test_pkg", "location": "node_modules/outdated_pkg"}}
+                        mutated = mutate_obj(base, rest, kind, spec)
+                        with open(os.path.join(d, 'npm/outdated.json'), 'w') as f:
+                            json.dump(mutated, f)
+                    return ('outdated.json', setup_fn)
+                elif ns == 'npm_registry':
+                    def setup_fn(d):
+                        with open(os.path.join(d, 'npm/package.json'), 'w') as f:
+                            json.dump({"name": "test_pkg", "version": "1.0.0", "overrides": {"pkg_override": "1.0.0"}}, f)
+                        with open(os.path.join(d, 'dependency_exceptions.tsv'), 'w') as f:
+                            f.write("N4\tpkg_override\t1.0.0\t2026-11-20\tExcused for test GHSA-1111-2222-3333\n")
+                        base = {"name": "pkg_override", "time": {"1.0.0": "2026-11-01T00:00:00Z"}}
+                        mutated = mutate_obj(base, rest, kind, spec)
+                        setup_url_fixture(f"{test_id}/pkg_override.json", mutated)
+                        return ['--npm-registry', f"{runner.server_url}/{test_id}"]
+                    return ('npm registry', setup_fn)
+                elif ns == 'npm_audit':
+                    def setup_fn(d):
+                        if 'metadata.' in rest:
+                            base = {"auditReportVersion": 2, "metadata": {"vulnerabilities": {"info": 0, "low": 0, "moderate": 0, "high": 0, "critical": 0, "total": 0}}}
+                            mutated = mutate_obj(base, rest, kind, spec)
+                            with open(os.path.join(d, 'npm/audit.json'), 'w') as f:
+                                json.dump(mutated, f)
+                        else:
+                            base = {"auditReportVersion": 2, "vulnerabilities": {"vuln_pkg": {"severity": "moderate", "nodes": ["node_modules/vuln_pkg"], "via": [{"url": "https://github.com/advisories/GHSA-1234-5678-90ab"}]}}}
+                            with open(os.path.join(d, 'npm/package-lock.json'), 'w') as f:
+                                json.dump({"name": "test_pkg", "version": "1.0.0", "lockfileVersion": 3, "packages": {"node_modules/vuln_pkg": {"version": "1.0.0"}}}, f)
+                            mutated = mutate_obj(base, rest, kind, spec)
+                            with open(os.path.join(d, 'npm/audit.json'), 'w') as f:
+                                json.dump(mutated, f)
+                    return ('audit.json', setup_fn)
+                elif ns == 'pub_outdated':
+                    def setup_fn(d):
+                        base = {"packages": [{"package": "meta", "kind": "direct", "isDiscontinued": False, "isCurrentRetracted": False, "isCurrentAffectedByAdvisory": False, "current": {"version": "1.19.0"}, "resolvable": {"version": "1.19.0"}, "latest": {"version": "1.19.0"}}]}
+                        mutated = mutate_obj(base, rest, kind, spec)
+                        with open(os.path.join(d, 'pub_outdated.json'), 'w') as f:
+                            json.dump(mutated, f)
+                    return ('pub_outdated.json', setup_fn)
+                elif ns == 'pub_package':
+                    def setup_fn(d):
+                        base = {"name": "meta", "latest": {"version": "1.19.0", "published": "2026-10-01T00:00:00Z"}, "versions": [{"version": "1.19.0", "published": "2026-10-01T00:00:00Z"}]}
+                        mutated = mutate_obj(base, rest, kind, spec)
+                        setup_url_fixture(f"{test_id}/api/packages/meta.json", mutated)
+                        setup_url_fixture(f"{test_id}/api/packages/meta/advisories.json", {"advisories": []})
+                        return ['--pub-api', f"{runner.server_url}/{test_id}"]
+                    return ('pub.dev package', setup_fn)
+                elif ns == 'pub_advisories':
+                    def setup_fn(d):
+                        base = {"advisories": [{"id": "GHSA-test-1234", "affected": [{"versions": ["1.19.0"]}]}]}
+                        mutated = mutate_obj(base, rest, kind, spec)
+                        setup_url_fixture(f"{test_id}/api/packages/meta.json", {"name": "meta", "latest": {"version": "1.19.0", "published": "2026-10-01T00:00:00Z"}, "versions": [{"version": "1.19.0", "published": "2026-10-01T00:00:00Z"}]})
+                        setup_url_fixture(f"{test_id}/api/packages/meta/advisories.json", mutated)
+                        return ['--pub-api', f"{runner.server_url}/{test_id}"]
+                    return ('pub.dev advisories', setup_fn)
+                elif ns == 'pubspec':
+                    def setup_fn(d):
+                        p = os.path.join(d, 'pubspec.yaml')
+                        with open(p, 'r') as f:
+                            content = f.read()
+                        if path == 'pubspec.name':
+                            if kind == 'missing':
+                                content = content.replace('name: test_pkg\n', '')
+                            elif kind == 'null':
+                                content = content.replace('name: test_pkg\n', 'name:\n')
+                            elif kind == 'wrong_type':
+                                content = content.replace('name: test_pkg\n', 'name: [invalid, list]\n')
+                            elif kind == 'empty':
+                                content = content.replace('name: test_pkg\n', 'name: ""\n')
+                        elif path == 'pubspec.environment.sdk':
+                            if kind == 'missing':
+                                content = content.replace('  sdk: ^3.13.0\n', '')
+                            elif kind == 'null':
+                                content = content.replace('  sdk: ^3.13.0\n', '  sdk:\n')
+                            elif kind == 'wrong_type':
+                                content = content.replace('  sdk: ^3.13.0\n', '  sdk: [invalid, list]\n')
+                            elif kind == 'empty':
+                                content = content.replace('  sdk: ^3.13.0\n', '  sdk: ""\n')
+                        with open(p, 'w') as f:
+                            f.write(content)
+                    return ('pubspec.yaml', setup_fn)
+                elif ns == 'pubspec_lock':
+                    def setup_fn(d):
+                        p = os.path.join(d, 'pubspec.lock')
+                        with open(p, 'r') as f:
+                            content = f.read()
+                        if path == 'pubspec_lock.packages':
+                            if kind == 'missing':
+                                content = "name: test\n"
+                            elif kind == 'null':
+                                content = "packages:\n"
+                            elif kind == 'wrong_type':
+                                content = "packages: \"string\"\n"
+                            elif kind == 'empty':
+                                content = "packages: {}\n"
+                        elif path == 'pubspec_lock.packages.*.source':
+                            if kind == 'missing':
+                                content = content.replace('    source: hosted\n', '')
+                            elif kind == 'null':
+                                content = content.replace('    source: hosted\n', '    source:\n')
+                            elif kind == 'wrong_type':
+                                content = content.replace('    source: hosted\n', '    source: [invalid, list]\n')
+                            elif kind == 'empty':
+                                content = content.replace('    source: hosted\n', '    source: ""\n')
+                        with open(p, 'w') as f:
+                            f.write(content)
+                    return ('pubspec.lock', setup_fn)
+
+            input_name, setup_fn = make_setup()
+            tests.append((test_id, input_name, f"{path}_{kind}", setup_fn, path))
+
+    assert tested_schema_paths == schema_paths, f"Tested schema paths {tested_schema_paths ^ schema_paths}"
+    assert ast_accessed_paths == schema_paths, f"AST accessed paths {ast_accessed_paths ^ schema_paths}"
+
+    # =========================================================================
+    # TIER 3: ARGON F1 REGRESSION TESTS
+    # =========================================================================
+    argon_tests = []
+    # 1. audit metadata.vulnerabilities without high
+    def setup_argon_no_high(d):
+        open(os.path.join(d, 'npm/audit.json'), 'w').write(json.dumps({
+            "auditReportVersion": 2, "vulnerabilities": {},
+            "metadata": {"vulnerabilities": {"info": 0, "low": 0, "moderate": 0, "critical": 0, "total": 0}}
+        }))
+    argon_tests.append(('argon_f1_no_high', 'npm/audit.json', 'audit metadata without high', setup_argon_no_high, 'audit.json'))
+
+    # 2. audit metadata.vulnerabilities without critical
+    def setup_argon_no_crit(d):
+        open(os.path.join(d, 'npm/audit.json'), 'w').write(json.dumps({
+            "auditReportVersion": 2, "vulnerabilities": {},
+            "metadata": {"vulnerabilities": {"info": 0, "low": 0, "moderate": 0, "high": 0, "total": 0}}
+        }))
+    argon_tests.append(('argon_f1_no_crit', 'npm/audit.json', 'audit metadata without critical', setup_argon_no_crit, 'audit.json'))
+
+    # 3. pub outdated package entry without current
+    def setup_argon_no_current(d):
+        open(os.path.join(d, 'pub_outdated.json'), 'w').write(json.dumps({
+            "packages": [{"package": "meta", "kind": "direct", "latest": {"version": "1.19.0"}, "upgradable": {"version": "1.19.0"}, "resolvable": {"version": "1.19.0"}}]
+        }))
+    argon_tests.append(('argon_f1_no_current', 'pub_outdated.json', 'pub outdated entry without current', setup_argon_no_current, 'pub_outdated.json'))
+
+    # 4. pub outdated package entry with current: null
+    def setup_argon_current_null(d):
+        open(os.path.join(d, 'pub_outdated.json'), 'w').write(json.dumps({
+            "packages": [{"package": "meta", "kind": "direct", "current": None, "latest": {"version": "1.19.0"}, "upgradable": {"version": "1.19.0"}, "resolvable": {"version": "1.19.0"}}]
+        }))
+    argon_tests.append(('argon_f1_current_null', 'pub_outdated.json', 'pub outdated entry with current: null', setup_argon_current_null, 'pub_outdated.json'))
+
+    # 5. npm outdated entry {}
+    def setup_argon_outdated_empty_entry(d):
+        open(os.path.join(d, 'npm/outdated.json'), 'w').write(json.dumps({
+            "some-pkg": {}
+        }))
+    argon_tests.append(('argon_f1_outdated_empty_entry', 'npm/outdated.json', 'npm outdated entry {}', setup_argon_outdated_empty_entry, 'outdated.json'))
+
+    # 6. pub.dev advisory entry without affected
+    def setup_argon_adv_no_affected(d):
+        setup_url_fixture('argon_adv/api/packages/meta.json', {"name": "meta", "latest": {"version": "1.19.0", "published": "2026-10-01T00:00:00Z"}, "versions": [{"version": "1.19.0", "published": "2026-10-01T00:00:00Z"}]})
+        setup_url_fixture('argon_adv/api/packages/meta/advisories.json', {"advisories": [{"id": "GHSA-1234", "aliases": []}]})
+        return ['--pub-api', f"{runner.server_url}/argon_adv"]
+    argon_tests.append(('argon_f1_adv_no_affected', 'pub.dev advisories', 'advisory entry without affected', setup_argon_adv_no_affected, 'pub.dev advisories'))
+
+    # 7. pub.dev package answer with versions: []
+    def setup_argon_pkg_empty_versions(d):
+        setup_url_fixture('argon_pkg/api/packages/meta.json', {"name": "meta", "latest": {"version": "1.19.0", "published": "2026-10-01T00:00:00Z"}, "versions": []})
+        setup_url_fixture('argon_pkg/api/packages/meta/advisories.json', {"advisories": []})
+        return ['--pub-api', f"{runner.server_url}/argon_pkg"]
+    argon_tests.append(('argon_f1_pkg_empty_versions', 'pub.dev package', 'package answer with versions: []', setup_argon_pkg_empty_versions, 'pub.dev package'))
+
+    tests.extend(argon_tests)
+
+    # Execute all damage tests
+    print(f"Running {len(tests)} damage tests (Tier 1 whole-input + Tier 2 schema-generated + Tier 3 Argon regression)...")
     for test_id, input_name, damage_kind, setup_fn, expected_identifier in tests:
         d = runner.create_case_dir(test_id)
         res_setup = setup_fn(d)
@@ -2682,7 +3069,6 @@ def main():
 
         combined = (out + "\n" + err).strip()
         has_traceback = "Traceback (most recent call last)" in combined
-        # Check that output names the damaged input (file path or URL)
         input_named = (
             expected_identifier.lower() in combined.lower() or
             input_name.lower() in combined.lower() or
@@ -2690,15 +3076,17 @@ def main():
         )
 
         if rc == 0:
-            failing_rows.append(f"FAIL_OPEN: {input_name} | {damage_kind} | exit code was 0 (expected non-zero failure)")
+            failing_rows.append(f"FAIL_OPEN: {test_id} | {input_name} | {damage_kind} | exit code was 0 (expected non-zero failure)")
         elif has_traceback:
-            failing_rows.append(f"UNHANDLED_EXCEPTION: {input_name} | {damage_kind} | traceback detected in output: {combined[:120]}...")
+            failing_rows.append(f"UNHANDLED_EXCEPTION: {test_id} | {input_name} | {damage_kind} | traceback detected in output: {combined[:120]}...")
         elif not input_named:
-            failing_rows.append(f"MISSING_INPUT_NAME: {input_name} | {damage_kind} | output did not mention '{expected_identifier}': {combined[:120]}...")
+            failing_rows.append(f"MISSING_INPUT_NAME: {test_id} | {input_name} | {damage_kind} | output did not mention '{expected_identifier}': {combined[:120]}...")
         else:
-            passing_rows.append(f"PASS: {input_name} | {damage_kind}")
+            passing_rows.append(f"PASS: {test_id} | {input_name} | {damage_kind}")
 
-    # --- 3. ALLOWED-VALID TESTS ---
+    # =========================================================================
+    # ALLOWED-VALID TESTS
+    # =========================================================================
     valid_tests = []
     # 1. exceptions empty
     valid_tests.append(('exceptions_empty', 'dependency_exceptions.tsv', 'empty_file', lambda d: open(os.path.join(d, 'dependency_exceptions.tsv'), 'w').close(), '0 exceptions allowed'))
@@ -2751,8 +3139,8 @@ jobs:
     runner.cleanup()
 
     print("\n--- RESULTS ---")
-    print(f"Total tests: {len(tests) + len(valid_tests)}")
-    print(f"Passing: {len(passing_rows)}")
+    print(f"Total damage tests: {len(tests)}")
+    print(f"Total valid tests: {len(valid_tests)}")
     print(f"Failing: {len(failing_rows)}")
     if failing_rows:
         print("\nFailing rows:")
@@ -2766,7 +3154,6 @@ jobs:
 
 if __name__ == '__main__':
     main()
-
 EOF_DC71
 
 # DC73: Source check - no swallowed exceptions

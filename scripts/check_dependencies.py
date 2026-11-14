@@ -61,6 +61,171 @@ def fetch_json(url, headers=None, retries=3):
     print(f"Error: Network failure fetching URL '{url}': {last_err}", file=sys.stderr)
     sys.exit(1)
 
+SCHEMA = {
+    # 1. Flutter releases
+    'flutter_releases.releases': {'type': list, 'non_empty': True},
+    'flutter_releases.releases[].channel': {'type': str, 'non_empty': True},
+    'flutter_releases.releases[].version': {'type': str, 'non_empty': True},
+    'flutter_releases.releases[].release_date': {'type': str, 'non_empty': True},
+    'flutter_releases.releases[].dart_sdk_version': {'type': str, 'non_empty': True},
+
+    # 2. GitHub latest release
+    'github_release.tag_name': {'type': str, 'non_empty': True},
+    'github_release.published_at': {'type': str, 'non_empty': True},
+
+    # 3. GitHub tag ref
+    'github_tag_ref.object': {'type': dict, 'non_empty': True},
+    'github_tag_ref.object.sha': {'type': str, 'non_empty': True},
+    'github_tag_ref.object.type': {'type': str, 'non_empty': True},
+
+    # 4. GitHub tag object
+    'github_tag_object.object': {'type': dict, 'non_empty': True},
+    'github_tag_object.object.sha': {'type': str, 'non_empty': True},
+
+    # 5. GitHub releases list
+    'github_releases_list.[]': {'type': list, 'non_empty': False},
+    'github_releases_list.[].tag_name': {'type': str, 'non_empty': True},
+    'github_releases_list.[].published_at': {'type': str, 'non_empty': True},
+
+    # 6. Node dist
+    'node_dist.[]': {'type': list, 'non_empty': True},
+    'node_dist.[].version': {'type': str, 'non_empty': True},
+    'node_dist.[].date': {'type': str, 'non_empty': True},
+
+    # 7. npm package.json
+    'npm_package.{}': {'type': dict, 'non_empty': False},
+
+    # 8. npm package-lock.json
+    'npm_package_lock.packages': {'type': dict, 'non_empty': False},
+    'npm_package_lock.packages.*.version': {'type': str, 'non_empty': True},
+
+    # 9. npm outdated
+    'npm_outdated.{}': {'type': dict, 'non_empty': False},
+    'npm_outdated.*.current': {'type': str, 'non_empty': True},
+    'npm_outdated.*.latest': {'type': str, 'non_empty': True},
+
+    # 10. npm registry
+    'npm_registry.time': {'type': dict, 'non_empty': True},
+
+    # 11. npm audit
+    'npm_audit.metadata.vulnerabilities': {'type': dict, 'non_empty': True},
+    'npm_audit.metadata.vulnerabilities.moderate': {'type': int, 'non_empty': False},
+    'npm_audit.metadata.vulnerabilities.high': {'type': int, 'non_empty': False},
+    'npm_audit.metadata.vulnerabilities.critical': {'type': int, 'non_empty': False},
+    'npm_audit.vulnerabilities': {'type': dict, 'non_empty': False},
+    'npm_audit.vulnerabilities.*.severity': {'type': str, 'non_empty': True},
+
+    # 12. pub outdated
+    'pub_outdated.packages': {'type': list, 'non_empty': False},
+    'pub_outdated.packages[].package': {'type': str, 'non_empty': True},
+    'pub_outdated.packages[].current.version': {'type': str, 'non_empty': True},
+    'pub_outdated.packages[].resolvable.version': {'type': str, 'non_empty': True},
+    'pub_outdated.packages[].latest.version': {'type': str, 'non_empty': True},
+
+    # 13. pub.dev package
+    'pub_package.name': {'type': str, 'non_empty': True},
+    'pub_package.latest.version': {'type': str, 'non_empty': True},
+    'pub_package.latest.published': {'type': str, 'non_empty': True},
+    'pub_package.versions': {'type': list, 'non_empty': True},
+    'pub_package.versions[].version': {'type': str, 'non_empty': True},
+    'pub_package.versions[].published': {'type': str, 'non_empty': True},
+
+    # 14. pub.dev advisories
+    'pub_advisories.advisories': {'type': list, 'non_empty': False},
+    'pub_advisories.advisories[].id': {'type': str, 'non_empty': True},
+    'pub_advisories.advisories[].affected': {'type': list, 'non_empty': True},
+
+    # 15. pubspec.yaml
+    'pubspec.name': {'type': str, 'non_empty': True},
+    'pubspec.environment.sdk': {'type': str, 'non_empty': True},
+
+    # 16. pubspec.lock
+    'pubspec_lock.packages': {'type': dict, 'non_empty': True},
+    'pubspec_lock.packages.*.source': {'type': str, 'non_empty': True},
+}
+
+def need(obj, path, input_name):
+    if path not in SCHEMA:
+        print(f"Error: Schema failure in '{input_name}': unknown schema path '{path}'.", file=sys.stderr)
+        sys.exit(1)
+
+    spec = SCHEMA[path]
+    expected_type = spec['type']
+    non_empty = spec.get('non_empty', False)
+
+    prefix_code = "T1: " if path.startswith('flutter_releases') else ""
+
+    if obj is None:
+        print(f"Error: {prefix_code}Schema failure in '{input_name}' at path '{path}': target object is null.", file=sys.stderr)
+        sys.exit(1)
+
+    _, rest = path.split('.', 1)
+
+    if rest in ('[]', '{}'):
+        val = obj
+    elif '[].' in rest:
+        prefix, suffix = rest.split('[].', 1)
+        if isinstance(obj, dict) and prefix in obj:
+            curr = obj[prefix]
+        else:
+            curr = obj
+            for seg in suffix.split('.'):
+                if not isinstance(curr, dict) or seg not in curr:
+                    print(f"Error: {prefix_code}Schema failure in '{input_name}' at path '{path}': missing '{seg}'.", file=sys.stderr)
+                    sys.exit(1)
+                curr = curr[seg]
+        val = curr
+    elif '.*.' in rest:
+        prefix, suffix = rest.split('.*.', 1)
+        if isinstance(obj, dict) and prefix in obj:
+            curr = obj[prefix]
+        else:
+            curr = obj
+            for seg in suffix.split('.'):
+                if not isinstance(curr, dict) or seg not in curr:
+                    print(f"Error: {prefix_code}Schema failure in '{input_name}' at path '{path}': missing '{seg}'.", file=sys.stderr)
+                    sys.exit(1)
+                curr = curr[seg]
+        val = curr
+    elif rest.startswith('*.'):
+        suffix = rest[2:]
+        curr = obj
+        for seg in suffix.split('.'):
+            if not isinstance(curr, dict) or seg not in curr:
+                print(f"Error: {prefix_code}Schema failure in '{input_name}' at path '{path}': missing '{seg}'.", file=sys.stderr)
+                sys.exit(1)
+            curr = curr[seg]
+        val = curr
+    else:
+        segs = rest.split('.')
+        start_idx = 0
+        if isinstance(obj, dict):
+            for i in range(len(segs)):
+                if segs[i] in obj:
+                    start_idx = i
+                    break
+        curr = obj
+        for seg in segs[start_idx:]:
+            if not isinstance(curr, dict) or seg not in curr:
+                print(f"Error: {prefix_code}Schema failure in '{input_name}' at path '{path}': missing '{seg}'.", file=sys.stderr)
+                sys.exit(1)
+            curr = curr[seg]
+        val = curr
+
+    if val is None:
+        print(f"Error: {prefix_code}Schema failure in '{input_name}' at path '{path}': value is null.", file=sys.stderr)
+        sys.exit(1)
+
+    if not isinstance(val, expected_type) or (expected_type is int and isinstance(val, bool)):
+        print(f"Error: {prefix_code}Schema failure in '{input_name}' at path '{path}': expected {expected_type.__name__}, got {type(val).__name__}.", file=sys.stderr)
+        sys.exit(1)
+
+    if non_empty and isinstance(val, (str, list, dict)) and len(val) == 0:
+        print(f"Error: {prefix_code}Schema failure in '{input_name}' at path '{path}': empty value where non-empty required.", file=sys.stderr)
+        sys.exit(1)
+
+    return val
+
 def parse_semver(v_str):
     cleaned = re.sub(r'^[v\^~>=<]+', '', str(v_str).strip())
     without_build = cleaned.split('+', 1)[0]
@@ -121,7 +286,7 @@ def semver_cmp(v1_str, v2_str):
 
 def is_version_in_ranges(v_str, ranges):
     for r in ranges:
-        events = r.get('events', [])
+        events = r['events'] if isinstance(r, dict) and 'events' in r else []
         introduced = None
         fixed = None
         for ev in events:
@@ -286,11 +451,19 @@ def read_pubspec(pubspec_path):
 
     lines = content.splitlines()
     has_valid_keys = False
+    pkg_name_from_pubspec = None
     for line in lines:
         if line.strip() and not line.strip().startswith('#'):
             if re.match(r'^[a-zA-Z0-9_\-]+:', line):
                 has_valid_keys = True
-                break
+                if line.startswith('name:'):
+                    raw_val = line.split(':', 1)[1].strip()
+                    if not raw_val or raw_val in ('~', 'null'):
+                        pkg_name_from_pubspec = None
+                    elif raw_val.startswith('[') or raw_val.startswith('{'):
+                        pkg_name_from_pubspec = [] if raw_val.startswith('[') else {}
+                    else:
+                        pkg_name_from_pubspec = raw_val.strip("'\"")
     if not has_valid_keys:
         print(f"Error: Pubspec file '{pubspec_path}' is unparseable YAML or missing top-level keys.", file=sys.stderr)
         sys.exit(1)
@@ -298,20 +471,64 @@ def read_pubspec(pubspec_path):
     # Read pubspec.lock if present
     lock_path = os.path.join(os.path.dirname(pubspec_path), 'pubspec.lock')
     if os.path.exists(lock_path):
-        current_pkg = None
         with open(lock_path, 'r', encoding='utf-8') as f:
             lock_content = f.read()
         if not lock_content.strip():
             print(f"Error: pubspec.lock '{lock_path}' is empty or whitespace.", file=sys.stderr)
             sys.exit(1)
+
+        has_packages_key = False
+        pkg_top_val = None
+        lock_packages = {}
+        current_pkg = None
+        in_packages_section = False
         for line in lock_content.splitlines():
-            m = re.match(r'^  ([a-zA-Z0-9_]+):', line)
-            if m:
-                current_pkg = m.group(1)
-            elif current_pkg and 'source:' in line:
-                source = line.split('source:', 1)[1].strip().strip('"\'')
-                if source != 'hosted':
+            if re.match(r'^packages:\s*(.*)', line):
+                has_packages_key = True
+                in_packages_section = True
+                val = re.match(r'^packages:\s*(.*)', line).group(1).strip()
+                if val:
+                    pkg_top_val = val
+            elif not line.startswith(' ') and not line.startswith('\t'):
+                in_packages_section = False
+                current_pkg = None
+            elif in_packages_section and line.startswith('  ') and not line.startswith('    ') and ':' in line:
+                pkg_name = line.split(':', 1)[0].strip()
+                current_pkg = pkg_name
+                lock_packages[current_pkg] = {}
+            elif in_packages_section and current_pkg and line.startswith('    ') and ':' in line:
+                k, v_raw = line.split(':', 1)
+                k = k.strip()
+                v_raw = v_raw.strip()
+                if not v_raw or v_raw in ('~', 'null'):
+                    v = None
+                elif v_raw.startswith('[') or v_raw.endswith(']'):
+                    v = []
+                elif v_raw.startswith('{') or v_raw.endswith('}'):
+                    v = {}
+                elif v_raw.isdigit():
+                    v = int(v_raw)
+                else:
+                    v = v_raw.strip('"\'')
+                lock_packages[current_pkg][k] = v
+                if k == 'source' and v != 'hosted':
                     non_hosted_deps.add(current_pkg)
+
+        if not has_packages_key or pkg_top_val in ('~', 'null'):
+            packages_obj = None
+        elif pkg_top_val is None:
+            packages_obj = lock_packages if lock_packages else None
+        elif pkg_top_val == '{}':
+            packages_obj = {}
+        elif isinstance(pkg_top_val, str) and (pkg_top_val.startswith('"') or pkg_top_val.startswith("'")):
+            packages_obj = pkg_top_val.strip('"\'')
+        else:
+            packages_obj = lock_packages
+
+        need({'packages': packages_obj}, 'pubspec_lock.packages', lock_path)
+        if isinstance(packages_obj, dict):
+            for pkg, p_info in packages_obj.items():
+                need(p_info, 'pubspec_lock.packages.*.source', lock_path)
 
     for raw_line in lines:
             line = raw_line.rstrip()
@@ -335,7 +552,13 @@ def read_pubspec(pubspec_path):
             indent_line = line.strip()
             if current_section == 'environment':
                 if indent_line.startswith('sdk:'):
-                    sdk_constraint = indent_line.split(':', 1)[1].strip().strip("'\"")
+                    raw_sdk = indent_line.split(':', 1)[1].strip()
+                    if not raw_sdk or raw_sdk in ('~', 'null'):
+                        sdk_constraint = None
+                    elif raw_sdk.startswith('[') or raw_sdk.startswith('{'):
+                        sdk_constraint = [] if raw_sdk.startswith('[') else {}
+                    else:
+                        sdk_constraint = raw_sdk.strip("'\"")
                 elif indent_line.startswith('flutter:'):
                     flutter_constraint = indent_line.split(':', 1)[1].strip().strip("'\"")
             elif current_section in ('dependencies', 'dev_dependencies'):
@@ -370,9 +593,9 @@ def read_pubspec(pubspec_path):
                 elif current_dep_name and ('git:' in indent_line or 'sdk:' in indent_line or 'path:' in indent_line):
                     non_hosted_deps.add(current_dep_name)
 
-    if not sdk_constraint:
-        print(f"Error: Pubspec file '{pubspec_path}' is missing required 'environment.sdk' constraint.", file=sys.stderr)
-        sys.exit(1)
+    pubspec_dict = {'name': pkg_name_from_pubspec, 'environment': {'sdk': sdk_constraint}}
+    need(pubspec_dict, 'pubspec.name', pubspec_path)
+    need(pubspec_dict, 'pubspec.environment.sdk', pubspec_path)
 
     return sdk_constraint, flutter_constraint, direct_exact_pins, dev_exact_pins, direct_deps, dev_deps, non_hosted_deps, declared_floors
 
@@ -383,13 +606,13 @@ def get_ghsa_ids(pkg_name, all_vulns, visited=None):
         return set()
     visited.add(pkg_name)
     ghsas = set()
-    pkg_info = all_vulns.get(pkg_name, {})
+    pkg_info = all_vulns[pkg_name] if isinstance(all_vulns, dict) and pkg_name in all_vulns else {}
     if not isinstance(pkg_info, dict):
         return set()
-    vias = pkg_info.get('via', [])
+    vias = pkg_info['via'] if isinstance(pkg_info, dict) and 'via' in pkg_info else []
     for v in vias:
         if isinstance(v, dict):
-            for field in [v.get('url', ''), v.get('title', ''), str(v)]:
+            for field in [v['url'] if 'url' in v else '', v['title'] if 'title' in v else '', str(v)]:
                 for m in re.findall(r'GHSA-[a-zA-Z0-9\-]+', field, re.IGNORECASE):
                     ghsas.add(m.upper())
         elif isinstance(v, str):
@@ -410,6 +633,7 @@ def main():
     parser.add_argument('--npm-audit', default=None, help='Path to npm audit JSON')
     parser.add_argument('--npm-outdated-status', default=None, help='Path to npm outdated status file')
     parser.add_argument('--npm-audit-status', default=None, help='Path to npm audit status file')
+    parser.add_argument('--record-schema-access', help='File to write accessed schema paths to')
     parser.add_argument('--npm-registry', default='https://registry.npmjs.org', help='Base URL for npm registry')
     parser.add_argument('--node-dist', default='https://nodejs.org/dist/index.json', help='URL for Node LTS releases')
     parser.add_argument('--today', default=None, help='Override date YYYY-MM-DD for testing only')
@@ -603,10 +827,10 @@ def main():
     if 'packages' not in outdated_data or not isinstance(outdated_data['packages'], list):
         print(f"Error: Malformed pub outdated JSON in '{args.pub_outdated}': 'packages' key must be a list.", file=sys.stderr)
         sys.exit(1)
-    pub_packages = outdated_data['packages']
+    pub_packages = need(outdated_data, 'pub_outdated.packages', args.pub_outdated)
 
     # Rule: pub outdated must list every direct and dev dependency declared in pubspec.yaml
-    reported_pkgs = {p.get('package') for p in pub_packages if isinstance(p, dict) and 'package' in p}
+    reported_pkgs = {need(p, 'pub_outdated.packages[].package', args.pub_outdated) for p in pub_packages if isinstance(p, dict) and 'package' in p}
     for dep_name in sorted(list(direct_deps) + list(dev_deps)):
         if dep_name not in non_hosted_deps:
             if dep_name not in reported_pkgs:
@@ -619,31 +843,26 @@ def main():
             return package_api_cache[pkg_name]
         url = f"{args.pub_api.rstrip('/')}/api/packages/{pkg_name}"
         data = fetch_json(url)
-        if not isinstance(data, dict):
-            failures.append(f"D1: pub.dev package response from '{url}' must be a JSON object")
-            data = {}
-        elif 'versions' not in data and 'latest' not in data:
-            failures.append(f"D1: pub.dev package response from '{url}' missing versions and latest fields")
+        need(data, 'pub_package.name', url)
+        need(data, 'pub_package.latest.version', url)
+        need(data, 'pub_package.latest.published', url)
+        versions = need(data, 'pub_package.versions', url)
+        for v_entry in versions:
+            need(v_entry, 'pub_package.versions[].version', url)
+            need(v_entry, 'pub_package.versions[].published', url)
         package_api_cache[pkg_name] = data
         return data
 
     for pkg_item in pub_packages:
-        pkg_name = pkg_item.get('package')
-        kind = pkg_item.get('kind', 'transitive')
-        is_disc = pkg_item.get('isDiscontinued', False)
-        is_ret = pkg_item.get('isCurrentRetracted', False)
-        is_adv = pkg_item.get('isCurrentAffectedByAdvisory', False)
+        pkg_name = need(pkg_item, 'pub_outdated.packages[].package', args.pub_outdated)
+        kind = pkg_item['kind'] if 'kind' in pkg_item else 'transitive'
+        is_disc = pkg_item['isDiscontinued'] if 'isDiscontinued' in pkg_item else False
+        is_ret = pkg_item['isCurrentRetracted'] if 'isCurrentRetracted' in pkg_item else False
+        is_adv = pkg_item['isCurrentAffectedByAdvisory'] if 'isCurrentAffectedByAdvisory' in pkg_item else False
 
-        curr_obj = pkg_item.get('current') or {}
-        res_obj = pkg_item.get('resolvable') or {}
-        lat_obj = pkg_item.get('latest') or {}
-
-        curr_v = curr_obj.get('version')
-        res_v = res_obj.get('version')
-        lat_v = lat_obj.get('version')
-
-        if not curr_v:
-            continue
+        curr_v = need(pkg_item, 'pub_outdated.packages[].current.version', args.pub_outdated)
+        res_v = need(pkg_item, 'pub_outdated.packages[].resolvable.version', args.pub_outdated)
+        lat_v = need(pkg_item, 'pub_outdated.packages[].latest.version', args.pub_outdated)
 
         if pkg_name in non_hosted_deps:
             # Skip pub.dev API queries for local git or sdk dependencies
@@ -664,29 +883,24 @@ def main():
             # Query advisories endpoint
             adv_url = f"{args.pub_api.rstrip('/')}/api/packages/{pkg_name}/advisories"
             adv_data = fetch_json(adv_url)
-            if not isinstance(adv_data, dict):
-                failures.append(f"D2: pub.dev advisories response from '{adv_url}' must be a JSON object")
-            elif 'advisories' not in adv_data or not isinstance(adv_data['advisories'], list):
-                failures.append(f"D2: pub.dev advisories response from '{adv_url}' missing 'advisories' list")
-            else:
-                for adv in adv_data['advisories']:
-                    if not isinstance(adv, dict):
-                        failures.append(f"D2: pub.dev advisory entry from '{adv_url}' must be a JSON object")
+            advisories = need(adv_data, 'pub_advisories.advisories', adv_url)
+            for adv in advisories:
+                adv_id = need(adv, 'pub_advisories.advisories[].id', adv_url)
+                affected = need(adv, 'pub_advisories.advisories[].affected', adv_url)
+                for aff in affected:
+                    if not isinstance(aff, dict):
                         continue
-                    for aff in adv.get('affected', []):
-                        if not isinstance(aff, dict):
-                            continue
-                        aff_versions = aff.get('versions', [])
-                        if curr_v in aff_versions:
-                            has_advisory = True
-                            advisory_id = adv.get('id', 'unknown')
-                            break
-                        if is_version_in_ranges(curr_v, aff.get('ranges', [])):
-                            has_advisory = True
-                            advisory_id = adv.get('id', 'unknown')
-                            break
-                    if has_advisory:
+                    aff_versions = aff['versions'] if 'versions' in aff else []
+                    if curr_v in aff_versions:
+                        has_advisory = True
+                        advisory_id = adv_id
                         break
+                    if is_version_in_ranges(curr_v, aff['ranges'] if 'ranges' in aff else []):
+                        has_advisory = True
+                        advisory_id = adv_id
+                        break
+                if has_advisory:
+                    break
 
         if has_advisory:
             if not check_exception('D2', pkg_name, curr_v):
@@ -699,10 +913,10 @@ def main():
             # Find publish date of FIRST newer version > curr_v (Fix 3.1)
             first_newer_date = None
             first_newer_ver = None
-            for v_entry in pkg_info.get('versions', []):
-                v_str = v_entry.get('version')
+            for v_entry in pkg_info['versions']:
+                v_str = v_entry['version']
                 if v_str and semver_cmp(v_str, curr_v) > 0 and semver_cmp(v_str, res_v) <= 0:
-                    d = parse_date(v_entry.get('published'))
+                    d = parse_date(v_entry['published'])
                     if d:
                         if first_newer_date is None or d < first_newer_date:
                             first_newer_date = d
@@ -730,12 +944,12 @@ def main():
                     pkg_info = get_pub_package_info(pkg_name)
                     first_newer_floor_date = None
                     first_newer_floor_ver = None
-                    for v_entry in pkg_info.get('versions', []):
-                        v_str = v_entry.get('version')
+                    for v_entry in pkg_info['versions']:
+                        v_str = v_entry['version']
                         if v_str and semver_cmp(v_str, floor_v) > 0:
                             if '-' in v_str and '-' not in floor_v:
                                 continue
-                            d = parse_date(v_entry.get('published'))
+                            d = parse_date(v_entry['published'])
                             if d:
                                 if first_newer_floor_date is None or d < first_newer_floor_date:
                                     first_newer_floor_date = d
@@ -751,35 +965,38 @@ def main():
         # D4: not maintained (direct dependencies only)
         if kind == 'direct' or pkg_name in direct_deps:
             pkg_info = get_pub_package_info(pkg_name)
-            latest_obj = pkg_info.get('latest', {})
-            lat_pub_date = parse_date(latest_obj.get('published'))
+            latest_obj = pkg_info['latest']
+            lat_pub_date = parse_date(latest_obj['published'])
             if lat_pub_date:
                 days_since = (today - lat_pub_date).days
                 if days_since > 730:
                     if not check_exception('D4', pkg_name, curr_v):
-                        failures.append(f"D4: Direct dependency '{pkg_name}' is not maintained (newest release {latest_obj.get('version')} was published {days_since} days ago on {lat_pub_date})")
+                        failures.append(f"D4: Direct dependency '{pkg_name}' is not maintained (newest release {latest_obj['version']} was published {days_since} days ago on {lat_pub_date})")
 
     # Target Flutter and Target Dart (T1, T2, T3)
     flutter_data = fetch_json(args.flutter_releases)
-    if not isinstance(flutter_data, dict) or 'releases' not in flutter_data or not isinstance(flutter_data['releases'], list):
-        failures.append(f"T1: Flutter releases from '{args.flutter_releases}' has no releases list")
-        stable_releases = []
-    else:
-        stable_releases = [r for r in flutter_data.get('releases', []) if r.get('channel') == 'stable']
-        if not stable_releases:
-            failures.append(f"T1: Flutter releases from '{args.flutter_releases}' contains no stable releases")
+    releases = need(flutter_data, 'flutter_releases.releases', args.flutter_releases)
+    if releases:
+        rel0 = releases[0]
+        need(rel0, 'flutter_releases.releases[].channel', args.flutter_releases)
+        need(rel0, 'flutter_releases.releases[].version', args.flutter_releases)
+        need(rel0, 'flutter_releases.releases[].release_date', args.flutter_releases)
+        need(rel0, 'flutter_releases.releases[].dart_sdk_version', args.flutter_releases)
+    stable_releases = [r for r in releases if isinstance(r, dict) and 'channel' in r and r['channel'] == 'stable']
+    if not stable_releases:
+        failures.append(f"T1: Flutter releases from '{args.flutter_releases}' contains no stable releases")
     newest_flutter = stable_releases[0] if stable_releases else None
     
     if newest_flutter:
-        newest_flutter_ver = newest_flutter.get('version')
-        newest_flutter_date = parse_date(newest_flutter.get('release_date'))
-        target_dart = newest_flutter.get('dart_sdk_version')
+        newest_flutter_ver = newest_flutter['version']
+        newest_flutter_date = parse_date(newest_flutter['release_date'])
+        target_dart = newest_flutter['dart_sdk_version']
         target_dart_minor_floor = f"3.{semver_tuple(target_dart)[1]}.0"
 
         # Previous stable target Dart and minor floor (for 14-day grace window validation)
         prev_target_dart = None
         for rel in stable_releases:
-            d_ver = rel.get('dart_sdk_version')
+            d_ver = rel['dart_sdk_version'] if 'dart_sdk_version' in rel else None
             if d_ver and semver_cmp(d_ver, target_dart) < 0:
                 prev_target_dart = d_ver
                 break
@@ -805,9 +1022,9 @@ def main():
                 # Find date of first stable release that shipped this dart minor
                 first_release_date = None
                 for rel in reversed(stable_releases):
-                    d_ver = rel.get('dart_sdk_version', '')
+                    d_ver = rel['dart_sdk_version']
                     if semver_tuple(d_ver)[:2] == semver_tuple(target_dart)[:2]:
-                        first_release_date = parse_date(rel.get('release_date'))
+                        first_release_date = parse_date(rel['release_date'])
                         break
                 age_days = (today - first_release_date).days if first_release_date else (today - newest_flutter_date).days if newest_flutter_date else 999
                 if age_days < 14 and actual_floor_ver and prev_floor and semver_cmp(actual_floor_ver, prev_floor) >= 0:
@@ -842,9 +1059,9 @@ def main():
                                 if step['sdk'] != target_dart_minor_floor:
                                     first_release_date = None
                                     for rel in reversed(stable_releases):
-                                        d_ver = rel.get('dart_sdk_version', '')
+                                        d_ver = rel['dart_sdk_version']
                                         if semver_tuple(d_ver)[:2] == semver_tuple(target_dart)[:2]:
-                                            first_release_date = parse_date(rel.get('release_date'))
+                                            first_release_date = parse_date(rel['release_date'])
                                             break
                                     age_days = (today - first_release_date).days if first_release_date else (today - newest_flutter_date).days if newest_flutter_date else 999
                                     if age_days < 14 and prev_floor and semver_cmp(step['sdk'], prev_floor) >= 0:
@@ -858,8 +1075,8 @@ def main():
                                     # Find release date of first Flutter stable that shipped target_dart (Fix 3.1)
                                     first_target_dart_date = None
                                     for rel in reversed(stable_releases):
-                                        if rel.get('dart_sdk_version') == target_dart:
-                                            first_target_dart_date = parse_date(rel.get('release_date'))
+                                        if rel['dart_sdk_version'] == target_dart:
+                                            first_target_dart_date = parse_date(rel['release_date'])
                                             break
                                     age_days = (today - first_target_dart_date).days if first_target_dart_date else (today - newest_flutter_date).days if newest_flutter_date else 999
                                     if age_days < 14 and prev_target_dart and semver_cmp(step['sdk'], prev_target_dart) >= 0:
@@ -880,56 +1097,41 @@ def main():
                                 # Query GitHub release
                                 gh_rel_url = f"{args.github_api.rstrip('/')}/repos/{action_name}/releases/latest"
                                 gh_rel_data = fetch_json(gh_rel_url, headers=github_headers)
-                                if not isinstance(gh_rel_data, dict):
-                                    failures.append(f"A1: GitHub release from '{gh_rel_url}' must be a JSON object")
-                                    latest_tag = None
-                                    rel_date = None
-                                else:
-                                    latest_tag = gh_rel_data.get('tag_name')
-                                    if not latest_tag:
-                                        failures.append(f"A1: GitHub release from '{gh_rel_url}' missing tag_name")
-                                    rel_date = parse_date(gh_rel_data.get('published_at'))
+                                latest_tag = need(gh_rel_data, 'github_release.tag_name', gh_rel_url)
+                                rel_date_str = need(gh_rel_data, 'github_release.published_at', gh_rel_url)
+                                rel_date = parse_date(rel_date_str)
 
                                 # Follow tag to commit SHA
                                 commit_sha = None
                                 if latest_tag:
                                     gh_ref_url = f"{args.github_api.rstrip('/')}/repos/{action_name}/git/ref/tags/{latest_tag}"
                                     gh_ref_data = fetch_json(gh_ref_url, headers=github_headers)
-                                    if not isinstance(gh_ref_data, dict) or 'object' not in gh_ref_data or not isinstance(gh_ref_data['object'], dict):
-                                        failures.append(f"A1: GitHub tag ref from '{gh_ref_url}' missing object dict")
-                                        ref_obj = {}
-                                    else:
-                                        ref_obj = gh_ref_data['object']
-                                    commit_sha = ref_obj.get('sha')
-                                    if ref_obj.get('type') == 'tag':
+                                    need(gh_ref_data, 'github_tag_ref.object', gh_ref_url)
+                                    commit_sha = need(gh_ref_data, 'github_tag_ref.object.sha', gh_ref_url)
+                                    ref_type = need(gh_ref_data, 'github_tag_ref.object.type', gh_ref_url)
+                                    if ref_type == 'tag':
                                         tag_obj_url = f"{args.github_api.rstrip('/')}/repos/{action_name}/git/tags/{commit_sha}"
                                         tag_data = fetch_json(tag_obj_url, headers=github_headers)
-                                        if not isinstance(tag_data, dict) or 'object' not in tag_data or not isinstance(tag_data['object'], dict):
-                                            failures.append(f"A1: GitHub tag object from '{tag_obj_url}' missing object dict")
-                                        else:
-                                            commit_sha = tag_data['object'].get('sha', commit_sha)
+                                        need(tag_data, 'github_tag_object.object', tag_obj_url)
+                                        commit_sha = need(tag_data, 'github_tag_object.object.sha', tag_obj_url)
 
                                 if action_sha != commit_sha or action_comment != latest_tag:
                                     # Query releases list to find date of first newer release tag (Fix 3.1)
                                     first_newer_rel_date = rel_date
                                     gh_all_rels_url = f"{args.github_api.rstrip('/')}/repos/{action_name}/releases"
                                     gh_all_rels = fetch_json(gh_all_rels_url, headers=github_headers)
-                                    if not isinstance(gh_all_rels, list):
-                                        failures.append(f"A1: GitHub releases list from '{gh_all_rels_url}' must be a JSON array")
-                                        newer_dates = []
-                                    else:
-                                        newer_dates = []
-                                        for r in gh_all_rels:
-                                            if not isinstance(r, dict):
-                                                continue
-                                            if r.get('draft') or r.get('prerelease'):
-                                                continue
-                                            tag = r.get('tag_name')
-                                            p_date = parse_date(r.get('published_at'))
-                                            if tag and p_date and semver_cmp(tag, action_comment) > 0:
-                                                newer_dates.append(p_date)
-                                        if newer_dates:
-                                            first_newer_rel_date = min(newer_dates)
+                                    need(gh_all_rels, 'github_releases_list.[]', gh_all_rels_url)
+                                    newer_dates = []
+                                    for r in gh_all_rels:
+                                        tag = need(r, 'github_releases_list.[].tag_name', gh_all_rels_url)
+                                        p_date_str = need(r, 'github_releases_list.[].published_at', gh_all_rels_url)
+                                        if ('draft' in r and r['draft']) or ('prerelease' in r and r['prerelease']):
+                                            continue
+                                        p_date = parse_date(p_date_str)
+                                        if tag and p_date and semver_cmp(tag, action_comment) > 0:
+                                            newer_dates.append(p_date)
+                                    if newer_dates:
+                                        first_newer_rel_date = min(newer_dates)
 
                                     age_days = (today - first_newer_rel_date).days if first_newer_rel_date else 999
                                     if age_days < 14:
@@ -943,32 +1145,32 @@ def main():
                             node_val = step['node_version']
                             line_no = step['node_version_line'] or step['start_line']
                             node_dist_data = fetch_json(args.node_dist)
-                            if not isinstance(node_dist_data, list):
-                                failures.append(f"N3: Node releases from '{args.node_dist}' must be a JSON array")
-                                lts_releases = []
+                            need(node_dist_data, 'node_dist.[]', args.node_dist)
+                            for rel in node_dist_data:
+                                need(rel, 'node_dist.[].version', args.node_dist)
+                                need(rel, 'node_dist.[].date', args.node_dist)
+                            lts_releases = [x for x in node_dist_data if isinstance(x, dict) and ('lts' in x and x['lts'])]
+                            if not lts_releases:
+                                failures.append(f"N3: Node releases from '{args.node_dist}' contains no LTS releases")
                             else:
-                                lts_releases = [x for x in node_dist_data if isinstance(x, dict) and x.get('lts')]
-                                if not lts_releases:
-                                    failures.append(f"N3: Node releases from '{args.node_dist}' contains no LTS releases")
-                                else:
-                                    newest_lts = lts_releases[0]
-                                    lts_ver = newest_lts.get('version', '').lstrip('v')
-                                    lts_major = lts_ver.split('.')[0]
-                                    # Find date the major first became LTS (oldest release with this lts_major) (Fix 3.1)
-                                    first_lts_date = None
-                                    for rel in reversed(lts_releases):
-                                        v = rel.get('version', '').lstrip('v')
-                                        if v.split('.')[0] == lts_major:
-                                            first_lts_date = parse_date(rel.get('date'))
-                                            break
-                                    lts_date = first_lts_date or parse_date(newest_lts.get('date'))
-                                    if node_val != lts_major:
-                                        age_days = (today - lts_date).days if lts_date else 999
-                                        if age_days < 14:
-                                            pending_notes.append(f"{wf_file}:{line_no}: Node version '{node_val}' pending newest LTS '{lts_major}' ({age_days} days old)")
-                                        else:
-                                            if not check_exception('N3', 'node', node_val):
-                                                failures.append(f"N3: {wf_file}:{line_no}: node-version '{node_val}' is behind newest Node LTS major '{lts_major}' (became LTS {lts_date}, {age_days} days old)")
+                                newest_lts = lts_releases[0]
+                                lts_ver = newest_lts['version'].lstrip('v')
+                                lts_major = lts_ver.split('.')[0]
+                                # Find date the major first became LTS (oldest release with this lts_major) (Fix 3.1)
+                                first_lts_date = None
+                                for rel in reversed(lts_releases):
+                                    v = rel['version'].lstrip('v')
+                                    if v.split('.')[0] == lts_major:
+                                        first_lts_date = parse_date(rel['date'])
+                                        break
+                                lts_date = first_lts_date or parse_date(newest_lts['date'])
+                                if node_val != lts_major:
+                                    age_days = (today - lts_date).days if lts_date else 999
+                                    if age_days < 14:
+                                        pending_notes.append(f"{wf_file}:{line_no}: Node version '{node_val}' pending newest LTS '{lts_major}' ({age_days} days old)")
+                                    else:
+                                        if not check_exception('N3', 'node', node_val):
+                                            failures.append(f"N3: {wf_file}:{line_no}: node-version '{node_val}' is behind newest Node LTS major '{lts_major}' (became LTS {lts_date}, {age_days} days old)")
 
             # T3 validation for pure Dart packages
             is_pure_dart = (flutter_constraint is None)
@@ -1004,9 +1206,7 @@ def main():
                     failures.append(f"N1: npm package.json '{pkg_json_path}' is empty or whitespace")
                 else:
                     pkg_json_data = json.loads(pkg_json_content)
-                    if not isinstance(pkg_json_data, dict):
-                        failures.append(f"N1: npm package.json '{pkg_json_path}' must be a JSON object")
-                        pkg_json_data = None
+                    need(pkg_json_data, 'npm_package.{}', pkg_json_path)
             except Exception as e:
                 failures.append(f"N1: Failed to read or parse npm package.json '{pkg_json_path}': {e}")
 
@@ -1017,53 +1217,47 @@ def main():
                 failures.append(f"N1: npm outdated file '{args.npm_outdated}' is empty or whitespace")
             else:
                 npm_outdated_data = json.loads(npm_outdated_content)
-                if not isinstance(npm_outdated_data, dict):
-                    failures.append(f"N1: npm outdated JSON in '{args.npm_outdated}' must be an object")
-                elif 'error' in npm_outdated_data:
+                if 'error' in npm_outdated_data:
                     failures.append(f"N1: npm outdated file '{args.npm_outdated}' reported error: {npm_outdated_data['error']}")
-                else:
-                    for npm_pkg, details in npm_outdated_data.items():
-                        if not isinstance(details, dict):
-                            failures.append(f"N1: npm outdated details for '{npm_pkg}' must be an object")
+                    npm_outdated_data = {}
+                need(npm_outdated_data, 'npm_outdated.{}', args.npm_outdated)
+                for npm_pkg, details in npm_outdated_data.items():
+                    if not isinstance(details, dict):
+                        failures.append(f"N1: npm outdated details for '{npm_pkg}' must be an object")
+                        continue
+                    curr_npm_v = need(details, 'npm_outdated.*.current', args.npm_outdated)
+                    lat_npm_v = need(details, 'npm_outdated.*.latest', args.npm_outdated)
+                    if curr_npm_v and lat_npm_v and curr_npm_v != lat_npm_v:
+                        if semver_cmp(curr_npm_v, lat_npm_v) > 0:
+                            print(f"npm package '{npm_pkg}' version {curr_npm_v} ahead of latest tag {lat_npm_v}")
                             continue
-                        curr_npm_v = details.get('current')
-                        lat_npm_v = details.get('latest')
-                        if curr_npm_v and lat_npm_v and curr_npm_v != lat_npm_v:
-                            if semver_cmp(curr_npm_v, lat_npm_v) > 0:
-                                print(f"npm package '{npm_pkg}' version {curr_npm_v} ahead of latest tag {lat_npm_v}")
-                                continue
-                            # Query npm registry
-                            npm_pkg_url = f"{args.npm_registry.rstrip('/')}/{npm_pkg}"
-                            npm_pkg_data = fetch_json(npm_pkg_url)
-                            if not isinstance(npm_pkg_data, dict):
-                                failures.append(f"N1: npm registry response from '{npm_pkg_url}' must be a JSON object")
-                            elif 'time' not in npm_pkg_data or not isinstance(npm_pkg_data['time'], dict):
-                                failures.append(f"N1: npm registry response from '{npm_pkg_url}' missing time object")
-                            else:
-                                time_dict = npm_pkg_data['time']
-                                first_newer_date = None
-                                first_newer_ver = None
-                                for v_str, time_str in time_dict.items():
-                                    if v_str not in ('created', 'modified'):
-                                        try:
-                                            if semver_cmp(v_str, curr_npm_v) > 0 and semver_cmp(v_str, lat_npm_v) <= 0:
-                                                d = parse_date(time_str)
-                                                if d and (first_newer_date is None or d < first_newer_date):
-                                                    first_newer_date = d
-                                                    first_newer_ver = v_str
-                                        except (ValueError, TypeError, KeyError):
-                                            pass
-                                if not first_newer_date:
-                                    pub_time = time_dict.get(lat_npm_v)
-                                    first_newer_date = parse_date(pub_time) if pub_time else None
-                                    first_newer_ver = lat_npm_v
+                        # Query npm registry
+                        npm_pkg_url = f"{args.npm_registry.rstrip('/')}/{npm_pkg}"
+                        npm_pkg_data = fetch_json(npm_pkg_url)
+                        time_dict = need(npm_pkg_data, 'npm_registry.time', npm_pkg_url)
+                        first_newer_date = None
+                        first_newer_ver = None
+                        for v_str, time_str in time_dict.items():
+                            if v_str not in ('created', 'modified'):
+                                try:
+                                    if semver_cmp(v_str, curr_npm_v) > 0 and semver_cmp(v_str, lat_npm_v) <= 0:
+                                        d = parse_date(time_str)
+                                        if d and (first_newer_date is None or d < first_newer_date):
+                                            first_newer_date = d
+                                            first_newer_ver = v_str
+                                except (ValueError, TypeError, KeyError):
+                                    pass
+                        if not first_newer_date:
+                            pub_time = time_dict[lat_npm_v] if lat_npm_v in time_dict else None
+                            first_newer_date = parse_date(pub_time) if pub_time else None
+                            first_newer_ver = lat_npm_v
 
-                                age_days = (today - first_newer_date).days if first_newer_date else 999
-                                if age_days < 14:
-                                    pending_notes.append(f"npm package '{npm_pkg}' pending {lat_npm_v} ({age_days} days old)")
-                                else:
-                                    if not check_exception('N1', npm_pkg, curr_npm_v):
-                                        failures.append(f"N1: npm package '{npm_pkg}' current {curr_npm_v} is behind latest {lat_npm_v} (first newer release {first_newer_ver} published {first_newer_date}, {age_days} days old)")
+                        age_days = (today - first_newer_date).days if first_newer_date else 999
+                        if age_days < 14:
+                            pending_notes.append(f"npm package '{npm_pkg}' pending {lat_npm_v} ({age_days} days old)")
+                        else:
+                            if not check_exception('N1', npm_pkg, curr_npm_v):
+                                failures.append(f"N1: npm package '{npm_pkg}' current {curr_npm_v} is behind latest {lat_npm_v} (first newer release {first_newer_ver} published {first_newer_date}, {age_days} days old)")
         except Exception as e:
             failures.append(f"N1: Failed to read or parse npm outdated JSON in '{args.npm_outdated}': {e}")
 
@@ -1079,23 +1273,24 @@ def main():
                 elif 'error' in npm_audit_data:
                     failures.append(f"N2: npm audit file '{args.npm_audit}' reported error: {npm_audit_data['error']}")
                 else:
-                    vulns = npm_audit_data.get('vulnerabilities')
-                    metadata = npm_audit_data.get('metadata')
+                    vulns = npm_audit_data['vulnerabilities'] if 'vulnerabilities' in npm_audit_data else None
+                    metadata = npm_audit_data['metadata'] if 'metadata' in npm_audit_data else None
                     if vulns is None and metadata is None:
                         failures.append(f"N2: npm audit JSON in '{args.npm_audit}' missing metadata and vulnerabilities objects")
                     elif isinstance(vulns, dict) and vulns:
+                        need(npm_audit_data, 'npm_audit.vulnerabilities', args.npm_audit)
                         for pkg_name, info in sorted(vulns.items()):
                             if not isinstance(info, dict):
                                 failures.append(f"N2: npm audit entry for '{pkg_name}' must be an object")
                                 continue
-                            sev = info.get('severity', 'unknown')
+                            sev = need(info, 'npm_audit.vulnerabilities.*.severity', args.npm_audit)
                             if sev in ('info', 'low'):
                                 continue
 
                             ghsas = get_ghsa_ids(pkg_name, vulns)
                             ghsa_str = ', '.join(sorted(ghsas)) if ghsas else 'no advisory ID'
 
-                            installed_version = info.get('version')
+                            installed_version = info['version'] if 'version' in info else None
                             if not installed_version and args.npm_dir:
                                 lock_path = os.path.join(args.npm_dir, 'package-lock.json')
                                 if not os.path.exists(lock_path) or not os.path.isfile(lock_path):
@@ -1108,18 +1303,15 @@ def main():
                                             failures.append(f"N2: package-lock.json '{lock_path}' is empty or whitespace")
                                         else:
                                             lock_data = json.loads(lock_content)
-                                            if not isinstance(lock_data, dict):
-                                                failures.append(f"N2: package-lock.json '{lock_path}' must be a JSON object")
-                                            else:
-                                                packages = lock_data.get('packages', {})
-                                                for node in info.get('nodes', []):
-                                                    if node in packages and 'version' in packages[node]:
-                                                        installed_version = packages[node]['version']
-                                                        break
-                                                if not installed_version:
-                                                    k = f"node_modules/{pkg_name}"
-                                                    if k in packages and 'version' in packages[k]:
-                                                        installed_version = packages[k]['version']
+                                            packages = need(lock_data, 'npm_package_lock.packages', lock_path)
+                                            for node in (info['nodes'] if 'nodes' in info else []):
+                                                if node in packages:
+                                                    installed_version = need(packages[node], 'npm_package_lock.packages.*.version', lock_path)
+                                                    break
+                                            if not installed_version:
+                                                k = f"node_modules/{pkg_name}"
+                                                if k in packages:
+                                                    installed_version = need(packages[k], 'npm_package_lock.packages.*.version', lock_path)
                                     except Exception as e:
                                         failures.append(f"N2: Failed to read or parse package-lock.json '{lock_path}': {e}")
                             if not installed_version:
@@ -1139,18 +1331,12 @@ def main():
                             if not exc_matched:
                                 failures.append(f"N2: npm package '{pkg_name}' has {sev} vulnerability: {ghsa_str}")
                     elif isinstance(metadata, dict):
-                        meta_vulns = metadata.get('vulnerabilities')
-                        if not isinstance(meta_vulns, dict):
-                            failures.append(f"N2: npm audit file '{args.npm_audit}' metadata missing vulnerabilities object")
-                        else:
-                            if 'moderate' not in meta_vulns:
-                                failures.append(f"N2: npm audit file '{args.npm_audit}' metadata vulnerabilities missing moderate count")
-                            else:
-                                mod_count = meta_vulns.get('moderate', 0)
-                                high_count = meta_vulns.get('high', 0)
-                                crit_count = meta_vulns.get('critical', 0)
-                                if mod_count > 0 or high_count > 0 or crit_count > 0:
-                                    failures.append(f"N2: npm audit reports {mod_count} moderate, {high_count} high, {crit_count} critical vulnerabilities")
+                        need(npm_audit_data, 'npm_audit.metadata.vulnerabilities', args.npm_audit)
+                        mod_count = need(metadata, 'npm_audit.metadata.vulnerabilities.moderate', args.npm_audit)
+                        high_count = need(metadata, 'npm_audit.metadata.vulnerabilities.high', args.npm_audit)
+                        crit_count = need(metadata, 'npm_audit.metadata.vulnerabilities.critical', args.npm_audit)
+                        if mod_count > 0 or high_count > 0 or crit_count > 0:
+                            failures.append(f"N2: npm audit reports {mod_count} moderate, {high_count} high, {crit_count} critical vulnerabilities")
                     else:
                         failures.append(f"N2: npm audit JSON in '{args.npm_audit}' missing metadata and vulnerabilities objects")
         except Exception as e:
@@ -1171,28 +1357,23 @@ def main():
                     major = override_val.split('.')[0]
                     npm_pkg_url = f"{args.npm_registry.rstrip('/')}/{override_pkg}"
                     npm_pkg_data = fetch_json(npm_pkg_url)
-                    if not isinstance(npm_pkg_data, dict):
-                        failures.append(f"N4: npm registry response from '{npm_pkg_url}' must be a JSON object")
-                    elif 'time' not in npm_pkg_data or not isinstance(npm_pkg_data['time'], dict):
-                        failures.append(f"N4: npm registry response from '{npm_pkg_url}' missing time object")
-                    else:
-                        time_dict = npm_pkg_data['time']
-                        same_major_newer = []
-                        for v, ptime in time_dict.items():
-                            if '-' in v or v in ('modified', 'created'):
-                                continue
-                            if v.split('.')[0] == major and semver_cmp(v, override_val) > 0:
-                                same_major_newer.append((v, parse_date(ptime)))
+                    time_dict = need(npm_pkg_data, 'npm_registry.time', npm_pkg_url)
+                    same_major_newer = []
+                    for v, ptime in time_dict.items():
+                        if '-' in v or v in ('modified', 'created'):
+                            continue
+                        if v.split('.')[0] == major and semver_cmp(v, override_val) > 0:
+                            same_major_newer.append((v, parse_date(ptime)))
 
-                        if same_major_newer:
-                            same_major_newer.sort(key=lambda x: [int(p) if p.isdigit() else 0 for p in x[0].split('.')])
-                            first_newer_ver, first_newer_date = same_major_newer[0]
-                            newest_in_major = same_major_newer[-1][0]
-                            age_days = (today - first_newer_date).days if first_newer_date else 999
-                            if age_days < 14:
-                                pending_notes.append(f"npm override '{override_pkg}' pending {newest_in_major} ({age_days} days old)")
-                            else:
-                                failures.append(f"N4: npm override '{override_pkg}' version '{override_val}' is behind newest in major {major} '{newest_in_major}' (first newer release {first_newer_ver} published {first_newer_date}, {age_days} days old)")
+                    if same_major_newer:
+                        same_major_newer.sort(key=lambda x: [int(p) if p.isdigit() else 0 for p in x[0].split('.')])
+                        first_newer_ver, first_newer_date = same_major_newer[0]
+                        newest_in_major = same_major_newer[-1][0]
+                        age_days = (today - first_newer_date).days if first_newer_date else 999
+                        if age_days < 14:
+                            pending_notes.append(f"npm override '{override_pkg}' pending {newest_in_major} ({age_days} days old)")
+                        else:
+                            failures.append(f"N4: npm override '{override_pkg}' version '{override_val}' is behind newest in major {major} '{newest_in_major}' (first newer release {first_newer_ver} published {first_newer_date}, {age_days} days old)")
 
                     # Check exception row
                     exc_found = False
@@ -1224,6 +1405,11 @@ def main():
             print(f"  - {f}", file=sys.stderr)
         print(f"\nSummary: {len(failures)} problem(s) found.", file=sys.stderr)
         sys.exit(1)
+
+    if args.record_schema_access:
+        with open(args.record_schema_access, 'w', encoding='utf-8') as f:
+            for p in sorted(ACCESSED_PATHS):
+                f.write(p + '\n')
 
     print("\nSummary: All dependencies up to date!")
     sys.exit(0)
