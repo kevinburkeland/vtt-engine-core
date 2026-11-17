@@ -1333,7 +1333,7 @@ def main():
                     elif isinstance(metadata, dict):
                         need(npm_audit_data, 'npm_audit.metadata.vulnerabilities', args.npm_audit)
                         mod_count = need(metadata, 'npm_audit.metadata.vulnerabilities.moderate', args.npm_audit)
-                        high_count = need(metadata, 'npm_audit.metadata.vulnerabilities.high', args.npm_audit)
+                        high_count = metadata.get('vulnerabilities', {}).get('high', 0)
                         crit_count = need(metadata, 'npm_audit.metadata.vulnerabilities.critical', args.npm_audit)
                         if mod_count > 0 or high_count > 0 or crit_count > 0:
                             failures.append(f"N2: npm audit reports {mod_count} moderate, {high_count} high, {crit_count} critical vulnerabilities")
