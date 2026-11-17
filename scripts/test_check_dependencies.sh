@@ -2374,7 +2374,12 @@ def main():
     ast_accessed_paths = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
-            if (isinstance(node.func, ast.Name) and node.func.id == 'need') or (isinstance(node.func, ast.Attribute) and node.func.attr == 'need'):
+            func_name = None
+            if isinstance(node.func, ast.Name):
+                func_name = node.func.id
+            elif isinstance(node.func, ast.Attribute):
+                func_name = node.func.attr
+            if func_name in ('need', 'opt', 'need_items', 'need_keys', 'need_child', 'opt_child'):
                 if len(node.args) >= 2 and isinstance(node.args[1], ast.Constant):
                     ast_accessed_paths.add(node.args[1].value)
 
@@ -2384,13 +2389,48 @@ def main():
         diff_extra = ast_accessed_paths - schema_paths
         print("FATAL: Closure check failed between AST and SCHEMA!")
         if diff_missing:
-            print(f"  Schema paths never accessed via need(): {diff_missing}")
+            print(f"  Schema paths never accessed via accessors: {diff_missing}")
         if diff_extra:
-            print(f"  need() calls accessing paths not in SCHEMA: {diff_extra}")
+            print(f"  Accessor calls accessing paths not in SCHEMA: {diff_extra}")
         runner.cleanup()
         sys.exit(1)
 
     print(f"Closure check: all {len(schema_paths)} SCHEMA paths accessed in AST.")
+
+    # Control run in guard record mode
+    rc_rec, out_rec, err_rec = runner.run_check(base, ['--guard-record-mode'])
+    if rc_rec != 0:
+        print(f"FATAL: Control run in guard-record mode failed! rc={rc_rec}\nout={out_rec}\nerr={err_rec}")
+        runner.cleanup()
+        sys.exit(1)
+    print("Closure check: control run in guard-record mode passed with zero unauthorized accesses.")
+
+    # Monkey patch self-test case: direct access on guarded value fails closed naming the line
+    mp_code = f"""
+import sys, importlib.util
+spec = importlib.util.spec_from_file_location("check_dependencies", "{CHECK_SCRIPT}")
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+def bad_is_version_in_ranges(v_str, ranges, input_name):
+    for r in ranges:
+        ev = r['events'] if 'events' in r else []
+    return False
+
+mod.is_version_in_ranges = bad_is_version_in_ranges
+guarded = mod.wrap_guarded({{'events': []}}, 'test_input')
+try:
+    bad_is_version_in_ranges('1.0.0', [guarded], 'test_input')
+    sys.exit(0)
+except SystemExit as e:
+    sys.exit(e.code)
+"""
+    res = subprocess.run([sys.executable, '-c', mp_code], capture_output=True, text=True)
+    if res.returncode == 0 or "Error: Direct access" not in (res.stderr + res.stdout):
+        print(f"FATAL: Monkey-patch self-test did not catch direct access! code={res.returncode}\nout={res.stdout}\nerr={res.stderr}")
+        runner.cleanup()
+        sys.exit(1)
+    print("Closure check: monkey-patch self-test correctly caught direct access and failed closed.")
 
     tests = []
 
@@ -2693,94 +2733,132 @@ def main():
     tests.append(test_npm_reg('url_npm_reg_error', 'error_payload', '{"error": "registry error"}'))
 
     # =========================================================================
-    # TIER 2: SCHEMA-GENERATED FIELD DAMAGE TESTS (193 tests)
+    # TIER 2: SCHEMA-GENERATED FIELD DAMAGE TESTS
     # =========================================================================
+    # =========================================================================
+    # ALLOWED-VALID TESTS
+    # =========================================================================
+    valid_tests = []
+    # 1. exceptions empty
+    valid_tests.append(('exceptions_empty', 'dependency_exceptions.tsv', 'empty_file', lambda d: open(os.path.join(d, 'dependency_exceptions.tsv'), 'w').close(), '0 exceptions allowed'))
+    # 2. exceptions comments only
+    valid_tests.append(('exceptions_comments', 'dependency_exceptions.tsv', 'comments_only', lambda d: open(os.path.join(d, 'dependency_exceptions.tsv'), 'w').write("# comment 1\n# comment 2\n"), 'comments only allowed'))
+    # 3. npm outdated empty object
+    valid_tests.append(('npm_outdated_empty_obj', 'npm/outdated.json', 'empty_object', lambda d: open(os.path.join(d, 'npm/outdated.json'), 'w').write("{}\n"), 'npm outdated prints {} when current'))
+    # 4. pub advisories empty list
+    def setup_val_adv(d):
+        setup_url_fixture('val_adv/api/packages/meta/advisories.json', '{"advisories": []}\n')
+        return ['--pub-api', f"{runner.server_url}/val_adv"]
+    valid_tests.append(('pub_adv_empty_list', 'pub.dev advisories', 'empty_advisories_list', setup_val_adv, 'pub.dev returns {"advisories": []} when clean'))
+    # 5. npm audit zero vulnerabilities
+    valid_tests.append(('npm_audit_zero_vulns', 'npm/audit.json', 'zero_vulnerabilities', lambda d: open(os.path.join(d, 'npm/audit.json'), 'w').write(json.dumps({
+        "auditReportVersion": 2, "vulnerabilities": {}, "metadata": {"vulnerabilities": {"info": 0, "low": 0, "moderate": 0, "high": 0, "critical": 0, "total": 0}}
+    })), 'npm audit reports 0 vulnerabilities when clean'))
+    # 6. pubspec without flutter (pure Dart)
+    def setup_pure_dart(d):
+        open(os.path.join(d, 'pubspec.yaml'), 'w').write("name: test_pkg\nenvironment:\n  sdk: ^3.13.0\ndependencies:\n  meta: ^1.19.0\n")
+        open(os.path.join(d, '.github/workflows/ci.yml'), 'w').write("""name: CI
+on: [push]
+jobs:
+  main:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dart-lang/setup-dart@e51d8e519be8f8d29450b2bc73ea832f4165e2c1 # v1.8.1
+        with:
+          sdk: 3.13.7
+  min-sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dart-lang/setup-dart@e51d8e519be8f8d29450b2bc73ea832f4165e2c1 # v1.8.1
+        with:
+          sdk: 3.13.0
+""")
+    valid_tests.append(('pubspec_pure_dart', 'pubspec.yaml', 'pure_dart_no_flutter', setup_pure_dart, 'pure Dart package has no flutter constraint'))
+
     def mutate_obj(obj, rest, kind, spec):
         obj = copy.deepcopy(obj)
         exp_type = spec['type']
 
-        if kind == 'wrong_type':
-            val_wt = 12345 if exp_type is not int else 'string'
-        elif kind == 'empty':
-            val_emp = '' if exp_type is str else ([] if exp_type is list else {})
+        val_wt = 12345 if exp_type is not int else 'string'
+        val_emp = '' if exp_type is str else ([] if exp_type is list else {})
 
-        if '[].' in rest:
-            prefix, suffix = rest.split('[].', 1)
-            sub = obj if prefix == '' else obj[prefix]
-            sub_item = sub[0]
-            segs = suffix.split('.')
-            for s in segs[:-1]:
-                sub_item = sub_item[s]
-            target = segs[-1]
+        if rest in ('[]', '{}'):
+            if kind == 'wrong_type': return {} if exp_type is list else []
+            elif kind == 'null': return None
+            elif kind == 'empty': return [] if exp_type is list else {}
+            elif kind == 'missing': return None
+            elif kind == 'element_bare_string': return ['invalid_string']
+            elif kind == 'element_empty_obj': return [{}]
+            return obj
+
+        raw_tokens = rest.split('.')
+        tokens = [t for t in raw_tokens if t]
+
+        curr = obj
+        for t in tokens[:-1]:
+            if t.endswith('[]'):
+                key = t[:-2]
+                curr = curr[key][0] if key else curr[0]
+            elif t == '[]':
+                curr = curr[0]
+            elif t == '*':
+                k = next(iter(curr.keys()))
+                curr = curr[k]
+            else:
+                curr = curr[t]
+
+        target = tokens[-1]
+        target_is_list_elem = False
+        if target.endswith('[]'):
+            key = target[:-2]
+            if key:
+                curr = curr[key]
+            target_is_list_elem = True
+        elif target == '[]':
+            target_is_list_elem = True
+
+        if target_is_list_elem:
             if kind == 'missing':
-                del sub_item[target]
-            elif kind == 'null':
-                sub_item[target] = None
-            elif kind == 'wrong_type':
-                sub_item[target] = val_wt
-            elif kind == 'empty':
-                sub_item[target] = val_emp
-        elif '.*.' in rest:
-            prefix, suffix = rest.split('.*.', 1)
-            sub = obj if prefix == '' else obj[prefix]
-            k = next(iter(sub))
-            sub_item = sub[k]
-            segs = suffix.split('.')
-            for s in segs[:-1]:
-                sub_item = sub_item[s]
-            target = segs[-1]
+                if len(curr) > 0:
+                    del curr[0]
+            elif kind == 'null': curr[0] = None
+            elif kind == 'wrong_type': curr[0] = val_wt
+            elif kind == 'empty': curr[0] = val_emp
+            elif kind == 'element_bare_string': curr[0] = 'invalid_string'
+            elif kind == 'element_empty_obj': curr[0] = {}
+        elif target == '*':
+            k = next(iter(curr.keys()))
             if kind == 'missing':
-                del sub_item[target]
-            elif kind == 'null':
-                sub_item[target] = None
-            elif kind == 'wrong_type':
-                sub_item[target] = val_wt
-            elif kind == 'empty':
-                sub_item[target] = val_emp
-        elif rest.startswith('*.'):
-            k = next(iter(obj))
-            sub_item = obj[k]
-            target = rest[2:]
-            if kind == 'missing':
-                del sub_item[target]
-            elif kind == 'null':
-                sub_item[target] = None
-            elif kind == 'wrong_type':
-                sub_item[target] = val_wt
-            elif kind == 'empty':
-                sub_item[target] = val_emp
-        elif rest in ('[]', '{}'):
-            if kind == 'wrong_type':
-                obj = {} if exp_type is list else []
-            elif kind == 'null':
-                obj = None
-            elif kind == 'empty':
-                obj = [] if exp_type is list else {}
-            elif kind == 'missing':
-                obj = None
+                if k in curr:
+                    del curr[k]
+            elif kind == 'null': curr[k] = None
+            elif kind == 'wrong_type': curr[k] = val_wt
+            elif kind == 'empty': curr[k] = val_emp
         else:
-            segs = rest.split('.')
-            sub = obj
-            for s in segs[:-1]:
-                sub = sub[s]
-            target = segs[-1]
             if kind == 'missing':
-                del sub[target]
-            elif kind == 'null':
-                sub[target] = None
-            elif kind == 'wrong_type':
-                sub[target] = val_wt
-            elif kind == 'empty':
-                sub[target] = val_emp
+                if target in curr:
+                    del curr[target]
+            elif kind == 'null': curr[target] = None
+            elif kind == 'wrong_type': curr[target] = val_wt
+            elif kind == 'empty': curr[target] = val_emp
+            elif kind == 'element_bare_string': curr[target] = ['invalid_string']
+            elif kind == 'element_empty_obj': curr[target] = [{}]
+
         return obj
 
     tested_schema_paths = set()
     for path, spec in SCHEMA.items():
         tested_schema_paths.add(path)
         ns, rest = path.split('.', 1)
+        is_opt = spec.get('optional', False)
+        is_list_of_objects = any(k.startswith(f"{path}[].") or k.startswith(f"{path}.[].") for k in SCHEMA)
+
         kinds = ['missing', 'null', 'wrong_type']
         if spec.get('non_empty', False):
             kinds.append('empty')
+        if is_list_of_objects:
+            kinds.extend(['element_bare_string', 'element_empty_obj'])
 
         for kind in kinds:
             test_id = f"sch_{path}_{kind}".replace('.', '_').replace('[', '_').replace(']', '_').replace('*', 'wild')
@@ -2792,7 +2870,7 @@ def main():
                             "current_release": {"stable": "3.47.9"},
                             "releases": [
                                 {"version": "3.47.9", "release_date": "2026-10-20T00:00:00Z", "channel": "stable", "dart_sdk_version": "3.13.7"},
-                                {"version": "3.47.0", "release_date": "2026-08-01T00:00:00Z", "channel": "stable", "dart_sdk_version": "3.13.0"}
+                                {"version": "3.47.8", "release_date": "2026-09-20T00:00:00Z", "channel": "stable", "dart_sdk_version": "3.13.7"}
                             ]
                         }
                         mutated = mutate_obj(base, rest, kind, spec)
@@ -2801,7 +2879,10 @@ def main():
                     return ('Flutter releases', setup_fn)
                 elif ns == 'node_dist':
                     def setup_fn(d):
-                        base = [{"version": "v20.18.0", "date": "2026-10-01", "lts": "Iron"}]
+                        base = [
+                            {"version": "v20.18.0", "date": "2026-10-01", "lts": "Iron"},
+                            {"version": "v20.17.0", "date": "2026-09-01", "lts": "Iron"}
+                        ]
                         mutated = mutate_obj(base, rest, kind, spec)
                         setup_url_fixture(f"{test_id}/dist/index.json", mutated)
                         return ['--node-dist', f"{runner.server_url}/{test_id}/dist/index.json"]
@@ -2823,17 +2904,20 @@ def main():
                     return ('GitHub release', setup_fn)
                 elif ns == 'github_releases_list':
                     def setup_fn(d):
-                        base = [{"tag_name": "v7.0.2", "published_at": "2026-05-01T12:00:00Z"}]
+                        base = [{"tag_name": "v7.0.2", "published_at": "2026-05-01T12:00:00Z", "draft": False, "prerelease": False}]
                         mutated = mutate_obj(base, rest, kind, spec)
                         setup_url_fixture(f"{test_id}/repos/actions/checkout/releases/latest.json", {"tag_name": "v7.0.2", "published_at": "2026-05-01T12:00:00Z"})
                         setup_url_fixture(f"{test_id}/repos/actions/checkout/releases.json", mutated)
-                        setup_url_fixture(f"{test_id}/repos/actions/checkout/git/ref/tags/v7.0.2.json", {"object": {"sha": "999c42e5aac5ba805825da76410c181273ba90b1", "type": "commit"}})
+                        setup_url_fixture(f"{test_id}/repos/actions/checkout/git/ref/tags/v7.0.2.json", {"object": {"sha": "3d3c42e5aac5ba805825da76410c181273ba90b1", "type": "commit"}})
                         setup_url_fixture(f"{test_id}/repos/dart-lang/setup-dart/releases/latest.json", {"tag_name": "v1.8.1", "published_at": "2026-05-10T12:00:00Z"})
                         setup_url_fixture(f"{test_id}/repos/dart-lang/setup-dart/releases.json", [{"tag_name": "v1.8.1", "published_at": "2026-05-10T12:00:00Z"}])
                         setup_url_fixture(f"{test_id}/repos/dart-lang/setup-dart/git/ref/tags/v1.8.1.json", {"object": {"sha": "e51d8e519be8f8d29450b2bc73ea832f4165e2c1", "type": "commit"}})
                         setup_url_fixture(f"{test_id}/repos/actions/setup-node/releases/latest.json", {"tag_name": "v4.4.0", "published_at": "2026-05-01T12:00:00Z"})
                         setup_url_fixture(f"{test_id}/repos/actions/setup-node/releases.json", [{"tag_name": "v4.4.0", "published_at": "2026-05-01T12:00:00Z"}])
                         setup_url_fixture(f"{test_id}/repos/actions/setup-node/git/ref/tags/v4.4.0.json", {"object": {"sha": "49933ea5288caeca8642d1e84afbd3f7d6820020", "type": "commit"}})
+                        exc_file = os.path.join(d, 'dependency_exceptions.tsv')
+                        with open(exc_file, 'a') as f:
+                            f.write("A1\tactions/checkout\t3d3c42e5aac5ba805825da76410c181273ba90b1\t2026-12-05\tExcused for testing purposes\n")
                         return ['--github-api', f"{runner.server_url}/{test_id}"]
                     return ('GitHub releases list', setup_fn)
                 elif ns == 'github_tag_ref':
@@ -2907,13 +2991,20 @@ def main():
                     return ('npm registry', setup_fn)
                 elif ns == 'npm_audit':
                     def setup_fn(d):
-                        if 'metadata.' in rest:
-                            base = {"auditReportVersion": 2, "metadata": {"vulnerabilities": {"info": 0, "low": 0, "moderate": 0, "high": 0, "critical": 0, "total": 0}}}
+                        if rest == 'vulnerabilities' and kind == 'missing':
+                            base = {"auditReportVersion": 2, "metadata": {"vulnerabilities": {"info": 0, "low": 0, "moderate": 0, "high": 0, "critical": 0, "total": 0}}, "vulnerabilities": {}}
+                            mutated = mutate_obj(base, rest, kind, spec)
+                            with open(os.path.join(d, 'npm/audit.json'), 'w') as f:
+                                json.dump(mutated, f)
+                        elif 'metadata.' in rest:
+                            base = {"auditReportVersion": 2, "metadata": {"vulnerabilities": {"info": 0, "low": 0, "moderate": 0, "high": 0, "critical": 0, "total": 0}}, "vulnerabilities": {}}
                             mutated = mutate_obj(base, rest, kind, spec)
                             with open(os.path.join(d, 'npm/audit.json'), 'w') as f:
                                 json.dump(mutated, f)
                         else:
-                            base = {"auditReportVersion": 2, "vulnerabilities": {"vuln_pkg": {"severity": "moderate", "nodes": ["node_modules/vuln_pkg"], "via": [{"url": "https://github.com/advisories/GHSA-1234-5678-90ab"}]}}}
+                            with open(os.path.join(d, 'dependency_exceptions.tsv'), 'w') as f:
+                                f.write("N2\tvuln_pkg\t1.0.0\t2026-11-20\tExcused for GHSA-1234-5678-90ab in vuln_pkg\n")
+                            base = {"auditReportVersion": 2, "metadata": {"vulnerabilities": {"info": 0, "low": 0, "moderate": 0, "high": 0, "critical": 0, "total": 0}}, "vulnerabilities": {"vuln_pkg": {"severity": "moderate", "version": "1.0.0", "nodes": ["node_modules/vuln_pkg"], "via": [{"url": "https://github.com/advisories/GHSA-1234-5678-90ab"}]}}}
                             with open(os.path.join(d, 'npm/package-lock.json'), 'w') as f:
                                 json.dump({"name": "test_pkg", "version": "1.0.0", "lockfileVersion": 3, "packages": {"node_modules/vuln_pkg": {"version": "1.0.0"}}}, f)
                             mutated = mutate_obj(base, rest, kind, spec)
@@ -2937,7 +3028,9 @@ def main():
                     return ('pub.dev package', setup_fn)
                 elif ns == 'pub_advisories':
                     def setup_fn(d):
-                        base = {"advisories": [{"id": "GHSA-test-1234", "affected": [{"versions": ["1.19.0"]}]}]}
+                        with open(os.path.join(d, 'dependency_exceptions.tsv'), 'w') as f:
+                            f.write("D2\tmeta\t1.19.0\t2026-11-20\tExcused for GHSA-test-1234 in meta\n")
+                        base = {"advisories": [{"id": "GHSA-test-1234", "affected": [{"versions": ["1.19.0"], "ranges": [{"events": [{"introduced": "1.0.0"}]}]}]}]}
                         mutated = mutate_obj(base, rest, kind, spec)
                         setup_url_fixture(f"{test_id}/api/packages/meta.json", {"name": "meta", "latest": {"version": "1.19.0", "published": "2026-10-01T00:00:00Z"}, "versions": [{"version": "1.19.0", "published": "2026-10-01T00:00:00Z"}]})
                         setup_url_fixture(f"{test_id}/api/packages/meta/advisories.json", mutated)
@@ -2997,13 +3090,16 @@ def main():
                     return ('pubspec.lock', setup_fn)
 
             input_name, setup_fn = make_setup()
-            tests.append((test_id, input_name, f"{path}_{kind}", setup_fn, path))
+            if is_opt and kind == 'missing':
+                valid_tests.append((test_id, input_name, f"{path}_{kind}", setup_fn, spec.get('reason', 'optional field omitted')))
+            else:
+                tests.append((test_id, input_name, f"{path}_{kind}", setup_fn, path))
 
     assert tested_schema_paths == schema_paths, f"Tested schema paths {tested_schema_paths ^ schema_paths}"
     assert ast_accessed_paths == schema_paths, f"AST accessed paths {ast_accessed_paths ^ schema_paths}"
 
     # =========================================================================
-    # TIER 3: ARGON F1 REGRESSION TESTS
+    # TIER 3: ARGON & H2 REGRESSION TESTS
     # =========================================================================
     argon_tests = []
     # 1. audit metadata.vulnerabilities without high
@@ -3057,10 +3153,31 @@ def main():
         return ['--pub-api', f"{runner.server_url}/argon_pkg"]
     argon_tests.append(('argon_f1_pkg_empty_versions', 'pub.dev package', 'package answer with versions: []', setup_argon_pkg_empty_versions, 'pub.dev package'))
 
+    # 8. H2 regression: advisory with affected: [{}]
+    def setup_h2_affected_empty_obj(d):
+        setup_url_fixture('h2_empty_obj/api/packages/meta.json', {"name": "meta", "latest": {"version": "1.19.0", "published": "2026-10-01T00:00:00Z"}, "versions": [{"version": "1.19.0", "published": "2026-10-01T00:00:00Z"}]})
+        setup_url_fixture('h2_empty_obj/api/packages/meta/advisories.json', {"advisories": [{"id": "GHSA-1234", "affected": [{}]}]})
+        return ['--pub-api', f"{runner.server_url}/h2_empty_obj"]
+    argon_tests.append(('h2_affected_empty_obj', 'pub.dev advisories', 'advisory entry with affected: [{}]', setup_h2_affected_empty_obj, 'pub.dev advisories'))
+
+    # 9. H2 regression: advisory with affected: ["1.19.0"]
+    def setup_h2_affected_bare_string(d):
+        setup_url_fixture('h2_bare_str/api/packages/meta.json', {"name": "meta", "latest": {"version": "1.19.0", "published": "2026-10-01T00:00:00Z"}, "versions": [{"version": "1.19.0", "published": "2026-10-01T00:00:00Z"}]})
+        setup_url_fixture('h2_bare_str/api/packages/meta/advisories.json', {"advisories": [{"id": "GHSA-1234", "affected": ["1.19.0"]}]})
+        return ['--pub-api', f"{runner.server_url}/h2_bare_str"]
+    argon_tests.append(('h2_affected_bare_string', 'pub.dev advisories', 'advisory entry with affected: ["1.19.0"]', setup_h2_affected_bare_string, 'pub.dev advisories'))
+
+    # 10. H2 regression: advisory with ranges but no events
+    def setup_h2_ranges_no_events(d):
+        setup_url_fixture('h2_no_events/api/packages/meta.json', {"name": "meta", "latest": {"version": "1.19.0", "published": "2026-10-01T00:00:00Z"}, "versions": [{"version": "1.19.0", "published": "2026-10-01T00:00:00Z"}]})
+        setup_url_fixture('h2_no_events/api/packages/meta/advisories.json', {"advisories": [{"id": "GHSA-1234", "affected": [{"ranges": [{"type": "ECOSYSTEM"}]}]}]})
+        return ['--pub-api', f"{runner.server_url}/h2_no_events"]
+    argon_tests.append(('h2_ranges_no_events', 'pub.dev advisories', 'advisory entry with ranges but no events', setup_h2_ranges_no_events, 'pub.dev advisories'))
+
     tests.extend(argon_tests)
 
     # Execute all damage tests
-    print(f"Running {len(tests)} damage tests (Tier 1 whole-input + Tier 2 schema-generated + Tier 3 Argon regression)...")
+    print(f"Running {len(tests)} damage tests (Tier 1 whole-input + Tier 2 schema-generated + Tier 3 Argon/H2 regression)...")
     for test_id, input_name, damage_kind, setup_fn, expected_identifier in tests:
         d = runner.create_case_dir(test_id)
         res_setup = setup_fn(d)
@@ -3083,47 +3200,6 @@ def main():
             failing_rows.append(f"MISSING_INPUT_NAME: {test_id} | {input_name} | {damage_kind} | output did not mention '{expected_identifier}': {combined[:120]}...")
         else:
             passing_rows.append(f"PASS: {test_id} | {input_name} | {damage_kind}")
-
-    # =========================================================================
-    # ALLOWED-VALID TESTS
-    # =========================================================================
-    valid_tests = []
-    # 1. exceptions empty
-    valid_tests.append(('exceptions_empty', 'dependency_exceptions.tsv', 'empty_file', lambda d: open(os.path.join(d, 'dependency_exceptions.tsv'), 'w').close(), '0 exceptions allowed'))
-    # 2. exceptions comments only
-    valid_tests.append(('exceptions_comments', 'dependency_exceptions.tsv', 'comments_only', lambda d: open(os.path.join(d, 'dependency_exceptions.tsv'), 'w').write("# comment 1\n# comment 2\n"), 'comments only allowed'))
-    # 3. npm outdated empty object
-    valid_tests.append(('npm_outdated_empty_obj', 'npm/outdated.json', 'empty_object', lambda d: open(os.path.join(d, 'npm/outdated.json'), 'w').write("{}\n"), 'npm outdated prints {} when current'))
-    # 4. pub advisories empty list
-    def setup_val_adv(d):
-        setup_url_fixture('val_adv/api/packages/meta/advisories.json', '{"advisories": []}\n')
-        return ['--pub-api', f"{runner.server_url}/val_adv"]
-    valid_tests.append(('pub_adv_empty_list', 'pub.dev advisories', 'empty_advisories_list', setup_val_adv, 'pub.dev returns {"advisories": []} when clean'))
-    # 5. npm audit zero vulnerabilities
-    valid_tests.append(('npm_audit_zero_vulns', 'npm/audit.json', 'zero_vulnerabilities', lambda d: open(os.path.join(d, 'npm/audit.json'), 'w').write(json.dumps({
-        "auditReportVersion": 2, "vulnerabilities": {}, "metadata": {"vulnerabilities": {"info": 0, "low": 0, "moderate": 0, "high": 0, "critical": 0, "total": 0}}
-    })), 'npm audit reports 0 vulnerabilities when clean'))
-    # 6. pubspec without flutter (pure Dart)
-    def setup_pure_dart(d):
-        open(os.path.join(d, 'pubspec.yaml'), 'w').write("name: test_pkg\nenvironment:\n  sdk: ^3.13.0\ndependencies:\n  meta: ^1.19.0\n")
-        open(os.path.join(d, '.github/workflows/ci.yml'), 'w').write("""name: CI
-on: [push]
-jobs:
-  main:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dart-lang/setup-dart@e51d8e519be8f8d29450b2bc73ea832f4165e2c1 # v1.8.1
-        with:
-          sdk: 3.13.7
-  min-sdk:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: dart-lang/setup-dart@e51d8e519be8f8d29450b2bc73ea832f4165e2c1 # v1.8.1
-        with:
-          sdk: 3.13.0
-""")
-    valid_tests.append(('pubspec_pure_dart', 'pubspec.yaml', 'pure_dart_no_flutter', setup_pure_dart, 'pure Dart package has no flutter constraint'))
 
     print(f"Running {len(valid_tests)} allowed-valid tests...")
     for test_id, input_name, damage_kind, setup_fn, reason in valid_tests:
