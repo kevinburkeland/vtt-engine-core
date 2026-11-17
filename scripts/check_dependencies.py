@@ -596,6 +596,7 @@ def read_pubspec(pubspec_path):
     pubspec_dict = {'name': pkg_name_from_pubspec, 'environment': {'sdk': sdk_constraint}}
     need(pubspec_dict, 'pubspec.name', pubspec_path)
     need(pubspec_dict, 'pubspec.environment.sdk', pubspec_path)
+    need(pubspec_dict, 'pubspec.unregistered_new_field', pubspec_path)
 
     return sdk_constraint, flutter_constraint, direct_exact_pins, dev_exact_pins, direct_deps, dev_deps, non_hosted_deps, declared_floors
 
