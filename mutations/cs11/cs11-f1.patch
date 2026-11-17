@@ -1,0 +1,29 @@
+From 8d00ccf99ee22134914f4361ec5fb600e34f037c Mon Sep 17 00:00:00 2001
+From: Kevin Burkeland <kevin@burke.land>
+Date: Mon, 16 Nov 2026 19:14:48 -0800
+Subject: [PATCH] =?UTF-8?q?MUTATION=20=E2=80=94=20do=20not=20merge:=20F1?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Kevin Burkeland <kevin@burke.land>
+---
+ scripts/check_dependencies.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/scripts/check_dependencies.py b/scripts/check_dependencies.py
+index 3a1b9a3..ea5eb44 100755
+--- a/scripts/check_dependencies.py
++++ b/scripts/check_dependencies.py
+@@ -1333,7 +1333,7 @@ def main():
+                     elif isinstance(metadata, dict):
+                         need(npm_audit_data, 'npm_audit.metadata.vulnerabilities', args.npm_audit)
+                         mod_count = need(metadata, 'npm_audit.metadata.vulnerabilities.moderate', args.npm_audit)
+-                        high_count = need(metadata, 'npm_audit.metadata.vulnerabilities.high', args.npm_audit)
++                        high_count = metadata.get('vulnerabilities', {}).get('high', 0)
+                         crit_count = need(metadata, 'npm_audit.metadata.vulnerabilities.critical', args.npm_audit)
+                         if mod_count > 0 or high_count > 0 or crit_count > 0:
+                             failures.append(f"N2: npm audit reports {mod_count} moderate, {high_count} high, {crit_count} critical vulnerabilities")
+-- 
+2.55.0
+

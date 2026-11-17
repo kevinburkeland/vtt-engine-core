@@ -1,0 +1,28 @@
+From cbd40b255c2330af1fe88bc302d603f16527b15f Mon Sep 17 00:00:00 2001
+From: Kevin Burkeland <kevin@burke.land>
+Date: Mon, 16 Nov 2026 19:15:25 -0800
+Subject: [PATCH] =?UTF-8?q?MUTATION=20=E2=80=94=20do=20not=20merge:=20F2?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Kevin Burkeland <kevin@burke.land>
+---
+ scripts/check_dependencies.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/scripts/check_dependencies.py b/scripts/check_dependencies.py
+index 3a1b9a3..7ba6fa4 100755
+--- a/scripts/check_dependencies.py
++++ b/scripts/check_dependencies.py
+@@ -596,6 +596,7 @@ def read_pubspec(pubspec_path):
+     pubspec_dict = {'name': pkg_name_from_pubspec, 'environment': {'sdk': sdk_constraint}}
+     need(pubspec_dict, 'pubspec.name', pubspec_path)
+     need(pubspec_dict, 'pubspec.environment.sdk', pubspec_path)
++    need(pubspec_dict, 'pubspec.unregistered_new_field', pubspec_path)
+ 
+     return sdk_constraint, flutter_constraint, direct_exact_pins, dev_exact_pins, direct_deps, dev_deps, non_hosted_deps, declared_floors
+ 
+-- 
+2.55.0
+
