@@ -1,0 +1,29 @@
+From 8894bd0ddf723d44f8c668bbb6e3e67892cc23f1 Mon Sep 17 00:00:00 2001
+From: Kevin Burkeland <kevin@burke.land>
+Date: Wed, 18 Nov 2026 09:50:54 -0800
+Subject: [PATCH] =?UTF-8?q?MUTATION=20=E2=80=94=20do=20not=20merge:=20G1?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Kevin Burkeland <kevin@burke.land>
+---
+ scripts/check_dependencies.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/scripts/check_dependencies.py b/scripts/check_dependencies.py
+index 5528d12..2ce0e8e 100755
+--- a/scripts/check_dependencies.py
++++ b/scripts/check_dependencies.py
+@@ -1128,7 +1128,7 @@ def main():
+                 affected = need(adv, 'pub_advisories.advisories[].affected', adv_url)
+                 for aff in need_items(affected, 'pub_advisories.advisories[].affected', adv_url):
+                     aff_versions = opt(aff, 'pub_advisories.advisories[].affected[].versions', adv_url)
+-                    aff_ranges = opt(aff, 'pub_advisories.advisories[].affected[].ranges', adv_url)
++                    aff_ranges = aff['ranges'] if 'ranges' in aff else []
+                     vers_items = need_items(aff_versions, 'pub_advisories.advisories[].affected[].versions', adv_url)
+                     ranges_items = need_items(aff_ranges, 'pub_advisories.advisories[].affected[].ranges', adv_url)
+                     if not vers_items and not ranges_items:
+-- 
+2.55.0
+
