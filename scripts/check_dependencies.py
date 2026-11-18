@@ -1094,7 +1094,7 @@ def main():
 
     for pkg_item in need_items(pub_packages, 'pub_outdated.packages', args.pub_outdated):
         pkg_name = need(pkg_item, 'pub_outdated.packages[].package', args.pub_outdated)
-        kind = opt(pkg_item, 'pub_outdated.packages[].kind', args.pub_outdated)
+        kind = pkg_item['kind']
         is_disc = opt(pkg_item, 'pub_outdated.packages[].isDiscontinued', args.pub_outdated)
         is_ret = opt(pkg_item, 'pub_outdated.packages[].isCurrentRetracted', args.pub_outdated)
         is_adv = opt(pkg_item, 'pub_outdated.packages[].isCurrentAffectedByAdvisory', args.pub_outdated)
