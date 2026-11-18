@@ -1128,7 +1128,7 @@ def main():
                 affected = need(adv, 'pub_advisories.advisories[].affected', adv_url)
                 for aff in need_items(affected, 'pub_advisories.advisories[].affected', adv_url):
                     aff_versions = opt(aff, 'pub_advisories.advisories[].affected[].versions', adv_url)
-                    aff_ranges = opt(aff, 'pub_advisories.advisories[].affected[].ranges', adv_url)
+                    aff_ranges = aff['ranges'] if 'ranges' in aff else []
                     vers_items = need_items(aff_versions, 'pub_advisories.advisories[].affected[].versions', adv_url)
                     ranges_items = need_items(aff_ranges, 'pub_advisories.advisories[].affected[].ranges', adv_url)
                     if not vers_items and not ranges_items:
