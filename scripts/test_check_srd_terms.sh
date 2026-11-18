@@ -289,6 +289,57 @@ else
 fi
 git -C "$REPO_DIR" rm --quiet -f binary.dat
 
+# --- SR16: Term in test/removed_test_names.txt with exact SRD cleanup reason passes ---
+mkdir -p "$REPO_DIR/test"
+echo "Test for $_T_EA | removed for SRD compliance in Cleanup slice 13" > "$REPO_DIR/test/removed_test_names.txt"
+git -C "$REPO_DIR" add test/removed_test_names.txt
+if output=$(run_scan 2>&1); then
+  pass "SR16" "Term in test/removed_test_names.txt with exact SRD cleanup reason passes"
+else
+  fail "SR16" "Term in test/removed_test_names.txt with exact SRD cleanup reason was rejected" "$output"
+fi
+
+# --- SR17: Same term in test/removed_test_names.txt with any other reason fails ---
+echo "Test for $_T_EA | deleted as dead code" > "$REPO_DIR/test/removed_test_names.txt"
+git -C "$REPO_DIR" add test/removed_test_names.txt
+if output=$(run_scan 2>&1); then
+  fail "SR17" "Term in test/removed_test_names.txt with other reason was not caught" "$output"
+else
+  if echo "$output" | grep -q "test/removed_test_names.txt:1: $_T_EA"; then
+    pass "SR17" "Term in test/removed_test_names.txt with other reason fails"
+  else
+    fail "SR17" "Output did not report expected hit" "$output"
+  fi
+fi
+
+# --- SR18: Same term anywhere else in test/removed_test_names.txt fails ---
+echo "# Comment mentioning $_T_EA" > "$REPO_DIR/test/removed_test_names.txt"
+git -C "$REPO_DIR" add test/removed_test_names.txt
+if output=$(run_scan 2>&1); then
+  fail "SR18" "Term elsewhere in test/removed_test_names.txt was not caught" "$output"
+else
+  if echo "$output" | grep -q "test/removed_test_names.txt:1: $_T_EA"; then
+    pass "SR18" "Term elsewhere in test/removed_test_names.txt fails"
+  else
+    fail "SR18" "Output did not report expected hit" "$output"
+  fi
+fi
+git -C "$REPO_DIR" rm --quiet -f test/removed_test_names.txt
+
+# --- SR19: Same term with that reason in any other file fails ---
+echo "Test for $_T_EA | removed for SRD compliance in Cleanup slice 13" > "$REPO_DIR/other_file.txt"
+git -C "$REPO_DIR" add other_file.txt
+if output=$(run_scan 2>&1); then
+  fail "SR19" "Term with SRD cleanup reason in another file was not caught" "$output"
+else
+  if echo "$output" | grep -q "other_file.txt:1: $_T_EA"; then
+    pass "SR19" "Term with SRD cleanup reason in another file fails"
+  else
+    fail "SR19" "Output did not report expected hit" "$output"
+  fi
+fi
+git -C "$REPO_DIR" rm --quiet -f other_file.txt
+
 echo "1..$TESTS_RUN"
 echo "All $TESTS_PASSED self-tests passed cleanly."
 exit 0

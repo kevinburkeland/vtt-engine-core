@@ -3,6 +3,9 @@
 One line per slice, newest first. Each line: date, slice name, what changed for a user or a developer.
 Work before Map slice 1.1 (hardening passes 0 to 12) is in the git history.
 
+## 2026-11-18
+- Cleanup slice 13: Expand shared SRD compliance denylist and tighten check_srd_terms.py to scan test/removed_test_names.txt except rows with the slice 13 SRD removal reason (Fix 1.3).
+
 ## 2026-11-17
 - Cleanup slice 12: Add monotonic per-file coverage floor script check_coverage_floor.py, coverage_floors.tsv, and CI enforcement (Fix 6.2).
 

@@ -124,7 +124,6 @@ def main() -> int:
             rel_path == denylist_rel
             or rel_path == exceptions_rel
             or rel_path.startswith("mutations/")
-            or rel_path == "test/removed_test_names.txt"
         ):
             continue
 
@@ -141,6 +140,12 @@ def main() -> int:
 
         scanned_files += 1
         for line_no, line in enumerate(lines, 1):
+            if rel_path == "test/removed_test_names.txt":
+                stripped = line.strip()
+                if stripped and not stripped.startswith("#") and "|" in stripped:
+                    parts = stripped.rsplit("|", 1)
+                    if parts[0].strip() and parts[1].strip() == "removed for SRD compliance in Cleanup slice 13":
+                        continue
             lw = split_words(line)
             if not lw:
                 continue

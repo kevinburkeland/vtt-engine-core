@@ -2,43 +2,57 @@
 # One term per line in plain words. Case-insensitive word matching.
 # Matches across camelCase, snake_case, kebab-case, punctuation, and spaces.
 acererak
+armor of agathys
 baldur's gate
 beholder
 bigby
 booming blade
 carrion crawler
+chaos bolt
+circle of spores
 displacer beast
+divine soul
 drawmij
 drizzt
+echo knight
+ehlonna
 elminster
 elven accuracy
 evard
 firbolg
+flumph
 githyanki
 githzerai
 great weapon master
 green-flame blade
+heward
 illithid
+keoghtom
 kuo-toa
 leomund
 melf
 mind flayer
 mind sliver
+modron
 mordenkainen
 neverwinter
+nolzur
 nystul
 otiluke
 polearm master
 primal savagery
+quaal
 shadow blade
 sharpshooter
 slaad
 strahd
 tasha
 tenser
+thorn whip
 toll the dead
 umber hulk
 war caster
 waterdeep
+wild magic
 word of radiance
 yuan-ti
