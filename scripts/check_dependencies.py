@@ -504,9 +504,7 @@ def opt_child(obj, path, key, input_name):
     elif isinstance(obj, dict):
         raw_dict = obj
     else:
-        got_name = type(obj._unwrap('opt_child') if isinstance(obj, _GuardedContainer) else obj).__name__
-        print(f"Error: Schema failure in '{input_name}' at path '{path}': expected dict, got {got_name}.", file=sys.stderr)
-        sys.exit(1)
+        return None
     if key not in raw_dict:
         return spec.get('default', None)
     val = raw_dict[key]
