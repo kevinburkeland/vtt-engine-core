@@ -2380,8 +2380,12 @@ def main():
             elif isinstance(node.func, ast.Attribute):
                 func_name = node.func.attr
             if func_name in ('need', 'opt', 'need_items', 'need_keys', 'need_child', 'opt_child'):
-                if len(node.args) >= 2 and isinstance(node.args[1], ast.Constant):
+                if len(node.args) >= 2 and isinstance(node.args[1], ast.Constant) and isinstance(node.args[1].value, str):
                     ast_accessed_paths.add(node.args[1].value)
+                else:
+                    print(f"FATAL: Closure check failed: {func_name} at line {node.lineno} has non-literal schema path!")
+                    runner.cleanup()
+                    sys.exit(1)
 
     schema_paths = set(SCHEMA.keys())
     if ast_accessed_paths != schema_paths:
@@ -2431,6 +2435,75 @@ except SystemExit as e:
         runner.cleanup()
         sys.exit(1)
     print("Closure check: monkey-patch self-test correctly caught direct access and failed closed.")
+
+    # Fix 5.1 closure self-test: a monkey-patched function calling opt_child with a non-SCHEMA path fails naming the line
+    mp_opt_child_code = f"""
+import sys, ast, importlib.util
+spec = importlib.util.spec_from_file_location("check_dependencies", "{CHECK_SCRIPT}")
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+bad_src = '''
+def bad_reader(ev, input_name):
+    return opt_child(ev, 'zz.not.a.row', 'introduced', input_name)
+'''
+tree = ast.parse(bad_src)
+bad_calls = []
+for node in ast.walk(tree):
+    if isinstance(node, ast.Call):
+        fn = node.func.id if isinstance(node.func, ast.Name) else (node.func.attr if isinstance(node.func, ast.Attribute) else None)
+        if fn in ('need', 'opt', 'need_items', 'need_keys', 'need_child', 'opt_child'):
+            if len(node.args) < 2 or not isinstance(node.args[1], ast.Constant) or node.args[1].value not in mod.SCHEMA:
+                bad_calls.append((node.lineno, fn, node.args[1].value if len(node.args) >= 2 and isinstance(node.args[1], ast.Constant) else None))
+if bad_calls:
+    for ln, fn, p in bad_calls:
+        print(f"Error: line {{ln}}: {{fn}} called with unknown schema path '{{p}}'", file=sys.stderr)
+    sys.exit(1)
+sys.exit(0)
+"""
+    res_mp2 = subprocess.run([sys.executable, '-c', mp_opt_child_code], capture_output=True, text=True)
+    if res_mp2.returncode == 0 or "line 3" not in (res_mp2.stderr + res_mp2.stdout) or "zz.not.a.row" not in (res_mp2.stderr + res_mp2.stdout):
+        print(f"FATAL: opt_child AST closure self-test failed! code={res_mp2.returncode}\nout={res_mp2.stdout}\nerr={res_mp2.stderr}")
+        runner.cleanup()
+        sys.exit(1)
+    # Also verify runtime opt_child fails closed on unknown schema path
+    mp_opt_child_rt = f"""
+import sys, importlib.util
+spec = importlib.util.spec_from_file_location("check_dependencies", "{CHECK_SCRIPT}")
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+guarded = mod.wrap_guarded({{'introduced': '0'}}, 'test_input')
+mod.opt_child(guarded, 'zz.not.a.row', 'introduced', 'test_input')
+"""
+    res_mp2_rt = subprocess.run([sys.executable, '-c', mp_opt_child_rt], capture_output=True, text=True)
+    if res_mp2_rt.returncode == 0 or "zz.not.a.row" not in (res_mp2_rt.stderr + res_mp2_rt.stdout):
+        print(f"FATAL: opt_child runtime unknown-path self-test failed! code={res_mp2_rt.returncode}\nout={res_mp2_rt.stdout}\nerr={res_mp2_rt.stderr}")
+        runner.cleanup()
+        sys.exit(1)
+    print("Closure check: opt_child unknown schema path self-test passed (AST + runtime).")
+
+    # Fix 5.1 OSV range controls: introduced + fixed, and introduced + last_affected
+    osv_ctrl_code = f"""
+import sys, importlib.util
+spec = importlib.util.spec_from_file_location("check_dependencies", "{CHECK_SCRIPT}")
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+ranges_fixed = mod.wrap_guarded([{{'events': [{{'introduced': '0'}}, {{'fixed': '2.0.0'}}]}}], 'osv_ctrl_fixed')
+assert mod.is_version_in_ranges('1.0.0', ranges_fixed, 'osv_ctrl_fixed') is True, 'expected 1.0.0 affected'
+assert mod.is_version_in_ranges('2.0.0', ranges_fixed, 'osv_ctrl_fixed') is False, 'expected 2.0.0 not affected'
+
+ranges_last = mod.wrap_guarded([{{'events': [{{'introduced': '0'}}, {{'last_affected': '1.2.3'}}]}}], 'osv_ctrl_last')
+assert mod.is_version_in_ranges('1.2.3', ranges_last, 'osv_ctrl_last') is True, 'expected 1.2.3 affected'
+assert mod.is_version_in_ranges('1.2.4', ranges_last, 'osv_ctrl_last') is False, 'expected 1.2.4 not affected'
+print("OSV controls passed: introduced+fixed and introduced+last_affected")
+"""
+    res_osv = subprocess.run([sys.executable, '-c', osv_ctrl_code], capture_output=True, text=True)
+    if res_osv.returncode != 0:
+        print(f"FATAL: OSV range controls failed! code={res_osv.returncode}\nout={res_osv.stdout}\nerr={res_osv.stderr}")
+        runner.cleanup()
+        sys.exit(1)
+    print(res_osv.stdout.strip())
 
     tests = []
 
@@ -2852,9 +2925,17 @@ jobs:
         tested_schema_paths.add(path)
         ns, rest = path.split('.', 1)
         is_opt = spec.get('optional', False)
-        is_list_of_objects = any(k.startswith(f"{path}[].") or k.startswith(f"{path}.[].") for k in SCHEMA)
+        is_list_of_objects = (
+            path != 'npm_audit.vulnerabilities.*.via'
+            and any(k.startswith(f"{path}[].") or k.startswith(f"{path}.[].") for k in SCHEMA)
+        )
 
         kinds = ['missing', 'null', 'wrong_type']
+        if path.endswith('.*') and not is_opt:
+            parent_path = path[:-2]
+            parent_spec = SCHEMA.get(parent_path) or SCHEMA.get(f"{parent_path}.{{}}")
+            if parent_spec and not parent_spec.get('non_empty', False):
+                kinds = ['null', 'wrong_type']
         if spec.get('non_empty', False):
             kinds.append('empty')
         if is_list_of_objects:
@@ -2953,6 +3034,15 @@ jobs:
                     return ('GitHub tag object', setup_fn)
                 elif ns == 'npm_package':
                     def setup_fn(d):
+                        if rest.startswith('overrides.'):
+                            with open(os.path.join(d, 'dependency_exceptions.tsv'), 'w') as f:
+                                f.write("N4\tpkg_override\t1.0.0\t2026-11-20\tExcused for test GHSA-1111-2222-3333\n")
+                            setup_url_fixture(f"{test_id}/pkg_override.json", {"name": "pkg_override", "time": {"1.0.0": "2026-11-01T00:00:00Z"}})
+                            base = {"name": "test_pkg", "version": "1.0.0", "overrides": {"pkg_override": "1.0.0"}}
+                            mutated = mutate_obj(base, rest, kind, spec)
+                            with open(os.path.join(d, 'npm/package.json'), 'w') as f:
+                                json.dump(mutated, f)
+                            return ['--npm-registry', f"{runner.server_url}/{test_id}"]
                         base = {"name": "test_pkg", "version": "1.0.0"}
                         mutated = mutate_obj(base, rest, kind, spec)
                         with open(os.path.join(d, 'npm/package.json'), 'w') as f:
@@ -2991,11 +3081,20 @@ jobs:
                     return ('npm registry', setup_fn)
                 elif ns == 'npm_audit':
                     def setup_fn(d):
-                        if rest == 'vulnerabilities' and kind == 'missing':
+                        if rest == '{}' or (rest == 'vulnerabilities' and kind == 'missing'):
                             base = {"auditReportVersion": 2, "metadata": {"vulnerabilities": {"info": 0, "low": 0, "moderate": 0, "high": 0, "critical": 0, "total": 0}}, "vulnerabilities": {}}
                             mutated = mutate_obj(base, rest, kind, spec)
                             with open(os.path.join(d, 'npm/audit.json'), 'w') as f:
                                 json.dump(mutated, f)
+                        elif rest == 'vulnerabilities.*' and kind == 'missing':
+                            # Valid case: a package referenced in 'via' is absent from 'vulnerabilities'
+                            with open(os.path.join(d, 'dependency_exceptions.tsv'), 'w') as f:
+                                f.write("N2\tvuln_pkg\t1.0.0\t2026-11-20\tExcused for GHSA-1234-5678-90ab in vuln_pkg\n")
+                            base = {"auditReportVersion": 2, "metadata": {"vulnerabilities": {"info": 0, "low": 0, "moderate": 1, "high": 0, "critical": 0, "total": 1}}, "vulnerabilities": {"vuln_pkg": {"severity": "moderate", "version": "1.0.0", "nodes": ["node_modules/vuln_pkg"], "via": ["missing_pkg", {"url": "https://github.com/advisories/GHSA-1234-5678-90ab", "title": "Adv"}]}}}
+                            with open(os.path.join(d, 'npm/package-lock.json'), 'w') as f:
+                                json.dump({"name": "test_pkg", "version": "1.0.0", "lockfileVersion": 3, "packages": {"node_modules/vuln_pkg": {"version": "1.0.0"}}}, f)
+                            with open(os.path.join(d, 'npm/audit.json'), 'w') as f:
+                                json.dump(base, f)
                         elif 'metadata.' in rest:
                             base = {"auditReportVersion": 2, "metadata": {"vulnerabilities": {"info": 0, "low": 0, "moderate": 0, "high": 0, "critical": 0, "total": 0}}, "vulnerabilities": {}}
                             mutated = mutate_obj(base, rest, kind, spec)
@@ -3004,7 +3103,7 @@ jobs:
                         else:
                             with open(os.path.join(d, 'dependency_exceptions.tsv'), 'w') as f:
                                 f.write("N2\tvuln_pkg\t1.0.0\t2026-11-20\tExcused for GHSA-1234-5678-90ab in vuln_pkg\n")
-                            base = {"auditReportVersion": 2, "metadata": {"vulnerabilities": {"info": 0, "low": 0, "moderate": 0, "high": 0, "critical": 0, "total": 0}}, "vulnerabilities": {"vuln_pkg": {"severity": "moderate", "version": "1.0.0", "nodes": ["node_modules/vuln_pkg"], "via": [{"url": "https://github.com/advisories/GHSA-1234-5678-90ab"}]}}}
+                            base = {"auditReportVersion": 2, "metadata": {"vulnerabilities": {"info": 0, "low": 0, "moderate": 0, "high": 0, "critical": 0, "total": 0}}, "vulnerabilities": {"vuln_pkg": {"severity": "moderate", "version": "1.0.0", "nodes": ["node_modules/vuln_pkg"], "via": [{"url": "https://github.com/advisories/GHSA-1234-5678-90ab", "title": "Adv GHSA-1234-5678-90ab"}]}}}
                             with open(os.path.join(d, 'npm/package-lock.json'), 'w') as f:
                                 json.dump({"name": "test_pkg", "version": "1.0.0", "lockfileVersion": 3, "packages": {"node_modules/vuln_pkg": {"version": "1.0.0"}}}, f)
                             mutated = mutate_obj(base, rest, kind, spec)
@@ -3030,7 +3129,15 @@ jobs:
                     def setup_fn(d):
                         with open(os.path.join(d, 'dependency_exceptions.tsv'), 'w') as f:
                             f.write("D2\tmeta\t1.19.0\t2026-11-20\tExcused for GHSA-test-1234 in meta\n")
-                        base = {"advisories": [{"id": "GHSA-test-1234", "affected": [{"versions": ["1.19.0"], "ranges": [{"events": [{"introduced": "1.0.0"}]}]}]}]}
+                        if rest == 'advisories[].affected[].ranges[].events[].introduced' and kind == 'missing':
+                            # Valid case: 'introduced' omitted when another single event key ('fixed') is present
+                            base = {"advisories": [{"id": "GHSA-test-1234", "affected": [{"versions": ["1.19.0"], "ranges": [{"events": [{"fixed": "2.0.0"}]}]}]}]}
+                        elif rest.startswith('advisories[].affected[].ranges[].events[].') and kind != 'missing':
+                            # Mutate the single event key in place so the test targets that exact key
+                            ev_key = rest.rsplit('.', 1)[-1]
+                            base = {"advisories": [{"id": "GHSA-test-1234", "affected": [{"versions": ["1.19.0"], "ranges": [{"events": [{ev_key: "1.0.0"}]}]}]}]}
+                        else:
+                            base = {"advisories": [{"id": "GHSA-test-1234", "affected": [{"versions": ["1.19.0"], "ranges": [{"events": [{"introduced": "1.0.0"}]}]}]}]}
                         mutated = mutate_obj(base, rest, kind, spec)
                         setup_url_fixture(f"{test_id}/api/packages/meta.json", {"name": "meta", "latest": {"version": "1.19.0", "published": "2026-10-01T00:00:00Z"}, "versions": [{"version": "1.19.0", "published": "2026-10-01T00:00:00Z"}]})
                         setup_url_fixture(f"{test_id}/api/packages/meta/advisories.json", mutated)
@@ -3076,6 +3183,15 @@ jobs:
                                 content = "packages: \"string\"\n"
                             elif kind == 'empty':
                                 content = "packages: {}\n"
+                        elif path == 'pubspec_lock.packages.*':
+                            if kind == 'missing':
+                                content = "packages:\n"
+                            elif kind == 'null':
+                                content = "packages:\n  meta:\n"
+                            elif kind == 'wrong_type':
+                                content = "packages:\n  meta: \"invalid\"\n"
+                            elif kind == 'empty':
+                                content = "packages:\n  meta: {}\n"
                         elif path == 'pubspec_lock.packages.*.source':
                             if kind == 'missing':
                                 content = content.replace('    source: hosted\n', '')
@@ -3173,6 +3289,46 @@ jobs:
         setup_url_fixture('h2_no_events/api/packages/meta/advisories.json', {"advisories": [{"id": "GHSA-1234", "affected": [{"ranges": [{"type": "ECOSYSTEM"}]}]}]})
         return ['--pub-api', f"{runner.server_url}/h2_no_events"]
     argon_tests.append(('h2_ranges_no_events', 'pub.dev advisories', 'advisory entry with ranges but no events', setup_h2_ranges_no_events, 'pub.dev advisories'))
+
+    # 11-18. Cleanup slice 13 Fix 5.1 named law rows (OSV events & npm audit get_ghsa_ids)
+    def setup_cs13_adv(tag, events_val):
+        def _fn(d):
+            setup_url_fixture(f'{tag}/api/packages/meta.json', {"name": "meta", "latest": {"version": "1.19.0", "published": "2026-10-01T00:00:00Z"}, "versions": [{"version": "1.19.0", "published": "2026-10-01T00:00:00Z"}]})
+            setup_url_fixture(f'{tag}/api/packages/meta/advisories.json', {"advisories": [{"id": "GHSA-1234", "affected": [{"ranges": [{"type": "ECOSYSTEM", "events": events_val}]}]}]})
+            return ['--pub-api', f"{runner.server_url}/{tag}"]
+        return _fn
+
+    argon_tests.append(('cs13_events_empty_obj', 'pub.dev advisories', 'events: [{}]', setup_cs13_adv('cs13_ev_empty', [{}]), 'advisories'))
+    argon_tests.append(('cs13_events_bare_str', 'pub.dev advisories', 'events: ["0"]', setup_cs13_adv('cs13_ev_str', ["0"]), 'advisories'))
+    argon_tests.append(('cs13_events_intro_int', 'pub.dev advisories', 'events: [{"introduced": 0}]', setup_cs13_adv('cs13_ev_int', [{"introduced": 0}]), 'advisories'))
+    argon_tests.append(('cs13_events_two_kinds', 'pub.dev advisories', 'events: [{"introduced": "0", "fixed": "2.0.0"}]', setup_cs13_adv('cs13_ev_two', [{"introduced": "0", "fixed": "2.0.0"}]), 'advisories'))
+    argon_tests.append(('cs13_events_limit', 'pub.dev advisories', 'events: [{"limit": "2.0.0"}]', setup_cs13_adv('cs13_ev_limit', [{"limit": "2.0.0"}]), 'advisories'))
+
+    def setup_cs13_vulns_list(d):
+        open(os.path.join(d, 'npm/audit.json'), 'w').write(json.dumps({
+            "auditReportVersion": 2,
+            "vulnerabilities": [],
+            "metadata": {"vulnerabilities": {"info": 0, "low": 0, "moderate": 0, "high": 0, "critical": 0, "total": 0}}
+        }))
+    argon_tests.append(('cs13_npm_vulns_list', 'npm/audit.json', 'vulnerabilities: []', setup_cs13_vulns_list, 'audit.json'))
+
+    def setup_cs13_vulns_str_entry(d):
+        open(os.path.join(d, 'npm/audit.json'), 'w').write(json.dumps({
+            "auditReportVersion": 2,
+            "vulnerabilities": {"x": "y"},
+            "metadata": {"vulnerabilities": {"info": 0, "low": 0, "moderate": 0, "high": 0, "critical": 0, "total": 0}}
+        }))
+    argon_tests.append(('cs13_npm_vulns_str_entry', 'npm/audit.json', 'vulnerabilities: {"x": "y"}', setup_cs13_vulns_str_entry, 'audit.json'))
+
+    def setup_cs13_npm_via_int(d):
+        open(os.path.join(d, 'dependency_exceptions.tsv'), 'w').write("N2\tvuln_pkg\t1.0.0\t2026-11-20\tExcused for GHSA-1234-5678-90ab in vuln_pkg\n")
+        open(os.path.join(d, 'npm/package-lock.json'), 'w').write(json.dumps({"name": "test_pkg", "version": "1.0.0", "lockfileVersion": 3, "packages": {"node_modules/vuln_pkg": {"version": "1.0.0"}}}))
+        open(os.path.join(d, 'npm/audit.json'), 'w').write(json.dumps({
+            "auditReportVersion": 2,
+            "vulnerabilities": {"vuln_pkg": {"severity": "moderate", "version": "1.0.0", "nodes": ["node_modules/vuln_pkg"], "via": [3]}},
+            "metadata": {"vulnerabilities": {"info": 0, "low": 0, "moderate": 1, "high": 0, "critical": 0, "total": 1}}
+        }))
+    argon_tests.append(('cs13_npm_via_int', 'npm/audit.json', 'via: [3]', setup_cs13_npm_via_int, 'audit.json'))
 
     tests.extend(argon_tests)
 

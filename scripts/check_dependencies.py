@@ -24,7 +24,7 @@ class _GuardedContainer:
         caller = caller_fn or frame.f_code.co_name
         if _GUARD_RECORD_MODE:
             _GUARD_RECORD_ACCESSES.append((frame.f_code.co_filename, frame.f_lineno, caller, self._input_name))
-            if caller not in ('need', 'opt', 'need_items', 'need_keys', 'need_child', 'opt_child', 'wrap_guarded', '_unwrap'):
+            if caller not in ('need', 'opt', 'need_items', 'need_keys', 'need_child', 'opt_child', 'need_via_entry', 'guarded_to_text', 'wrap_guarded', '_unwrap'):
                 _GUARD_RECORD_VIOLATIONS.append((frame.f_code.co_filename, frame.f_lineno, caller, self._input_name, 'unauthorized_unwrap'))
         return self._raw
 
@@ -164,32 +164,41 @@ SCHEMA = {
     # 7. npm package.json
     'npm_package.{}': {'type': dict, 'non_empty': False},
     'npm_package.overrides': {'type': dict, 'non_empty': False, 'optional': True, 'default': None, 'reason': "npm package.json: 'overrides' is omitted when no overrides are declared"},
+    'npm_package.overrides.*': {'type': str, 'non_empty': True},
 
     # 8. npm package-lock.json
     'npm_package_lock.packages': {'type': dict, 'non_empty': False},
+    'npm_package_lock.packages.*': {'type': dict, 'non_empty': False},
     'npm_package_lock.packages.*.version': {'type': str, 'non_empty': True},
 
     # 9. npm outdated
     'npm_outdated.{}': {'type': dict, 'non_empty': False},
+    'npm_outdated.*': {'type': dict, 'non_empty': False},
     'npm_outdated.*.current': {'type': str, 'non_empty': True},
     'npm_outdated.*.latest': {'type': str, 'non_empty': True},
 
     # 10. npm registry
     'npm_registry.time': {'type': dict, 'non_empty': True},
+    'npm_registry.time.*': {'type': str, 'non_empty': True},
 
     # 11. npm audit
+    'npm_audit.{}': {'type': dict, 'non_empty': False},
     'npm_audit.metadata': {'type': dict, 'non_empty': False, 'optional': True, 'default': None, 'reason': "npm audit: 'metadata' is omitted in detail-only audit output"},
     'npm_audit.metadata.vulnerabilities': {'type': dict, 'non_empty': True},
     'npm_audit.metadata.vulnerabilities.moderate': {'type': int, 'non_empty': False},
     'npm_audit.metadata.vulnerabilities.high': {'type': int, 'non_empty': False},
     'npm_audit.metadata.vulnerabilities.critical': {'type': int, 'non_empty': False},
     'npm_audit.vulnerabilities': {'type': dict, 'non_empty': False, 'optional': True, 'default': None, 'reason': "npm audit: 'vulnerabilities' is omitted in summary-only audit output"},
+    'npm_audit.vulnerabilities.*': {'type': dict, 'non_empty': False, 'optional': True, 'default': None, 'reason': "npm audit: a package name referenced in 'via' may not have an entry in 'vulnerabilities'"},
     'npm_audit.vulnerabilities.*.severity': {'type': str, 'non_empty': True},
     'npm_audit.vulnerabilities.*.version': {'type': str, 'non_empty': True, 'optional': True, 'default': None, 'reason': "npm audit: 'version' is omitted for top-level or unmet dependencies"},
     'npm_audit.vulnerabilities.*.nodes': {'type': list, 'non_empty': False, 'optional': True, 'default': [], 'reason': "npm audit: 'nodes' is omitted when package is not installed directly in node_modules"},
     'npm_audit.vulnerabilities.*.via': {'type': list, 'non_empty': False, 'optional': True, 'default': [], 'reason': "npm audit: 'via' is omitted or empty when no chained advisory"},
+    'npm_audit.vulnerabilities.*.via[].url': {'type': str, 'non_empty': False, 'optional': True, 'default': '', 'reason': "npm audit: 'via' advisory object may omit 'url'"},
+    'npm_audit.vulnerabilities.*.via[].title': {'type': str, 'non_empty': False, 'optional': True, 'default': '', 'reason': "npm audit: 'via' advisory object may omit 'title'"},
 
     # 12. pub outdated
+    'pub_outdated.{}': {'type': dict, 'non_empty': False},
     'pub_outdated.packages': {'type': list, 'non_empty': False},
     'pub_outdated.packages[].package': {'type': str, 'non_empty': True},
     'pub_outdated.packages[].kind': {'type': str, 'non_empty': True, 'optional': True, 'default': 'transitive', 'reason': "dart pub outdated: 'kind' is omitted for transitive dependencies"},
@@ -215,6 +224,14 @@ SCHEMA = {
     'pub_advisories.advisories[].affected[].versions': {'type': list, 'non_empty': False, 'optional': True, 'default': [], 'reason': "OSV/pub.dev advisory schema: 'versions' is omitted when advisory specifies range-only constraints"},
     'pub_advisories.advisories[].affected[].ranges': {'type': list, 'non_empty': False, 'optional': True, 'default': [], 'reason': "OSV/pub.dev advisory schema: 'ranges' is omitted when advisory specifies explicit version lists"},
     'pub_advisories.advisories[].affected[].ranges[].events': {'type': list, 'non_empty': True},
+    # OSV Schema (https://ossf.github.io/osv-schema/#affectedranges-field):
+    # "The events array contains objects, each of which MUST contain a single field, one of: introduced, fixed, last_affected, or limit."
+    # Note: pub.dev's OSV JSON serializer (e.g. shared_preferences_android/advisories) emits all four keys
+    # with the three inactive fields set to null and exactly one field set to a non-empty string.
+    'pub_advisories.advisories[].affected[].ranges[].events[].introduced': {'type': str, 'non_empty': True, 'optional': True, 'nullable': True, 'default': None, 'reason': "OSV range event: each event holds exactly one non-null field of introduced, fixed, last_affected, or limit"},
+    'pub_advisories.advisories[].affected[].ranges[].events[].fixed': {'type': str, 'non_empty': True, 'optional': True, 'nullable': True, 'default': None, 'reason': "OSV range event: each event holds exactly one non-null field of introduced, fixed, last_affected, or limit"},
+    'pub_advisories.advisories[].affected[].ranges[].events[].last_affected': {'type': str, 'non_empty': True, 'optional': True, 'nullable': True, 'default': None, 'reason': "OSV range event: each event holds exactly one non-null field of introduced, fixed, last_affected, or limit"},
+    'pub_advisories.advisories[].affected[].ranges[].events[].limit': {'type': str, 'non_empty': True, 'optional': True, 'nullable': True, 'default': None, 'reason': "OSV range event: each event holds exactly one non-null field of introduced, fixed, last_affected, or limit"},
 
     # 15. pubspec.yaml
     'pubspec.name': {'type': str, 'non_empty': True},
@@ -222,6 +239,7 @@ SCHEMA = {
 
     # 16. pubspec.lock
     'pubspec_lock.packages': {'type': dict, 'non_empty': True},
+    'pubspec_lock.packages.*': {'type': dict, 'non_empty': True},
     'pubspec_lock.packages.*.source': {'type': str, 'non_empty': True},
 }
 
@@ -386,7 +404,10 @@ def need_items(obj, path, input_name):
         print(f"Error: Schema failure in '{input_name}' at path '{path}': expected list, got {type(obj).__name__}.", file=sys.stderr)
         sys.exit(1)
 
-    is_list_of_objects = any(k.startswith(f"{path}[].") or k.startswith(f"{path}.[].") for k in SCHEMA)
+    is_list_of_objects = (
+        path != 'npm_audit.vulnerabilities.*.via'
+        and any(k.startswith(f"{path}[].") or k.startswith(f"{path}.[].") for k in SCHEMA)
+    )
     if is_list_of_objects:
         for item in raw_list:
             if item is None:
@@ -403,6 +424,9 @@ def need_items(obj, path, input_name):
             if len(item_raw) == 0:
                 if path == 'pub_advisories.advisories[].affected':
                     print(f"Error: Schema failure in '{input_name}' at path '{path}[]': entry must contain at least 'versions' or 'ranges'.", file=sys.stderr)
+                    sys.exit(1)
+                elif path == 'pub_advisories.advisories[].affected[].ranges[].events':
+                    print(f"Error: Schema failure in '{input_name}' at path '{path}[]': OSV event must contain exactly one of introduced, fixed, last_affected, or limit.", file=sys.stderr)
                     sys.exit(1)
                 else:
                     req_children = [k for k in SCHEMA if (k.startswith(f"{path}[].") or k.startswith(f"{path}.[].")) and not SCHEMA[k].get('optional', False)]
@@ -431,27 +455,80 @@ def need_keys(obj, path, input_name):
         sys.exit(1)
     return list(raw_dict.keys())
 
+def _validate_child_value(val, path, input_name, spec):
+    prefix_code = "N4: " if path.startswith('npm_package.overrides') else ""
+    if val is None:
+        print(f"Error: {prefix_code}Schema failure in '{input_name}' at path '{path}': value is null.", file=sys.stderr)
+        sys.exit(1)
+    expected_type = spec['type']
+    if not _check_type(val, expected_type):
+        got_name = type(val._unwrap('need_child') if isinstance(val, _GuardedContainer) else val).__name__
+        print(f"Error: {prefix_code}Schema failure in '{input_name}' at path '{path}': expected {_get_type_name(expected_type)}, got {got_name}.", file=sys.stderr)
+        sys.exit(1)
+    if spec.get('non_empty', False):
+        raw_val = val._unwrap('need_child') if isinstance(val, _GuardedContainer) else val
+        if isinstance(raw_val, (str, list, dict)) and len(raw_val) == 0:
+            print(f"Error: {prefix_code}Schema failure in '{input_name}' at path '{path}': empty value where non-empty required.", file=sys.stderr)
+            sys.exit(1)
+    return val
+
 def need_child(obj, path, key, input_name):
+    ACCESSED_PATHS.add(path)
+    if path not in SCHEMA:
+        print(f"Error: Schema failure in '{input_name}': unknown schema path '{path}'.", file=sys.stderr)
+        sys.exit(1)
     if isinstance(obj, _GuardedDict):
         raw_dict = obj._unwrap('need_child')
     elif isinstance(obj, dict):
         raw_dict = obj
     else:
-        print(f"Error: Schema failure in '{input_name}' at path '{path}': expected dict, got {type(obj).__name__}.", file=sys.stderr)
+        got_name = type(obj._unwrap('need_child') if isinstance(obj, _GuardedContainer) else obj).__name__
+        print(f"Error: Schema failure in '{input_name}' at path '{path}': expected dict, got {got_name}.", file=sys.stderr)
         sys.exit(1)
     if key not in raw_dict:
-        print(f"Error: Schema failure in '{input_name}' at path '{path}.{key}': missing '{key}'.", file=sys.stderr)
+        print(f"Error: Schema failure in '{input_name}' at path '{path}': missing '{key}'.", file=sys.stderr)
         sys.exit(1)
-    return raw_dict[key]
+    return _validate_child_value(raw_dict[key], path, input_name, SCHEMA[path])
 
 def opt_child(obj, path, key, input_name):
+    ACCESSED_PATHS.add(path)
+    if path not in SCHEMA:
+        print(f"Error: Schema failure in '{input_name}': unknown schema path '{path}'.", file=sys.stderr)
+        sys.exit(1)
+    spec = SCHEMA[path]
+    if not spec.get('optional', False):
+        print(f"Error: Schema failure in '{input_name}': path '{path}' is not marked optional.", file=sys.stderr)
+        sys.exit(1)
     if isinstance(obj, _GuardedDict):
         raw_dict = obj._unwrap('opt_child')
     elif isinstance(obj, dict):
         raw_dict = obj
     else:
-        return None
-    return raw_dict.get(key)
+        got_name = type(obj._unwrap('opt_child') if isinstance(obj, _GuardedContainer) else obj).__name__
+        print(f"Error: Schema failure in '{input_name}' at path '{path}': expected dict, got {got_name}.", file=sys.stderr)
+        sys.exit(1)
+    if key not in raw_dict:
+        return spec.get('default', None)
+    val = raw_dict[key]
+    if val is None and spec.get('nullable', False):
+        return spec.get('default', None)
+    return _validate_child_value(val, path, input_name, spec)
+
+def need_via_entry(item, path, input_name):
+    """Classify an npm audit 'via' element as ('dict', obj) or ('str', pkg_name), failing closed otherwise."""
+    if isinstance(item, (_GuardedDict, dict)):
+        return ('dict', item)
+    if isinstance(item, str) and len(item) > 0:
+        return ('str', item)
+    got_t = type(item._unwrap('need_via_entry') if isinstance(item, _GuardedContainer) else item).__name__
+    print(f"Error: Schema failure in '{input_name}' at path '{path}[]': expected dict or non-empty str, got {got_t}.", file=sys.stderr)
+    sys.exit(1)
+
+def guarded_to_text(obj):
+    """Return string representation of a guarded container for advisory ID regex scanning."""
+    if isinstance(obj, _GuardedContainer):
+        return str(obj._unwrap('guarded_to_text'))
+    return str(obj)
 
 def parse_semver(v_str):
     cleaned = re.sub(r'^[v\^~>=<]+', '', str(v_str).strip())
@@ -512,26 +589,68 @@ def semver_cmp(v1_str, v2_str):
     return 0
 
 def is_version_in_ranges(v_str, ranges, input_name):
+    # OSV Schema (https://ossf.github.io/osv-schema/#affectedranges-field):
+    # "The events array contains objects, each of which MUST contain a single field,
+    # one of: introduced, fixed, last_affected, or limit."
     for r in need_items(ranges, 'pub_advisories.advisories[].affected[].ranges', input_name):
         events = need(r, 'pub_advisories.advisories[].affected[].ranges[].events', input_name)
         introduced = None
         fixed = None
+        last_affected = None
         for ev in need_items(events, 'pub_advisories.advisories[].affected[].ranges[].events', input_name):
-            intro = opt_child(ev, 'pub_advisories.advisories[].affected[].ranges[].events', 'introduced', input_name)
-            if isinstance(intro, str) and intro:
+            ev_keys = need_keys(ev, 'pub_advisories.advisories[].affected[].ranges[].events', input_name)
+            unknown_keys = [k for k in ev_keys if k not in ('introduced', 'fixed', 'last_affected', 'limit')]
+            if unknown_keys:
+                print(
+                    f"Error: Schema failure in '{input_name}' at path 'pub_advisories.advisories[].affected[].ranges[].events[]': "
+                    f"unknown OSV event key(s) {unknown_keys}.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            intro = opt_child(ev, 'pub_advisories.advisories[].affected[].ranges[].events[].introduced', 'introduced', input_name)
+            fix = opt_child(ev, 'pub_advisories.advisories[].affected[].ranges[].events[].fixed', 'fixed', input_name)
+            last_aff = opt_child(ev, 'pub_advisories.advisories[].affected[].ranges[].events[].last_affected', 'last_affected', input_name)
+            lim = opt_child(ev, 'pub_advisories.advisories[].affected[].ranges[].events[].limit', 'limit', input_name)
+            present = [
+                k for k, v in (
+                    ('introduced', intro),
+                    ('fixed', fix),
+                    ('last_affected', last_aff),
+                    ('limit', lim),
+                ) if v is not None
+            ]
+            if len(present) != 1:
+                print(
+                    f"Error: Schema failure in '{input_name}' at path 'pub_advisories.advisories[].affected[].ranges[].events[]': "
+                    f"OSV event must hold exactly one non-null field of introduced, fixed, last_affected, or limit, got {present}.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            if intro is not None:
                 introduced = intro
-            fix = opt_child(ev, 'pub_advisories.advisories[].affected[].ranges[].events', 'fixed', input_name)
-            if isinstance(fix, str) and fix:
+            if fix is not None:
                 fixed = fix
+            if last_aff is not None:
+                last_affected = last_aff
+            if lim is not None:
+                print(
+                    f"Error: Schema failure in '{input_name}' at path 'pub_advisories.advisories[].affected[].ranges[].events[].limit': "
+                    f"unsupported OSV event 'limit'.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
 
         matches = True
-        if introduced:
+        if introduced is not None:
             if semver_cmp(v_str, introduced) < 0:
                 matches = False
-        if fixed:
+        if fixed is not None:
             if semver_cmp(v_str, fixed) >= 0:
                 matches = False
-        if matches and (introduced or fixed):
+        if last_affected is not None:
+            if semver_cmp(v_str, last_affected) > 0:
+                matches = False
+        if matches and (introduced is not None or fixed is not None or last_affected is not None):
             return True
     return False
 
@@ -542,22 +661,20 @@ def get_ghsa_ids(pkg_name, all_vulns, input_name, visited=None):
         return set()
     visited.add(pkg_name)
     ghsas = set()
-    if not isinstance(all_vulns, (_GuardedDict, dict)):
-        return set()
-    pkg_info = opt_child(all_vulns, 'npm_audit.vulnerabilities', pkg_name, input_name)
-    if not isinstance(pkg_info, (_GuardedDict, dict)):
+    pkg_info = opt_child(all_vulns, 'npm_audit.vulnerabilities.*', pkg_name, input_name)
+    if pkg_info is None:
         return set()
     vias = opt(pkg_info, 'npm_audit.vulnerabilities.*.via', input_name)
     for v in need_items(vias, 'npm_audit.vulnerabilities.*.via', input_name):
-        if isinstance(v, (_GuardedDict, dict)):
-            url_str = opt_child(v, 'npm_audit.vulnerabilities.*.via', 'url', input_name) or ''
-            title_str = opt_child(v, 'npm_audit.vulnerabilities.*.via', 'title', input_name) or ''
-            raw_v = v._unwrap('get_ghsa_ids') if isinstance(v, _GuardedContainer) else v
-            for field in [url_str, title_str, str(raw_v)]:
+        entry_kind, entry_val = need_via_entry(v, 'npm_audit.vulnerabilities.*.via', input_name)
+        if entry_kind == 'dict':
+            url_str = opt_child(entry_val, 'npm_audit.vulnerabilities.*.via[].url', 'url', input_name)
+            title_str = opt_child(entry_val, 'npm_audit.vulnerabilities.*.via[].title', 'title', input_name)
+            for field in [url_str, title_str, guarded_to_text(entry_val)]:
                 for m in re.findall(r'GHSA-[a-zA-Z0-9\-]+', field, re.IGNORECASE):
                     ghsas.add(m.upper())
-        elif isinstance(v, str):
-            ghsas.update(get_ghsa_ids(v, all_vulns, input_name, visited))
+        else:
+            ghsas.update(get_ghsa_ids(entry_val, all_vulns, input_name, visited))
     return ghsas
 
 def parse_workflow_file(wf_path, wf_file):
@@ -846,7 +963,7 @@ def read_pubspec_lock(lock_path):
     packages = need(packages_obj, 'pubspec_lock.packages', lock_path)
     non_hosted = set()
     for p_name in need_keys(packages, 'pubspec_lock.packages', lock_path):
-        p_info = need_child(packages, 'pubspec_lock.packages', p_name, lock_path)
+        p_info = need_child(packages, 'pubspec_lock.packages.*', p_name, lock_path)
         source = need(p_info, 'pubspec_lock.packages.*.source', lock_path)
         if source != 'hosted':
             non_hosted.add(p_name)
@@ -1062,10 +1179,7 @@ def main():
         print(f"Error: Failed to parse pub outdated JSON in '{args.pub_outdated}': {e}", file=sys.stderr)
         sys.exit(1)
 
-    if not isinstance(outdated_data, (_GuardedDict, dict)):
-        print(f"Error: Top-level pub outdated payload in '{args.pub_outdated}' must be a JSON object.", file=sys.stderr)
-        sys.exit(1)
-
+    need(outdated_data, 'pub_outdated.{}', args.pub_outdated)
     pub_packages = need(outdated_data, 'pub_outdated.packages', args.pub_outdated)
 
     # Rule: pub outdated must list every direct and dev dependency declared in pubspec.yaml
@@ -1466,14 +1580,11 @@ def main():
                 npm_outdated_data = wrap_guarded(json.loads(npm_outdated_content), args.npm_outdated)
                 outdated_keys = need_keys(npm_outdated_data, 'npm_outdated.{}', args.npm_outdated)
                 if 'error' in outdated_keys:
-                    failures.append(f"N1: npm outdated file '{args.npm_outdated}' reported error: {need_child(npm_outdated_data, 'npm_outdated.{}', 'error', args.npm_outdated)}")
+                    failures.append(f"N1: npm outdated file '{args.npm_outdated}' reported an 'error' payload")
                 else:
                     need(npm_outdated_data, 'npm_outdated.{}', args.npm_outdated)
                     for npm_pkg in sorted(outdated_keys):
-                        details = need_child(npm_outdated_data, 'npm_outdated.{}', npm_pkg, args.npm_outdated)
-                        if not isinstance(details, (_GuardedDict, dict)):
-                            failures.append(f"N1: npm outdated details for '{npm_pkg}' must be an object")
-                            continue
+                        details = need_child(npm_outdated_data, 'npm_outdated.*', npm_pkg, args.npm_outdated)
                         curr_npm_v = need(details, 'npm_outdated.*.current', args.npm_outdated)
                         lat_npm_v = need(details, 'npm_outdated.*.latest', args.npm_outdated)
                         if curr_npm_v and lat_npm_v and curr_npm_v != lat_npm_v:
@@ -1487,7 +1598,7 @@ def main():
                             first_newer_date = None
                             first_newer_ver = None
                             for v_str in time_keys:
-                                time_str = need_child(time_dict, 'npm_registry.time', v_str, npm_pkg_url)
+                                time_str = need_child(time_dict, 'npm_registry.time.*', v_str, npm_pkg_url)
                                 if '-' in v_str or v_str in ('modified', 'created'):
                                     continue
                                 if semver_cmp(v_str, curr_npm_v) > 0 and semver_cmp(v_str, lat_npm_v) <= 0:
@@ -1497,7 +1608,7 @@ def main():
                                             first_newer_date = d
                                             first_newer_ver = v_str
 
-                            pub_time = need_child(time_dict, 'npm_registry.time', lat_npm_v, npm_pkg_url) if lat_npm_v in time_keys else None
+                            pub_time = need_child(time_dict, 'npm_registry.time.*', lat_npm_v, npm_pkg_url) if lat_npm_v in time_keys else None
                             pub_date = parse_date(pub_time) if pub_time else None
                             ref_date = first_newer_date or pub_date
                             age_days = (today - ref_date).days if ref_date else 999
@@ -1516,132 +1627,124 @@ def main():
                 failures.append(f"N2: npm audit file '{args.npm_audit}' is empty or whitespace")
             else:
                 npm_audit_data = wrap_guarded(json.loads(npm_audit_content), args.npm_audit)
-                if not isinstance(npm_audit_data, (_GuardedDict, dict)):
-                    failures.append(f"N2: npm audit JSON in '{args.npm_audit}' must be an object")
-                else:
-                    vulns = opt(npm_audit_data, 'npm_audit.vulnerabilities', args.npm_audit)
-                    metadata = opt(npm_audit_data, 'npm_audit.metadata', args.npm_audit)
-                    if vulns is None and metadata is None:
-                        failures.append(f"N2: npm audit JSON in '{args.npm_audit}' missing metadata and vulnerabilities objects")
-                    elif vulns is not None:
-                        vuln_keys = sorted(need_keys(vulns, 'npm_audit.vulnerabilities', args.npm_audit))
-                        if vuln_keys:
-                            need(npm_audit_data, 'npm_audit.vulnerabilities', args.npm_audit)
-                            for pkg_name in vuln_keys:
-                                info = need_child(vulns, 'npm_audit.vulnerabilities', pkg_name, args.npm_audit)
-                                if not isinstance(info, (_GuardedDict, dict)):
-                                    failures.append(f"N2: npm audit entry for '{pkg_name}' must be an object")
-                                    continue
-                                sev = need(info, 'npm_audit.vulnerabilities.*.severity', args.npm_audit)
-                                if sev in ('info', 'low'):
-                                    continue
+                need(npm_audit_data, 'npm_audit.{}', args.npm_audit)
+                vulns = opt(npm_audit_data, 'npm_audit.vulnerabilities', args.npm_audit)
+                metadata = opt(npm_audit_data, 'npm_audit.metadata', args.npm_audit)
+                if vulns is None and metadata is None:
+                    failures.append(f"N2: npm audit JSON in '{args.npm_audit}' missing metadata and vulnerabilities objects")
+                elif vulns is not None:
+                    vuln_keys = sorted(need_keys(vulns, 'npm_audit.vulnerabilities', args.npm_audit))
+                    if vuln_keys:
+                        need(npm_audit_data, 'npm_audit.vulnerabilities', args.npm_audit)
+                        for pkg_name in vuln_keys:
+                            info = need_child(vulns, 'npm_audit.vulnerabilities.*', pkg_name, args.npm_audit)
+                            sev = need(info, 'npm_audit.vulnerabilities.*.severity', args.npm_audit)
+                            if sev in ('info', 'low'):
+                                continue
 
-                                ghsas = get_ghsa_ids(pkg_name, vulns, args.npm_audit)
-                                ghsa_str = ', '.join(sorted(ghsas)) if ghsas else 'no advisory ID'
+                            ghsas = get_ghsa_ids(pkg_name, vulns, args.npm_audit)
+                            ghsa_str = ', '.join(sorted(ghsas)) if ghsas else 'no advisory ID'
 
-                                installed_version = opt(info, 'npm_audit.vulnerabilities.*.version', args.npm_audit)
-                                info_nodes = opt(info, 'npm_audit.vulnerabilities.*.nodes', args.npm_audit)
-                                if not installed_version and args.npm_dir:
-                                    lock_path = os.path.join(args.npm_dir, 'package-lock.json')
-                                    if not os.path.exists(lock_path) or not os.path.isfile(lock_path):
-                                        failures.append(f"N2: package-lock.json '{lock_path}' not found when resolving version for vulnerable package '{pkg_name}'")
-                                    else:
-                                        try:
-                                            with open(lock_path, 'r', encoding='utf-8') as lf:
-                                                lock_content = lf.read()
-                                            if not lock_content.strip():
-                                                failures.append(f"N2: package-lock.json '{lock_path}' is empty or whitespace")
-                                            else:
-                                                lock_data = wrap_guarded(json.loads(lock_content), lock_path)
-                                                packages = need(lock_data, 'npm_package_lock.packages', lock_path)
-                                                pkg_lock_keys = set(need_keys(packages, 'npm_package_lock.packages', lock_path))
-                                                if info_nodes is not None:
-                                                    for node in need_items(info_nodes, 'npm_audit.vulnerabilities.*.nodes', args.npm_audit):
-                                                        if node in pkg_lock_keys:
-                                                            node_entry = need_child(packages, 'npm_package_lock.packages', node, lock_path)
-                                                            installed_version = need(node_entry, 'npm_package_lock.packages.*.version', lock_path)
-                                                            break
-                                                if not installed_version:
-                                                    k = f"node_modules/{pkg_name}"
-                                                    if k in pkg_lock_keys:
-                                                        k_entry = need_child(packages, 'npm_package_lock.packages', k, lock_path)
-                                                        installed_version = need(k_entry, 'npm_package_lock.packages.*.version', lock_path)
-                                        except Exception as e:
-                                            failures.append(f"N2: Failed to read or parse package-lock.json '{lock_path}': {e}")
-                                if not installed_version:
-                                    failures.append(f"N2: Unable to determine installed version for vulnerable package '{pkg_name}'")
+                            installed_version = opt(info, 'npm_audit.vulnerabilities.*.version', args.npm_audit)
+                            info_nodes = opt(info, 'npm_audit.vulnerabilities.*.nodes', args.npm_audit)
+                            if not installed_version and args.npm_dir:
+                                lock_path = os.path.join(args.npm_dir, 'package-lock.json')
+                                if not os.path.exists(lock_path) or not os.path.isfile(lock_path):
+                                    failures.append(f"N2: package-lock.json '{lock_path}' not found when resolving version for vulnerable package '{pkg_name}'")
+                                else:
+                                    try:
+                                        with open(lock_path, 'r', encoding='utf-8') as lf:
+                                            lock_content = lf.read()
+                                        if not lock_content.strip():
+                                            failures.append(f"N2: package-lock.json '{lock_path}' is empty or whitespace")
+                                        else:
+                                            lock_data = wrap_guarded(json.loads(lock_content), lock_path)
+                                            packages = need(lock_data, 'npm_package_lock.packages', lock_path)
+                                            pkg_lock_keys = set(need_keys(packages, 'npm_package_lock.packages', lock_path))
+                                            if info_nodes is not None:
+                                                for node in need_items(info_nodes, 'npm_audit.vulnerabilities.*.nodes', args.npm_audit):
+                                                    if node in pkg_lock_keys:
+                                                        node_entry = need_child(packages, 'npm_package_lock.packages.*', node, lock_path)
+                                                        installed_version = need(node_entry, 'npm_package_lock.packages.*.version', lock_path)
+                                                        break
+                                            if not installed_version:
+                                                k = f"node_modules/{pkg_name}"
+                                                if k in pkg_lock_keys:
+                                                    k_entry = need_child(packages, 'npm_package_lock.packages.*', k, lock_path)
+                                                    installed_version = need(k_entry, 'npm_package_lock.packages.*.version', lock_path)
+                                    except Exception as e:
+                                        failures.append(f"N2: Failed to read or parse package-lock.json '{lock_path}': {e}")
+                            if not installed_version:
+                                failures.append(f"N2: Unable to determine installed version for vulnerable package '{pkg_name}'")
 
-                                exc_matched = False
-                                for idx, exc in enumerate(exceptions):
-                                    if exc['rule'] == 'N2' and exc['name'] == pkg_name:
-                                        if not installed_version or exc['held_at'] != installed_version:
-                                            continue
-                                        missing_ghsa = [g for g in ghsas if g.lower() not in exc['reason'].lower()]
-                                        if not missing_ghsa:
-                                            exc['used'] = True
-                                            matched_exceptions.add(idx)
-                                            exc_matched = True
-                                            break
+                            exc_matched = False
+                            for idx, exc in enumerate(exceptions):
+                                if exc['rule'] == 'N2' and exc['name'] == pkg_name:
+                                    if not installed_version or exc['held_at'] != installed_version:
+                                        continue
+                                    missing_ghsa = [g for g in ghsas if g.lower() not in exc['reason'].lower()]
+                                    if not missing_ghsa:
+                                        exc['used'] = True
+                                        matched_exceptions.add(idx)
+                                        exc_matched = True
+                                        break
 
-                                if not exc_matched:
-                                    failures.append(f"N2: Vulnerability in npm package '{pkg_name}' severity '{sev}' ({ghsa_str}) at installed version {installed_version or 'unknown'}")
+                            if not exc_matched:
+                                failures.append(f"N2: Vulnerability in npm package '{pkg_name}' severity '{sev}' ({ghsa_str}) at installed version {installed_version or 'unknown'}")
 
-                    if metadata is not None and (vulns is None or not need_keys(vulns, 'npm_audit.vulnerabilities', args.npm_audit)):
-                        meta_vulns = need(metadata, 'npm_audit.metadata.vulnerabilities', args.npm_audit)
-                        mod_count = need(meta_vulns, 'npm_audit.metadata.vulnerabilities.moderate', args.npm_audit)
-                        high_count = need(meta_vulns, 'npm_audit.metadata.vulnerabilities.high', args.npm_audit)
-                        crit_count = need(meta_vulns, 'npm_audit.metadata.vulnerabilities.critical', args.npm_audit)
-                        if mod_count > 0 or high_count > 0 or crit_count > 0:
-                            failures.append(f"N2: npm audit reports {mod_count} moderate, {high_count} high, {crit_count} critical vulnerabilities")
+                if metadata is not None and (vulns is None or not need_keys(vulns, 'npm_audit.vulnerabilities', args.npm_audit)):
+                    meta_vulns = need(metadata, 'npm_audit.metadata.vulnerabilities', args.npm_audit)
+                    mod_count = need(meta_vulns, 'npm_audit.metadata.vulnerabilities.moderate', args.npm_audit)
+                    high_count = need(meta_vulns, 'npm_audit.metadata.vulnerabilities.high', args.npm_audit)
+                    crit_count = need(meta_vulns, 'npm_audit.metadata.vulnerabilities.critical', args.npm_audit)
+                    if mod_count > 0 or high_count > 0 or crit_count > 0:
+                        failures.append(f"N2: npm audit reports {mod_count} moderate, {high_count} high, {crit_count} critical vulnerabilities")
         except Exception as e:
             failures.append(f"N2: Failed to read or parse npm audit JSON in '{args.npm_audit}': {e}")
 
         # N4: npm overrides declared
         overrides = opt(pkg_json_data, 'npm_package.overrides', pkg_json_path) if pkg_json_data is not None else None
         if overrides is not None:
-            if not isinstance(overrides, (_GuardedDict, dict)):
-                failures.append(f"N4: 'overrides' in {pkg_json_path} must be an object")
-            else:
-                for override_pkg in sorted(need_keys(overrides, 'npm_package.overrides', pkg_json_path)):
-                    override_val = need_child(overrides, 'npm_package.overrides', override_pkg, pkg_json_path)
-                    if not isinstance(override_val, str) or not re.match(r'^\d+\.\d+\.\d+$', override_val):
-                        failures.append(f"N4: npm override '{override_pkg}' value must be a plain exact version string, got '{override_val}'")
+            for override_pkg in sorted(need_keys(overrides, 'npm_package.overrides', pkg_json_path)):
+                override_val = need_child(overrides, 'npm_package.overrides.*', override_pkg, pkg_json_path)
+                if not re.match(r'^\d+\.\d+\.\d+$', override_val):
+                    failures.append(f"N4: npm override '{override_pkg}' value must be a plain exact version string, got '{override_val}'")
+                    continue
+
+                # Freshness check within its major
+                major = override_val.split('.')[0]
+                npm_pkg_url = f"{args.npm_registry.rstrip('/')}/{override_pkg}"
+                npm_pkg_data = fetch_json(npm_pkg_url)
+                time_dict = need(npm_pkg_data, 'npm_registry.time', npm_pkg_url)
+                same_major_newer = []
+                for v in need_keys(time_dict, 'npm_registry.time', npm_pkg_url):
+                    ptime = need_child(time_dict, 'npm_registry.time.*', v, npm_pkg_url)
+                    if '-' in v or v in ('modified', 'created'):
                         continue
+                    if v.split('.')[0] == major and semver_cmp(v, override_val) > 0:
+                        same_major_newer.append((v, parse_date(ptime)))
 
-                    # Freshness check within its major
-                    major = override_val.split('.')[0]
-                    npm_pkg_url = f"{args.npm_registry.rstrip('/')}/{override_pkg}"
-                    npm_pkg_data = fetch_json(npm_pkg_url)
-                    time_dict = need(npm_pkg_data, 'npm_registry.time', npm_pkg_url)
-                    same_major_newer = []
-                    for v in need_keys(time_dict, 'npm_registry.time', npm_pkg_url):
-                        if '-' in v or v in ('modified', 'created'):
-                            continue
-                        if v.split('.')[0] == major and semver_cmp(v, override_val) > 0:
-                            ptime = need_child(time_dict, 'npm_registry.time', v, npm_pkg_url)
-                            same_major_newer.append((v, parse_date(ptime)))
+                if same_major_newer:
+                    same_major_newer.sort(key=lambda x: [int(p) if p.isdigit() else 0 for p in x[0].split('.')])
+                    first_newer_ver, first_newer_date = same_major_newer[0]
+                    newest_in_major = same_major_newer[-1][0]
+                    age_days = (today - first_newer_date).days if first_newer_date else 999
+                    if age_days < 14:
+                        pending_notes.append(f"npm override '{override_pkg}' pending {newest_in_major} ({age_days} days old)")
+                    else:
+                        failures.append(f"N4: npm override '{override_pkg}' version '{override_val}' is behind newest in major {major} '{newest_in_major}' (first newer release {first_newer_ver} published {first_newer_date}, {age_days} days old)")
 
-                    if same_major_newer:
-                        same_major_newer.sort(key=lambda x: [int(p) if p.isdigit() else 0 for p in x[0].split('.')])
-                        first_newer_ver, first_newer_date = same_major_newer[0]
-                        newest_in_major = same_major_newer[-1][0]
-                        age_days = (today - first_newer_date).days if first_newer_date else 999
-                        if age_days < 14:
-                            pending_notes.append(f"npm override '{override_pkg}' pending {newest_in_major} ({age_days} days old)")
-                        else:
-                            failures.append(f"N4: npm override '{override_pkg}' version '{override_val}' is behind newest in major {major} '{newest_in_major}' (first newer release {first_newer_ver} published {first_newer_date}, {age_days} days old)")
+                # Check exception row
+                exc_found = False
+                for idx, exc in enumerate(exceptions):
+                    if exc['rule'] == 'N4' and exc['name'] == override_pkg and exc['held_at'] == override_val:
+                        exc['used'] = True
+                        matched_exceptions.add(idx)
+                        exc_found = True
+                        break
 
-                    # Check exception row
-                    exc_found = False
-                    for idx, exc in enumerate(exceptions):
-                        if exc['rule'] == 'N4' and exc['name'] == override_pkg and exc['held_at'] == override_val:
-                            exc['used'] = True
-                            matched_exceptions.add(idx)
-                            exc_found = True
-                            break
-
-                    if not exc_found:
-                        failures.append(f"N4: npm override '{override_pkg}' version '{override_val}' lacks valid N4 exception entry in dependency_exceptions.tsv")
+                if not exc_found:
+                    failures.append(f"N4: npm override '{override_pkg}' version '{override_val}' lacks valid N4 exception entry in dependency_exceptions.tsv")
 
     # E1: Check for stale exceptions
     for idx, exc in enumerate(exceptions):

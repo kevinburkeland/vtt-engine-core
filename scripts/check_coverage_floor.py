@@ -113,26 +113,143 @@ def parse_floors_tsv(content: str, source_label: str) -> Dict[str, float]:
     return floors
 
 
-def read_previous_floors(repo_root: str, floors_path: str) -> Optional[Dict[str, float]]:
+def _run_git(repo_root: str, git_args: List[str]) -> str:
+    cmd = ["git", "-C", repo_root, *git_args]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        cmd_str = " ".join(cmd)
+        detail = (proc.stderr or proc.stdout).strip()
+        raise RuntimeError(f"git command failed ({cmd_str}): {detail}")
+    return proc.stdout
+
+
+def _compare_floor_maps(
+    parent_floors: Dict[str, float],
+    curr_floors: Dict[str, float],
+    curr_lib_files: set,
+    renames: Dict[str, str],
+    context_label: str,
+) -> List[str]:
+    errs: List[str] = []
+    if "TOTAL" in parent_floors:
+        if "TOTAL" not in curr_floors:
+            errs.append(f"Removed TOTAL floor row in {context_label}")
+        elif curr_floors["TOTAL"] + 1e-9 < parent_floors["TOTAL"]:
+            errs.append(
+                f"Lowered floor for TOTAL in {context_label}: "
+                f"{curr_floors['TOTAL']:.1f}% < previous floor {parent_floors['TOTAL']:.1f}%"
+            )
+
+    for path, prev_val in sorted(parent_floors.items()):
+        if path == "TOTAL":
+            continue
+        if path in curr_floors:
+            if curr_floors[path] + 1e-9 < prev_val:
+                errs.append(
+                    f"Lowered floor for {path} in {context_label}: "
+                    f"{curr_floors[path]:.1f}% < previous floor {prev_val:.1f}%"
+                )
+        elif path in renames:
+            new_path = renames[path]
+            if new_path not in curr_floors:
+                errs.append(
+                    f"Missing floor row for renamed file {path} -> {new_path} in {context_label}"
+                )
+            elif curr_floors[new_path] + 1e-9 < prev_val:
+                errs.append(
+                    f"Lowered floor for renamed file {path} -> {new_path} in {context_label}: "
+                    f"{curr_floors[new_path]:.1f}% < previous floor {prev_val:.1f}%"
+                )
+        else:
+            if path in curr_lib_files:
+                errs.append(
+                    f"Removed floor row for existing file {path} in {context_label}"
+                )
+    return errs
+
+
+def _parse_renames(diff_output: str) -> Dict[str, str]:
+    renames: Dict[str, str] = {}
+    for line in diff_output.splitlines():
+        parts = line.split("\t")
+        if len(parts) == 3 and parts[0].startswith("R"):
+            renames[parts[1]] = parts[2]
+    return renames
+
+
+def check_floor_history(
+    repo_root: str,
+    floors_path: str,
+    working_floors: Dict[str, float],
+    working_lib_set: set,
+) -> List[str]:
     rel_floors = os.path.relpath(os.path.abspath(floors_path), os.path.abspath(repo_root)).replace(
         os.sep, "/"
     )
-    has_head1 = subprocess.run(
-        ["git", "-C", repo_root, "rev-parse", "--verify", "HEAD~1"],
-        capture_output=True,
-        text=True,
-    )
-    if has_head1.returncode != 0:
-        return None
-    prev = subprocess.run(
-        ["git", "-C", repo_root, "show", f"HEAD~1:{rel_floors}"],
-        capture_output=True,
-        text=True,
-    )
-    if prev.returncode != 0:
-        # Missing in HEAD~1 is allowed only for the commit that introduces it.
-        return None
-    return parse_floors_tsv(prev.stdout, f"HEAD~1:{rel_floors}")
+
+    shallow = _run_git(repo_root, ["rev-parse", "--is-shallow-repository"]).strip()
+    if shallow == "true":
+        raise RuntimeError(
+            "Coverage floor check needs full history (repository is a shallow clone; use fetch-depth: 0)."
+        )
+
+    commits_out = _run_git(repo_root, ["log", "--format=%H", "--", rel_floors])
+    commits = [c.strip() for c in commits_out.splitlines() if c.strip()]
+
+    errors: List[str] = []
+
+    for commit_sha in commits:
+        commit_tsv = _run_git(repo_root, ["show", f"{commit_sha}:{rel_floors}"])
+        commit_floors = parse_floors_tsv(commit_tsv, f"{commit_sha}:{rel_floors}")
+
+        rev_out = _run_git(repo_root, ["rev-list", "--parents", "-n", "1", commit_sha]).strip()
+        parents = rev_out.split()[1:]
+        if not parents:
+            continue
+
+        commit_lib_out = _run_git(repo_root, ["ls-tree", "-r", "--name-only", commit_sha, "--", "lib"])
+        commit_lib_set = {l.strip() for l in commit_lib_out.splitlines() if l.strip()}
+
+        for parent_sha in parents:
+            parent_has = _run_git(
+                repo_root, ["ls-tree", "-r", "--name-only", parent_sha, "--", rel_floors]
+            ).strip()
+            if not parent_has:
+                # Commit first introduced coverage_floors.tsv relative to this parent.
+                continue
+
+            parent_tsv = _run_git(repo_root, ["show", f"{parent_sha}:{rel_floors}"])
+            parent_floors = parse_floors_tsv(parent_tsv, f"{parent_sha}:{rel_floors}")
+            diff_out = _run_git(repo_root, ["diff", "-M", "--name-status", parent_sha, commit_sha])
+            renames = _parse_renames(diff_out)
+            errors.extend(
+                _compare_floor_maps(
+                    parent_floors,
+                    commit_floors,
+                    commit_lib_set,
+                    renames,
+                    f"commit {commit_sha[:12]} (parent {parent_sha[:12]})",
+                )
+            )
+
+    # Also compare working tree floors against HEAD
+    head_has = _run_git(repo_root, ["ls-tree", "-r", "--name-only", "HEAD", "--", rel_floors]).strip()
+    if head_has:
+        head_tsv = _run_git(repo_root, ["show", f"HEAD:{rel_floors}"])
+        head_floors = parse_floors_tsv(head_tsv, f"HEAD:{rel_floors}")
+        wt_diff = _run_git(repo_root, ["diff", "-M", "--name-status", "HEAD"])
+        wt_renames = _parse_renames(wt_diff)
+        errors.extend(
+            _compare_floor_maps(
+                head_floors,
+                working_floors,
+                working_lib_set,
+                wt_renames,
+                "working tree vs HEAD",
+            )
+        )
+
+    return errors
 
 
 def check_coverage(
@@ -167,13 +284,7 @@ def check_coverage(
         if path not in lib_set:
             errors.append(f"Stale or invalid row in coverage_floors.tsv (file does not exist): {path}")
 
-    prev_floors = read_previous_floors(repo_root, floors_path)
-    if prev_floors is not None:
-        for path, prev_val in sorted(prev_floors.items()):
-            if path in floors and floors[path] < prev_val:
-                errors.append(
-                    f"Lowered floor for {path}: {floors[path]:.1f}% < previous commit floor {prev_val:.1f}%"
-                )
+    errors.extend(check_floor_history(repo_root, floors_path, floors, lib_set))
 
     total_lines = 0
     total_hits = 0
@@ -193,6 +304,10 @@ def check_coverage(
                 errors.append(
                     f"Coverage below floor for {lf}: measured {pct:.1f}% ({hits_count}/{lines_count}) < floor {floor:.1f}%"
                 )
+            elif pct - floor > 0.5 + 1e-9:
+                errors.append(
+                    f"{lf}: measured {pct:.1f}, floor {floor:.1f}; raise the floor"
+                )
 
     total_pct = (total_hits * 100.0 / total_lines) if total_lines > 0 else 0.0
     total_floor = floors.get("TOTAL")
@@ -204,6 +319,10 @@ def check_coverage(
         if total_pct + 1e-9 < total_floor:
             errors.append(
                 f"Coverage below floor for TOTAL: measured {total_pct:.1f}% ({total_hits}/{total_lines}) < floor {total_floor:.1f}%"
+            )
+        elif total_pct - total_floor > 0.5 + 1e-9:
+            errors.append(
+                f"TOTAL: measured {total_pct:.1f}, floor {total_floor:.1f}; raise the floor"
             )
 
     return report_lines, errors

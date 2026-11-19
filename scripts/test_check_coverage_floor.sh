@@ -157,5 +157,107 @@ git -C "$REPO_RAISE" add coverage_floors.tsv && git -C "$REPO_RAISE" commit -q -
 assert_pass "9. raised floor passes" \
   python3 -I "$CHECK_SCRIPT" "$REPO_RAISE/coverage" "$REPO_RAISE/coverage_floors.tsv" --repo-root "$REPO_RAISE"
 
+# 10. Lowered in commit 1 then an unrelated commit 2 fails (two-commit push hole)
+REPO_TWO="$TMPDIR/lowered_two_commits"
+make_fixture_repo "$REPO_TWO"
+printf "path\tfloor\nTOTAL\t60.0\nlib/a.dart\t79.9\nlib/b.dart\t40.0\n" > "$REPO_TWO/coverage_floors.tsv"
+git -C "$REPO_TWO" add coverage_floors.tsv && git -C "$REPO_TWO" commit -q -m "commit 1: lower a"
+echo "// unrelated" >> "$REPO_TWO/lib/a.dart"
+git -C "$REPO_TWO" add lib/a.dart && git -C "$REPO_TWO" commit -q -m "commit 2: unrelated"
+assert_fail "10. lowered in commit 1 then unrelated commit 2 fails" "lib/a\.dart" \
+  python3 -I "$CHECK_SCRIPT" "$REPO_TWO/coverage" "$REPO_TWO/coverage_floors.tsv" --repo-root "$REPO_TWO"
+
+# 11. Lowered in the middle of three commits fails
+REPO_MID="$TMPDIR/lowered_middle_three"
+make_fixture_repo "$REPO_MID"
+echo "// c1" >> "$REPO_MID/lib/a.dart"
+git -C "$REPO_MID" add lib/a.dart && git -C "$REPO_MID" commit -q -m "c1"
+printf "path\tfloor\nTOTAL\t60.0\nlib/a.dart\t79.5\nlib/b.dart\t40.0\n" > "$REPO_MID/coverage_floors.tsv"
+git -C "$REPO_MID" add coverage_floors.tsv && git -C "$REPO_MID" commit -q -m "c2: lower a"
+printf "path\tfloor\nTOTAL\t60.0\nlib/a.dart\t80.0\nlib/b.dart\t40.0\n" > "$REPO_MID/coverage_floors.tsv"
+git -C "$REPO_MID" add coverage_floors.tsv && git -C "$REPO_MID" commit -q -m "c3: restore a"
+assert_fail "11. lowered in middle of three commits fails" "lib/a\.dart" \
+  python3 -I "$CHECK_SCRIPT" "$REPO_MID/coverage" "$REPO_MID/coverage_floors.tsv" --repo-root "$REPO_MID"
+
+# 12. TOTAL lowered two commits back fails
+REPO_TOT2="$TMPDIR/total_lowered_two_back"
+make_fixture_repo "$REPO_TOT2"
+printf "path\tfloor\nTOTAL\t59.9\nlib/a.dart\t80.0\nlib/b.dart\t40.0\n" > "$REPO_TOT2/coverage_floors.tsv"
+git -C "$REPO_TOT2" add coverage_floors.tsv && git -C "$REPO_TOT2" commit -q -m "lower total"
+printf "path\tfloor\nTOTAL\t60.0\nlib/a.dart\t80.0\nlib/b.dart\t40.0\n" > "$REPO_TOT2/coverage_floors.tsv"
+git -C "$REPO_TOT2" add coverage_floors.tsv && git -C "$REPO_TOT2" commit -q -m "restore total"
+echo "// extra" >> "$REPO_TOT2/lib/b.dart"
+git -C "$REPO_TOT2" add lib/b.dart && git -C "$REPO_TOT2" commit -q -m "unrelated"
+assert_fail "12. TOTAL lowered two commits back fails" "TOTAL" \
+  python3 -I "$CHECK_SCRIPT" "$REPO_TOT2/coverage" "$REPO_TOT2/coverage_floors.tsv" --repo-root "$REPO_TOT2"
+
+# 13. Row removed while its file still exists fails (even if re-added later)
+REPO_REM="$TMPDIR/row_removed_file_exists"
+make_fixture_repo "$REPO_REM"
+printf "path\tfloor\nTOTAL\t60.0\nlib/a.dart\t80.0\n" > "$REPO_REM/coverage_floors.tsv"
+git -C "$REPO_REM" add coverage_floors.tsv && git -C "$REPO_REM" commit -q -m "drop b row while lib/b.dart exists"
+printf "path\tfloor\nTOTAL\t60.0\nlib/a.dart\t80.0\nlib/b.dart\t40.0\n" > "$REPO_REM/coverage_floors.tsv"
+git -C "$REPO_REM" add coverage_floors.tsv && git -C "$REPO_REM" commit -q -m "re-add b row"
+assert_fail "13. row removed while its file still exists fails" "lib/b\.dart" \
+  python3 -I "$CHECK_SCRIPT" "$REPO_REM/coverage" "$REPO_REM/coverage_floors.tsv" --repo-root "$REPO_REM"
+
+# 14. Renamed file with a lower row fails
+REPO_REN="$TMPDIR/renamed_lower_row"
+make_fixture_repo "$REPO_REN"
+git -C "$REPO_REN" mv lib/a.dart lib/a_renamed.dart
+printf "path\tfloor\nTOTAL\t60.0\nlib/a_renamed.dart\t79.9\nlib/b.dart\t40.0\n" > "$REPO_REN/coverage_floors.tsv"
+git -C "$REPO_REN" add coverage_floors.tsv && git -C "$REPO_REN" commit -q -m "rename a with lower floor"
+sed -i 's/package:sample_pkg\/a.dart/package:sample_pkg\/a_renamed.dart/' "$REPO_REN/coverage/test_1.vm.json"
+assert_fail "14. renamed file with lower row fails" "lib/a_renamed\.dart|lib/a\.dart" \
+  python3 -I "$CHECK_SCRIPT" "$REPO_REN/coverage" "$REPO_REN/coverage_floors.tsv" --repo-root "$REPO_REN"
+
+# 15. Shallow clone fails closed with "needs full history"
+REPO_SHALLOW_SRC="$TMPDIR/shallow_src"
+make_fixture_repo "$REPO_SHALLOW_SRC"
+echo "// second" >> "$REPO_SHALLOW_SRC/lib/a.dart"
+git -C "$REPO_SHALLOW_SRC" add lib/a.dart && git -C "$REPO_SHALLOW_SRC" commit -q -m "second"
+REPO_SHALLOW="$TMPDIR/shallow_clone"
+git clone -q --depth 1 "file://$REPO_SHALLOW_SRC" "$REPO_SHALLOW"
+cp -r "$REPO_SHALLOW_SRC/coverage" "$REPO_SHALLOW/coverage"
+assert_fail "15. shallow clone fails" "needs full history" \
+  python3 -I "$CHECK_SCRIPT" "$REPO_SHALLOW/coverage" "$REPO_SHALLOW/coverage_floors.tsv" --repo-root "$REPO_SHALLOW"
+
+# 16. Raised floor two commits back passes
+REPO_RAISE2="$TMPDIR/raised_two_back"
+make_fixture_repo "$REPO_RAISE2"
+printf "path\tfloor\nTOTAL\t65.0\nlib/a.dart\t90.0\nlib/b.dart\t40.0\n" > "$REPO_RAISE2/coverage_floors.tsv"
+git -C "$REPO_RAISE2" add coverage_floors.tsv && git -C "$REPO_RAISE2" commit -q -m "raise floors"
+echo "// extra 1" >> "$REPO_RAISE2/lib/a.dart"
+git -C "$REPO_RAISE2" add lib/a.dart && git -C "$REPO_RAISE2" commit -q -m "unrelated 1"
+echo "// extra 2" >> "$REPO_RAISE2/lib/b.dart"
+git -C "$REPO_RAISE2" add lib/b.dart && git -C "$REPO_RAISE2" commit -q -m "unrelated 2"
+cat > "$REPO_RAISE2/coverage/test_1.vm.json" <<'EOF'
+{
+  "type": "CodeCoverage",
+  "coverage": [
+    {"source": "package:sample_pkg/a.dart", "hits": [1,1,2,1,3,1,4,1,5,1,6,1,7,1,8,1,9,1,10,0]},
+    {"source": "package:sample_pkg/b.dart", "hits": [1,1,2,1,3,1,4,1,5,0,6,0,7,0,8,0,9,0,10,0]}
+  ]
+}
+EOF
+assert_pass "16. raised floor two commits back passes" \
+  python3 -I "$CHECK_SCRIPT" "$REPO_RAISE2/coverage" "$REPO_RAISE2/coverage_floors.tsv" --repo-root "$REPO_RAISE2"
+
+# 17. Floor 0.6 below measured fails (Fix 5.3)
+REPO_LAG_FAIL="$TMPDIR/lag_0_6_fail"
+make_fixture_repo "$REPO_LAG_FAIL"
+printf "path\tfloor\nTOTAL\t60.0\nlib/a.dart\t79.4\nlib/b.dart\t40.0\n" > "$REPO_LAG_FAIL/coverage_floors.tsv"
+git -C "$REPO_LAG_FAIL" add coverage_floors.tsv && git -C "$REPO_LAG_FAIL" commit --amend -q --no-edit
+assert_fail "17. floor 0.6 below measured fails" "lib/a\.dart: measured 80\.0, floor 79\.4; raise the floor" \
+  python3 -I "$CHECK_SCRIPT" "$REPO_LAG_FAIL/coverage" "$REPO_LAG_FAIL/coverage_floors.tsv" --repo-root "$REPO_LAG_FAIL"
+
+# 18. Floor 0.5 below measured passes (Fix 5.3)
+REPO_LAG_PASS="$TMPDIR/lag_0_5_pass"
+make_fixture_repo "$REPO_LAG_PASS"
+printf "path\tfloor\nTOTAL\t60.0\nlib/a.dart\t79.5\nlib/b.dart\t40.0\n" > "$REPO_LAG_PASS/coverage_floors.tsv"
+git -C "$REPO_LAG_PASS" add coverage_floors.tsv && git -C "$REPO_LAG_PASS" commit --amend -q --no-edit
+assert_pass "18. floor 0.5 below measured passes" \
+  python3 -I "$CHECK_SCRIPT" "$REPO_LAG_PASS/coverage" "$REPO_LAG_PASS/coverage_floors.tsv" --repo-root "$REPO_LAG_PASS"
+
 echo "Summary: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
