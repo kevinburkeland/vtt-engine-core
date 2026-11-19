@@ -3395,4 +3395,25 @@ if grep -n "except Exception: *pass" "$SCRIPT_DIR/check_dependencies.py"; then
   exit 1
 fi
 
-echo "All 73 dependency check self-tests (DC1 - DC73) passed successfully!"
+# DC74: opt_child fails closed on non-dict input (catches mutation F1 directly)
+echo "Running DC74: opt_child fails closed on non-dict input..."
+python3 -I - "$SCRIPT_DIR/check_dependencies.py" << 'EOF_DC74'
+import importlib.util, io, sys
+from contextlib import redirect_stderr
+spec = importlib.util.spec_from_file_location("cd", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+for bad in ("0", ["0"], 42, None):
+    buf = io.StringIO()
+    try:
+        with redirect_stderr(buf):
+            mod.opt_child(bad, "pub_advisories.advisories[].affected[].ranges[].events[].introduced", "introduced", "dc74_input")
+        print(f"FAIL DC74: opt_child accepted non-dict {bad!r} instead of failing closed", file=sys.stderr)
+        sys.exit(1)
+    except SystemExit as e:
+        if e.code == 0 or "dc74_input" not in buf.getvalue():
+            print(f"FAIL DC74: unexpected exit {e.code} / stderr {buf.getvalue()!r} for {bad!r}", file=sys.stderr)
+            sys.exit(1)
+EOF_DC74
+
+echo "All 74 dependency check self-tests (DC1 - DC74) passed successfully!"
