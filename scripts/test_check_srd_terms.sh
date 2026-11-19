@@ -340,6 +340,43 @@ else
 fi
 git -C "$REPO_DIR" rm --quiet -f other_file.txt
 
+# --- SR20: Term in name of a renamed to "..." in Cleanup slice 11 row passes ---
+mkdir -p "$REPO_DIR/test"
+echo "Test for $_T_EA | renamed to \"Test for safe cantrip\" in Cleanup slice 11" > "$REPO_DIR/test/removed_test_names.txt"
+git -C "$REPO_DIR" add test/removed_test_names.txt
+if output=$(run_scan 2>&1); then
+  pass "SR20" "Term in name of renamed to \"...\" in Cleanup slice 11 row passes"
+else
+  fail "SR20" "Term in name of renamed to \"...\" in Cleanup slice 11 row was rejected" "$output"
+fi
+
+# --- SR21: Same term inside the quoted new name fails ---
+echo "Test for old name | renamed to \"Test for $_T_EA\" in Cleanup slice 11" > "$REPO_DIR/test/removed_test_names.txt"
+git -C "$REPO_DIR" add test/removed_test_names.txt
+if output=$(run_scan 2>&1); then
+  fail "SR21" "Term inside quoted new name was not caught" "$output"
+else
+  if echo "$output" | grep -q "test/removed_test_names.txt:1: $_T_EA"; then
+    pass "SR21" "Term inside quoted new name fails"
+  else
+    fail "SR21" "Output did not report expected hit" "$output"
+  fi
+fi
+
+# --- SR22: Row with no | fails as before ---
+echo "Test for $_T_EA renamed to \"Test for safe cantrip\" in Cleanup slice 11" > "$REPO_DIR/test/removed_test_names.txt"
+git -C "$REPO_DIR" add test/removed_test_names.txt
+if output=$(run_scan 2>&1); then
+  fail "SR22" "Row with no | was not caught" "$output"
+else
+  if echo "$output" | grep -q "test/removed_test_names.txt:1: $_T_EA"; then
+    pass "SR22" "Row with no | fails as before"
+  else
+    fail "SR22" "Output did not report expected hit" "$output"
+  fi
+fi
+git -C "$REPO_DIR" rm --quiet -f test/removed_test_names.txt
+
 echo "1..$TESTS_RUN"
 echo "All $TESTS_PASSED self-tests passed cleanly."
 exit 0

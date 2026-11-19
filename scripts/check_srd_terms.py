@@ -140,13 +140,17 @@ def main() -> int:
 
         scanned_files += 1
         for line_no, line in enumerate(lines, 1):
+            scan_text = line
             if rel_path == "test/removed_test_names.txt":
                 stripped = line.strip()
-                if stripped and not stripped.startswith("#") and "|" in stripped:
-                    parts = stripped.rsplit("|", 1)
-                    if parts[0].strip() and parts[1].strip() == "removed for SRD compliance in Cleanup slice 13":
-                        continue
-            lw = split_words(line)
+                if stripped and not stripped.startswith("#") and " | " in stripped:
+                    name_part, reason_part = stripped.split(" | ", 1)
+                    if name_part.strip() and (
+                        re.fullmatch(r'removed for SRD compliance in Cleanup slice \d+', reason_part.strip())
+                        or re.fullmatch(r'renamed to "[^"]+" in Cleanup slice \d+', reason_part.strip())
+                    ):
+                        scan_text = reason_part
+            lw = split_words(scan_text)
             if not lw:
                 continue
             for raw_term, tw in terms:
