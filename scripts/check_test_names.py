@@ -261,8 +261,90 @@ def main():
     for name, (line_num, reason) in allowed_removals.items():
         if name in live_test_names_at_head:
             file_problems.append(
-                f"test/removed_test_names.txt:{line_num}: row excuses a live test '{name}'"
+                f"test/removed_test_names.txt:{line_num}: row excuses a live test '{name}' (rows are append-only: stop and ask)"
             )
+
+    # Check (c): append-only history check on test/removed_test_names.txt
+    MARKER_LINE = '# Rows below this line are append-only (Cleanup slice 14).'
+    shallow_res = subprocess.run(['git', 'rev-parse', '--is-shallow-repository'], capture_output=True, text=True)
+    if shallow_res.returncode != 0:
+        print(f"Error checking shallow repository status: {shallow_res.stderr.strip()}", file=sys.stderr)
+        sys.exit(1)
+    if shallow_res.stdout.strip() == 'true':
+        print("Error: repository is a shallow clone; full git history is required to verify test/removed_test_names.txt append-only invariant.", file=sys.stderr)
+        sys.exit(1)
+
+    if removed_content is not None:
+        head_lines = removed_content.splitlines()
+        if MARKER_LINE not in [line.strip() for line in head_lines]:
+            file_problems.append(
+                f"test/removed_test_names.txt:1: missing required append-only marker line '{MARKER_LINE}' at {head}"
+            )
+        else:
+            log_res = subprocess.run(
+                ['git', 'log', head, '--reverse', '-S', MARKER_LINE, '--format=%H', '--', 'test/removed_test_names.txt'],
+                capture_output=True, text=True
+            )
+            if log_res.returncode != 0:
+                print(f"Error finding marker commit in git history: {log_res.stderr.strip()}", file=sys.stderr)
+                sys.exit(1)
+            marker_commits = []
+            for cand in [c.strip() for c in log_res.stdout.splitlines() if c.strip()]:
+                cand_content = get_git_file_content(cand, 'test/removed_test_names.txt')
+                if cand_content is not None and MARKER_LINE in [l.strip() for l in cand_content.splitlines()]:
+                    marker_commits.append(cand)
+                    break
+
+            if marker_commits:
+                marker_commit = marker_commits[0]
+                walk_res = subprocess.run(
+                    ['git', 'rev-list', '--reverse', '--parents', f'{marker_commit}..{head}'],
+                    capture_output=True, text=True
+                )
+                if walk_res.returncode != 0:
+                    print(f"Error running git rev-list {marker_commit}..{head}: {walk_res.stderr.strip()}", file=sys.stderr)
+                    sys.exit(1)
+
+                commits_to_check = []
+                for line in walk_res.stdout.splitlines():
+                    parts = line.strip().split()
+                    if len(parts) >= 2:
+                        commits_to_check.append((parts[0], parts[1:]))
+
+                if head == 'HEAD' and os.path.exists('test/removed_test_names.txt'):
+                    head_sha_res = subprocess.run(['git', 'rev-parse', 'HEAD'], capture_output=True, text=True)
+                    if head_sha_res.returncode == 0:
+                        head_sha = head_sha_res.stdout.strip()
+                        head_git_content = get_git_file_content(head_sha, 'test/removed_test_names.txt')
+                        if head_git_content is not None and head_git_content != removed_content:
+                            commits_to_check.append(('WORKTREE', [head_sha]))
+
+                for child_sha, parent_shas in commits_to_check:
+                    short_child = child_sha[:7] if child_sha != 'WORKTREE' else 'HEAD'
+                    if child_sha == 'WORKTREE':
+                        child_content = removed_content
+                    else:
+                        child_content = get_git_file_content(child_sha, 'test/removed_test_names.txt')
+                    child_lines = child_content.splitlines() if child_content is not None else []
+
+                    for p_sha in parent_shas:
+                        parent_content = get_git_file_content(p_sha, 'test/removed_test_names.txt')
+                        if parent_content is None:
+                            continue
+                        parent_lines = parent_content.splitlines()
+                        if MARKER_LINE not in [l.strip() for l in parent_lines]:
+                            continue
+
+                        for idx, p_line in enumerate(parent_lines):
+                            line_no = idx + 1
+                            if idx >= len(child_lines):
+                                file_problems.append(
+                                    f"{short_child}: test/removed_test_names.txt:{line_no}: append-only violation (deleted line): old='{p_line}' new='<deleted>'"
+                                )
+                            elif child_lines[idx] != p_line:
+                                file_problems.append(
+                                    f"{short_child}: test/removed_test_names.txt:{line_no}: append-only violation (modified or moved line): old='{p_line}' new='{child_lines[idx]}'"
+                                )
 
     # List commits
     rev_range = f"{baseline}..{head}"

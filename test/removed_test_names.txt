@@ -1,5 +1,6 @@
 # Removed test names ratchet whitelist.
 # Format: <test-name> | <reason>
+# Rows below this line are append-only (Cleanup slice 14).
 DprSimulator | tested DprSimulator, deleted as dead code in Cleanup slice 13
 runs 10,000 iterations synchronously with reasonable statistics | tested DprSimulator, deleted as dead code in Cleanup slice 13
 handles extreme AC cases (nat 20 hit, nat 1 miss) | tested DprSimulator, deleted as dead code in Cleanup slice 13

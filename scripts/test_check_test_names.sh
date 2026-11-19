@@ -101,6 +101,7 @@ void main() {}
 EOF
   cat << 'EOF' > test/removed_test_names.txt
 # Removed test names list
+# Rows below this line are append-only (Cleanup slice 14).
 charlie test | deprecated feature removed
 EOF
   git add test/charlie_test.dart test/removed_test_names.txt
@@ -134,6 +135,7 @@ void main() {}
 EOF
   cat << 'EOF' > test/removed_test_names.txt
 # Removed test names list
+# Rows below this line are append-only (Cleanup slice 14).
 delta test |
 EOF
   git add test/delta_test.dart test/removed_test_names.txt
@@ -397,6 +399,7 @@ EOF
   git commit -m "add live test" >/dev/null
 
   cat << 'EOF' > test/removed_test_names.txt
+# Rows below this line are append-only (Cleanup slice 14).
 currently live test | removed for test reasons
 EOF
   git add test/removed_test_names.txt
@@ -430,6 +433,7 @@ EOF
   git commit -m "add real test" >/dev/null
 
   cat << 'EOF' > test/removed_test_names.txt
+# Rows below this line are append-only (Cleanup slice 14).
 completely invented test name | removed for reasons
 EOF
   git add test/removed_test_names.txt
@@ -466,6 +470,7 @@ EOF
 void main() {}
 EOF
   cat << 'EOF' > test/removed_test_names.txt
+# Rows below this line are append-only (Cleanup slice 14).
 truly removed test | legitimately deleted
 EOF
   git add test/remove_me_test.dart test/removed_test_names.txt
@@ -500,6 +505,7 @@ void main() {
 }
 EOF
   cat << 'EOF' > test/removed_test_names.txt
+# Rows below this line are append-only (Cleanup slice 14).
 old name test | renamed to new name test
 EOF
   git add test/rename_test.dart test/removed_test_names.txt
@@ -515,5 +521,345 @@ EOF
   fi
 )
 
-echo "All test name ratchet self-tests passed (TN1 - TN15)."
+# TN16: append a row after the marker commit passes.
+(
+  repo="$TMP_DIR/repo_tn16"
+  setup_repo "$repo"
+  mkdir -p test
+  cat << 'EOF' > test/app_test.dart
+void main() {
+  test('first test', () {});
+  test('second test', () {});
+}
+EOF
+  cat << 'EOF' > test/removed_test_names.txt
+# Removed test names ratchet whitelist.
+# Rows below this line are append-only (Cleanup slice 14).
+EOF
+  git add test/app_test.dart test/removed_test_names.txt
+  git commit -m "add marker" >/dev/null
+  base_sha=$(git rev-parse HEAD)
+
+  cat << 'EOF' > test/app_test.dart
+void main() {
+  test('second test', () {});
+}
+EOF
+  cat << 'EOF' >> test/removed_test_names.txt
+first test | removed in step 1
+EOF
+  git add test/app_test.dart test/removed_test_names.txt
+  git commit -m "append first test removal" >/dev/null
+
+  cat << 'EOF' > test/app_test.dart
+void main() {}
+EOF
+  cat << 'EOF' >> test/removed_test_names.txt
+second test | removed in step 2
+EOF
+  git add test/app_test.dart test/removed_test_names.txt
+  git commit -m "append second test removal" >/dev/null
+
+  set +e
+  out=$(python3 -I "$CHECK_SCRIPT" "$base_sha" HEAD 2>&1)
+  rc=$?
+  set -e
+  if [ "$rc" -ne 0 ]; then
+    echo "FAIL: TN16 expected pass when appending rows, got rc $rc: $out" >&2
+    exit 1
+  fi
+)
+
+# TN17: edit a row's reason after the marker commit fails, naming the commit, line number and old/new text.
+(
+  repo="$TMP_DIR/repo_tn17"
+  setup_repo "$repo"
+  mkdir -p test
+  cat << 'EOF' > test/app_test.dart
+void main() {
+  test('first test', () {});
+}
+EOF
+  git add test/app_test.dart
+  git commit -m "init" >/dev/null
+  base_sha=$(git rev-parse HEAD)
+
+  cat << 'EOF' > test/app_test.dart
+void main() {}
+EOF
+  cat << 'EOF' > test/removed_test_names.txt
+# Removed test names ratchet whitelist.
+# Rows below this line are append-only (Cleanup slice 14).
+first test | original reason text
+EOF
+  git add test/app_test.dart test/removed_test_names.txt
+  git commit -m "remove with marker" >/dev/null
+
+  cat << 'EOF' > test/removed_test_names.txt
+# Removed test names ratchet whitelist.
+# Rows below this line are append-only (Cleanup slice 14).
+first test | rewritten reason text
+EOF
+  git add test/removed_test_names.txt
+  git commit -m "rewrite reason" >/dev/null
+  bad_sha=$(git rev-parse --short=7 HEAD)
+
+  set +e
+  out=$(python3 -I "$CHECK_SCRIPT" "$base_sha" HEAD 2>&1)
+  rc=$?
+  set -e
+  if [ "$rc" -eq 0 ]; then
+    echo "FAIL: TN17 expected failure when editing a row's reason" >&2
+    exit 1
+  fi
+  if [[ "$out" != *"$bad_sha"* ]] || [[ "$out" != *":3:"* ]] || [[ "$out" != *"original reason text"* ]] || [[ "$out" != *"rewritten reason text"* ]]; then
+    echo "FAIL: TN17 expected output to name commit $bad_sha, line 3, and old/new text, got: $out" >&2
+    exit 1
+  fi
+)
+
+# TN18: delete a row after the marker commit fails.
+(
+  repo="$TMP_DIR/repo_tn18"
+  setup_repo "$repo"
+  mkdir -p test
+  cat << 'EOF' > test/app_test.dart
+void main() {
+  test('first test', () {});
+  test('second test', () {});
+}
+EOF
+  git add test/app_test.dart
+  git commit -m "init" >/dev/null
+  base_sha=$(git rev-parse HEAD)
+
+  cat << 'EOF' > test/app_test.dart
+void main() {}
+EOF
+  cat << 'EOF' > test/removed_test_names.txt
+# Removed test names ratchet whitelist.
+# Rows below this line are append-only (Cleanup slice 14).
+first test | reason 1
+second test | reason 2
+EOF
+  git add test/app_test.dart test/removed_test_names.txt
+  git commit -m "remove two with marker" >/dev/null
+
+  cat << 'EOF' > test/app_test.dart
+void main() {
+  test('second test', () {});
+}
+EOF
+  cat << 'EOF' > test/removed_test_names.txt
+# Removed test names ratchet whitelist.
+# Rows below this line are append-only (Cleanup slice 14).
+first test | reason 1
+EOF
+  git add test/app_test.dart test/removed_test_names.txt
+  git commit -m "delete second row" >/dev/null
+  bad_sha=$(git rev-parse --short=7 HEAD)
+
+  set +e
+  out=$(python3 -I "$CHECK_SCRIPT" "$base_sha" HEAD 2>&1)
+  rc=$?
+  set -e
+  if [ "$rc" -eq 0 ]; then
+    echo "FAIL: TN18 expected failure when deleting a row" >&2
+    exit 1
+  fi
+  if [[ "$out" != *"$bad_sha"* ]] || [[ "$out" != *":4:"* ]] || [[ "$out" != *"second test | reason 2"* ]]; then
+    echo "FAIL: TN18 expected output to name commit $bad_sha, line 4, and deleted text, got: $out" >&2
+    exit 1
+  fi
+)
+
+# TN19: swap two rows after the marker commit fails.
+(
+  repo="$TMP_DIR/repo_tn19"
+  setup_repo "$repo"
+  mkdir -p test
+  cat << 'EOF' > test/app_test.dart
+void main() {
+  test('first test', () {});
+  test('second test', () {});
+}
+EOF
+  git add test/app_test.dart
+  git commit -m "init" >/dev/null
+  base_sha=$(git rev-parse HEAD)
+
+  cat << 'EOF' > test/app_test.dart
+void main() {}
+EOF
+  cat << 'EOF' > test/removed_test_names.txt
+# Removed test names ratchet whitelist.
+# Rows below this line are append-only (Cleanup slice 14).
+first test | reason 1
+second test | reason 2
+EOF
+  git add test/app_test.dart test/removed_test_names.txt
+  git commit -m "remove two with marker" >/dev/null
+
+  cat << 'EOF' > test/removed_test_names.txt
+# Removed test names ratchet whitelist.
+# Rows below this line are append-only (Cleanup slice 14).
+second test | reason 2
+first test | reason 1
+EOF
+  git add test/removed_test_names.txt
+  git commit -m "swap rows" >/dev/null
+  bad_sha=$(git rev-parse --short=7 HEAD)
+
+  set +e
+  out=$(python3 -I "$CHECK_SCRIPT" "$base_sha" HEAD 2>&1)
+  rc=$?
+  set -e
+  if [ "$rc" -eq 0 ]; then
+    echo "FAIL: TN19 expected failure when swapping two rows" >&2
+    exit 1
+  fi
+  if [[ "$out" != *"$bad_sha"* ]] || [[ "$out" != *":3:"* ]]; then
+    echo "FAIL: TN19 expected output to name commit $bad_sha and line 3, got: $out" >&2
+    exit 1
+  fi
+)
+
+# TN20: edit a row in one commit and append in the next fails, naming the first commit.
+(
+  repo="$TMP_DIR/repo_tn20"
+  setup_repo "$repo"
+  mkdir -p test
+  cat << 'EOF' > test/app_test.dart
+void main() {
+  test('first test', () {});
+  test('second test', () {});
+}
+EOF
+  git add test/app_test.dart
+  git commit -m "init" >/dev/null
+  base_sha=$(git rev-parse HEAD)
+
+  cat << 'EOF' > test/app_test.dart
+void main() {
+  test('second test', () {});
+}
+EOF
+  cat << 'EOF' > test/removed_test_names.txt
+# Removed test names ratchet whitelist.
+# Rows below this line are append-only (Cleanup slice 14).
+first test | original reason
+EOF
+  git add test/app_test.dart test/removed_test_names.txt
+  git commit -m "remove first with marker" >/dev/null
+
+  cat << 'EOF' > test/removed_test_names.txt
+# Removed test names ratchet whitelist.
+# Rows below this line are append-only (Cleanup slice 14).
+first test | edited reason
+EOF
+  git add test/removed_test_names.txt
+  git commit -m "edit first reason" >/dev/null
+  first_bad_sha=$(git rev-parse --short=7 HEAD)
+
+  cat << 'EOF' > test/app_test.dart
+void main() {}
+EOF
+  cat << 'EOF' >> test/removed_test_names.txt
+second test | appended reason
+EOF
+  git add test/app_test.dart test/removed_test_names.txt
+  git commit -m "append second" >/dev/null
+
+  set +e
+  out=$(python3 -I "$CHECK_SCRIPT" "$base_sha" HEAD 2>&1)
+  rc=$?
+  set -e
+  if [ "$rc" -eq 0 ]; then
+    echo "FAIL: TN20 expected failure when editing a row in one commit and appending in the next" >&2
+    exit 1
+  fi
+  if [[ "$out" != *"$first_bad_sha"* ]] || [[ "$out" != *"original reason"* ]] || [[ "$out" != *"edited reason"* ]]; then
+    echo "FAIL: TN20 expected output to name first commit $first_bad_sha and old/new text, got: $out" >&2
+    exit 1
+  fi
+)
+
+# TN21: remove the marker fails.
+(
+  repo="$TMP_DIR/repo_tn21"
+  setup_repo "$repo"
+  mkdir -p test
+  cat << 'EOF' > test/app_test.dart
+void main() {
+  test('first test', () {});
+}
+EOF
+  git add test/app_test.dart
+  git commit -m "init" >/dev/null
+  base_sha=$(git rev-parse HEAD)
+
+  cat << 'EOF' > test/app_test.dart
+void main() {}
+EOF
+  cat << 'EOF' > test/removed_test_names.txt
+# Removed test names ratchet whitelist.
+first test | removed without marker
+EOF
+  git add test/app_test.dart test/removed_test_names.txt
+  git commit -m "remove without marker" >/dev/null
+
+  set +e
+  out=$(python3 -I "$CHECK_SCRIPT" "$base_sha" HEAD 2>&1)
+  rc=$?
+  set -e
+  if [ "$rc" -eq 0 ]; then
+    echo "FAIL: TN21 expected failure when marker is missing at HEAD" >&2
+    exit 1
+  fi
+  if [[ "$out" != *"append-only"* ]]; then
+    echo "FAIL: TN21 expected output to mention missing append-only marker, got: $out" >&2
+    exit 1
+  fi
+)
+
+# TN22: a shallow clone fails closed.
+(
+  src_repo="$TMP_DIR/repo_tn22_src"
+  setup_repo "$src_repo"
+  mkdir -p test
+  cat << 'EOF' > test/app_test.dart
+void main() {
+  test('first test', () {});
+}
+EOF
+  cat << 'EOF' > test/removed_test_names.txt
+# Rows below this line are append-only (Cleanup slice 14).
+EOF
+  git add test/app_test.dart test/removed_test_names.txt
+  git commit -m "c1" >/dev/null
+  c1=$(git rev-parse HEAD)
+
+  echo "// comment" >> test/app_test.dart
+  git add test/app_test.dart
+  git commit -m "c2" >/dev/null
+
+  shallow_repo="$TMP_DIR/repo_tn22_shallow"
+  git clone --depth 1 "file://$src_repo" "$shallow_repo" >/dev/null 2>&1
+  cd "$shallow_repo"
+
+  set +e
+  out=$(python3 -I "$CHECK_SCRIPT" HEAD HEAD 2>&1)
+  rc=$?
+  set -e
+  if [ "$rc" -eq 0 ]; then
+    echo "FAIL: TN22 expected failure in a shallow clone" >&2
+    exit 1
+  fi
+  if [[ "$out" != *"shallow"* ]]; then
+    echo "FAIL: TN22 expected output to mention shallow clone, got: $out" >&2
+    exit 1
+  fi
+)
+
+echo "All test name ratchet self-tests passed (TN1 - TN22)."
 

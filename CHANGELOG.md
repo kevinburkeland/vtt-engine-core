@@ -3,6 +3,9 @@
 One line per slice, newest first. Each line: date, slice name, what changed for a user or a developer.
 Work before Map slice 1.1 (hardening passes 0 to 12) is in the git history.
 
+## 2026-11-19
+- Cleanup slice 14: Retire cs13 mutation branches, allow renamed-test reasons in check_srd_terms.py, and enforce append-only history on test/removed_test_names.txt in check_test_names.py (Fixes 1.1-1.3).
+
 ## 2026-11-18
 - Cleanup slice 13: Remove D&D fields and dynamic progression from TabletopCharacter, parameterize IRulesetModule<C extends TabletopCharacter>, rename spell_monster_equipment.dart to generic_item.dart and calculateD20Penalty to calculateRollPenalty, delete unused DprSimulator, and add identifier/string ruleset word bar (Fixes 8.1, 8.2, 8.4).
 - Cleanup slice 13: Rename core Character/CharacterResourcePool/InventoryItemInstance/EntityType to TabletopCharacter/TabletopResourcePool/TabletopItemInstance/TabletopEntityType and delete unused StartingEquipmentItemRequest (Fix 7.1).
