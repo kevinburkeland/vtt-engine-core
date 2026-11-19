@@ -165,7 +165,7 @@ HybridLogicalClock _randomHlc(Random rng, int step) {
 
 EntityReference<DomainEntity> _randomRef(
   Random rng,
-  EntityType refType,
+  TabletopEntityType refType,
   String prefix,
   int index,
 ) {
@@ -187,10 +187,10 @@ EntityReference<DomainEntity> _randomRef(
   );
 }
 
-InventoryItemInstance _randomInventoryItem(Random rng, int index) {
+TabletopItemInstance _randomInventoryItem(Random rng, int index) {
   final hasSlot = rng.nextBool();
-  return InventoryItemInstance(
-    itemRef: _randomRef(rng, EntityType.item, 'item', index),
+  return TabletopItemInstance(
+    itemRef: _randomRef(rng, TabletopEntityType.item, 'item', index),
     instanceId: 'inst-$index-${rng.nextInt(1000)}',
     quantity: 1 + rng.nextInt(5),
     isEquipped: hasSlot,
@@ -223,7 +223,7 @@ PartyPurse _randomPurse(Random rng, int seed) {
   );
 }
 
-Character _buildRandomCharacter(int seed) {
+TabletopCharacter _buildRandomCharacter(int seed) {
   final rng = Random(seed ^ 0x5F3759DF);
   final invCount = _variedCount(rng, seed);
   final featCount = _variedCount(rng, seed);
@@ -251,15 +251,15 @@ Character _buildRandomCharacter(int seed) {
     maxRes['pool_$i'] = 5 + rng.nextInt(5);
   }
 
-  return Character(
+  return TabletopCharacter(
     id: EntityId(
       slug: 'char-$seed-${rng.nextInt(1000)}',
       ruleset: RulesetVersion.values[rng.nextInt(RulesetVersion.values.length)],
     ),
     name: 'Hero $seed',
-    speciesRef: _randomRef(rng, const EntityType('lineage'), 'lineage', seed),
+    speciesRef: _randomRef(rng, const TabletopEntityType('lineage'), 'lineage', seed),
     backgroundRef: (seed == 0 || rng.nextBool())
-        ? _randomRef(rng, const EntityType('origin'), 'bg', seed)
+        ? _randomRef(rng, const TabletopEntityType('origin'), 'bg', seed)
         : null,
     progression: seed == 1
         ? null
@@ -283,16 +283,16 @@ Character _buildRandomCharacter(int seed) {
     savingThrowProficiencies: saves,
     toolProficiencies: List<String>.generate(toolCount, (i) => 'tool_$i'),
     languages: List<String>.generate(langCount, (i) => 'lang_$i'),
-    inventory: List<InventoryItemInstance>.generate(
+    inventory: List<TabletopItemInstance>.generate(
       invCount,
       (i) => _randomInventoryItem(rng, i),
     ),
     purse: _randomPurse(rng, seed),
     feats: List<EntityReference<DomainEntity>>.generate(
       featCount,
-      (i) => _randomRef(rng, const EntityType('talent'), 'talent', i),
+      (i) => _randomRef(rng, const TabletopEntityType('talent'), 'talent', i),
     ),
-    resources: CharacterResourcePool(
+    resources: TabletopResourcePool(
       currentHp: seed == 1 ? null : 10 + rng.nextInt(40),
       tempHp: seed == 1 ? null : rng.nextInt(10),
       customResourcesCurrent: curRes,
@@ -351,7 +351,7 @@ LootContainer _buildRandomLootContainer(int seed, [int offset = 0]) {
         .values[rng.nextInt(LootContainerType.values.length)],
     isLocked: rng.nextBool(),
     capacityWeightLbs: seed == 1 ? null : (25.0 + rng.nextInt(100)),
-    items: List<InventoryItemInstance>.generate(
+    items: List<TabletopItemInstance>.generate(
       itemCount,
       (i) => _randomInventoryItem(rng, i),
     ),
@@ -512,7 +512,7 @@ void main() {
           typeName: 'Character',
           seed: seed,
           originalMap: originalMap,
-          roundTrip: (input) => Character.fromMap(input).toMap(),
+          roundTrip: (input) => TabletopCharacter.fromMap(input).toMap(),
         );
       }
     });

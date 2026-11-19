@@ -89,14 +89,14 @@ void main() {
     });
 
     test('Can represent a ruleset-neutral Character without class, level, or speed', () {
-      final character = Character(
+      final character = TabletopCharacter(
         id: const EntityId(
           slug: 'inspector-legrasse',
           ruleset: RulesetVersion.homebrew,
         ),
         name: 'Inspector Legrasse',
         speciesRef: EntityReference<DomainEntity>(
-          refType: EntityType.custom,
+          refType: TabletopEntityType.custom,
           slug: 'human',
           displayName: 'Human',
         ),
@@ -121,7 +121,7 @@ void main() {
       expect(character.customProperties['occupation'], equals('Detective'));
 
       final map = character.toMap();
-      final restored = Character.fromMap(map);
+      final restored = TabletopCharacter.fromMap(map);
       expect(restored.name, equals('Inspector Legrasse'));
       expect(restored.progression, isNull);
       expect(restored.baseSpeed, isNull);

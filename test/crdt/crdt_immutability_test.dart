@@ -331,10 +331,10 @@ void main() {
         final props = <String, dynamic>{
           'charges': 3,
         };
-        final item = InventoryItemInstance(
+        final item = TabletopItemInstance(
           itemRef: const EntityReference.empty(
             slug: 'wand-1',
-            refType: EntityType.item,
+            refType: TabletopEntityType.item,
             displayName: 'Wand of Wonder',
           ),
           instanceId: 'wand-inst-1',
@@ -353,10 +353,10 @@ void main() {
           }
         };
 
-        final item = InventoryItemInstance(
+        final item = TabletopItemInstance(
           itemRef: const EntityReference.empty(
             slug: 'amulet',
-            refType: EntityType.item,
+            refType: TabletopEntityType.item,
             displayName: 'Amulet',
           ),
           instanceId: 'am-1',
@@ -378,10 +378,10 @@ void main() {
           ]
         };
 
-        final item = InventoryItemInstance(
+        final item = TabletopItemInstance(
           itemRef: const EntityReference.empty(
             slug: 'bag',
-            refType: EntityType.item,
+            refType: TabletopEntityType.item,
             displayName: 'Bag of Holding',
           ),
           instanceId: 'bag-1',
@@ -406,10 +406,10 @@ void main() {
       });
 
       test('copyWith preserves deep defensive copy invariant for nested metadata', () {
-        final original = InventoryItemInstance(
+        final original = TabletopItemInstance(
           itemRef: const EntityReference.empty(
             slug: 'ring',
-            refType: EntityType.item,
+            refType: TabletopEntityType.item,
             displayName: 'Ring',
           ),
           instanceId: 'ring-1',
@@ -438,10 +438,10 @@ void main() {
           }
         };
 
-        final item = InventoryItemInstance(
+        final item = TabletopItemInstance(
           itemRef: const EntityReference.empty(
             slug: 'wand_of_magic_missiles',
-            refType: EntityType.item,
+            refType: TabletopEntityType.item,
             displayName: 'Wand of Magic Missiles',
           ),
           instanceId: 'wand-1',
@@ -583,7 +583,7 @@ void main() {
         final skills = <dynamic>['athletics', 'acrobatics'];
 
         final ref = EntityReference<DomainEntity>(
-          refType: EntityType.item,
+          refType: TabletopEntityType.item,
           slug: 'sunblade',
           displayName: 'Sun Blade',
           grantedSkills: skills,
@@ -632,13 +632,13 @@ void main() {
         };
 
         final ref = EntityReference<DomainEntity>(
-          refType: EntityType.item,
+          refType: TabletopEntityType.item,
           slug: 'rapier-plus-1',
           displayName: 'Rapier +1',
           customProperties: refProps,
         );
 
-        final item = InventoryItemInstance(
+        final item = TabletopItemInstance(
           itemRef: ref,
           instanceId: 'rapier-inst-1',
         );

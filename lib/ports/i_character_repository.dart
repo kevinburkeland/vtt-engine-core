@@ -1,7 +1,7 @@
 import '../models/character_models.dart';
 
 /// Port (interface) defining character persistence operations in the Domain layer.
-abstract class ICharacterRepository<T extends Character> {
+abstract class ICharacterRepository<T extends TabletopCharacter> {
   /// Loads all saved characters from persistent storage.
   Future<List<T>> loadCharacters();
 

@@ -56,7 +56,7 @@ void main() {
   group('EntityReference toTraitDefinition resolver decoupling', () {
     test('toTraitDefinition executes required resolver callback', () {
       const ref = EntityReference<DomainEntity>.empty(
-        refType: EntityType('trait'),
+        refType: TabletopEntityType('trait'),
         slug: 'grappler',
         displayName: 'Grappler',
       );

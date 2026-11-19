@@ -32,7 +32,7 @@ class LootContainer {
   final LootContainerType type;
   final bool isLocked;
   final double? capacityWeightLbs;
-  final List<InventoryItemInstance> items;
+  final List<TabletopItemInstance> items;
   final PartyPurse purse;
   final Map<String, dynamic> permissions;
   final Map<String, dynamic> customProperties;
@@ -47,7 +47,7 @@ class LootContainer {
     this.type = LootContainerType.chest,
     this.isLocked = false,
     this.capacityWeightLbs,
-    List<InventoryItemInstance> items = const [],
+    List<TabletopItemInstance> items = const [],
     this.purse = const PartyPurse.empty(),
     Map<String, dynamic> permissions = const {},
     Map<String, dynamic> customProperties = const {},
@@ -65,7 +65,7 @@ class LootContainer {
                       nodeId: 'genesis',
                     ),
                   )),
-        items = List<InventoryItemInstance>.unmodifiable(items),
+        items = List<TabletopItemInstance>.unmodifiable(items),
         permissions = deepFreezeMap(permissions),
         customProperties = deepFreezeMap(customProperties);
 
@@ -99,7 +99,7 @@ class LootContainer {
     LootContainerType? type,
     bool? isLocked,
     double? capacityWeightLbs,
-    List<InventoryItemInstance>? items,
+    List<TabletopItemInstance>? items,
     PartyPurse? purse,
     Map<String, dynamic>? permissions,
     Map<String, dynamic>? customProperties,
@@ -132,7 +132,7 @@ class LootContainer {
       isLocked: isLocked ?? this.isLocked,
       capacityWeightLbs: capacityWeightLbs ?? this.capacityWeightLbs,
       items:
-          items != null ? List<InventoryItemInstance>.from(items) : this.items,
+          items != null ? List<TabletopItemInstance>.from(items) : this.items,
       purse: purse ?? this.purse,
       permissions: permissions != null
           ? Map<String, dynamic>.from(permissions)
@@ -216,7 +216,7 @@ class LootContainer {
       items: (map['items'] as List? ?? [])
           .whereType<Map<dynamic, dynamic>>()
           .map((i) =>
-              InventoryItemInstance.fromMap(Map<String, dynamic>.from(i)))
+              TabletopItemInstance.fromMap(Map<String, dynamic>.from(i)))
           .toList(),
       purse: map['purse'] != null
           ? PartyPurse.fromMap(
@@ -268,17 +268,17 @@ class LootContainer {
 
     final mergedName = a.nameRegister.merge(b.nameRegister);
 
-    final itemsMapA = <String, InventoryItemInstance>{};
+    final itemsMapA = <String, TabletopItemInstance>{};
     for (final i in a.items) {
       itemsMapA[i.instanceId] = i;
     }
-    final itemsMapB = <String, InventoryItemInstance>{};
+    final itemsMapB = <String, TabletopItemInstance>{};
     for (final i in b.items) {
       itemsMapB[i.instanceId] = i;
     }
 
     final allItemIds = <String>{...itemsMapA.keys, ...itemsMapB.keys}.toList()..sort();
-    final mergedItems = <InventoryItemInstance>[];
+    final mergedItems = <TabletopItemInstance>[];
     for (final id in allItemIds) {
       final itemA = itemsMapA[id];
       final itemB = itemsMapB[id];

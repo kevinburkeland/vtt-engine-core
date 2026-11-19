@@ -4,6 +4,7 @@ One line per slice, newest first. Each line: date, slice name, what changed for 
 Work before Map slice 1.1 (hardening passes 0 to 12) is in the git history.
 
 ## 2026-11-18
+- Cleanup slice 13: Rename core Character/CharacterResourcePool/InventoryItemInstance/EntityType to TabletopCharacter/TabletopResourcePool/TabletopItemInstance/TabletopEntityType and delete unused StartingEquipmentItemRequest (Fix 7.1).
 - Cleanup slice 13: Enforce full schema paths on need_child/opt_child, OSV range events, and npm audit entries in check_dependencies.py; upgrade check_coverage_floor.py to full git history with fetch-depth: 0 and 0.5 max floor lag (Fixes 5.1-5.3).
 - Cleanup slice 13: Expand shared SRD compliance denylist and tighten check_srd_terms.py to scan test/removed_test_names.txt except rows with the slice 13 SRD removal reason (Fix 1.3).
 

@@ -12,7 +12,7 @@ abstract class DomainEntity {
 
   EntityId get id;
   String get name;
-  EntityType get entityType;
+  TabletopEntityType get entityType;
   RulesetVersion get ruleset => id.ruleset;
   String get slug => id.slug;
   Map<String, dynamic> get customProperties;
@@ -26,7 +26,7 @@ typedef EntityRef<T extends DomainEntity> = EntityReference<T>;
 typedef EntityLookup<T extends DomainEntity> = ({
   T? entity,
   String slug,
-  EntityType refType,
+  TabletopEntityType refType,
   RulesetVersion? rulesetPreferred,
   String displayName,
   bool isResolved,
@@ -44,7 +44,7 @@ extension EntityLookupExtension<T extends DomainEntity> on EntityLookup<T> {
 
 @immutable
 class EntityReference<T extends DomainEntity> {
-  final EntityType refType;
+  final TabletopEntityType refType;
   final String slug;
   final RulesetVersion? rulesetPreferred;
   final String displayName;
@@ -104,7 +104,7 @@ class EntityReference<T extends DomainEntity> {
 
   factory EntityReference.fromMap(Map<String, dynamic> map) {
     final refTypeStr = map['refType']?.toString() ?? 'custom';
-    final refType = EntityType(refTypeStr);
+    final refType = TabletopEntityType(refTypeStr);
 
     RulesetVersion? ruleset;
     if (map['rulesetPreferred'] != null) {
@@ -134,7 +134,7 @@ class EntityReference<T extends DomainEntity> {
   }
 
   EntityReference<T> copyWith({
-    EntityType? refType,
+    TabletopEntityType? refType,
     String? slug,
     RulesetVersion? rulesetPreferred,
     String? displayName,
@@ -195,7 +195,7 @@ class UnresolvedReference implements DomainEntity {
   @override
   final String name;
   @override
-  final EntityType entityType;
+  final TabletopEntityType entityType;
   final String reason;
   @override
   final Map<String, dynamic> customProperties;

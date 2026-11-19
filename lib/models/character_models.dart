@@ -15,24 +15,6 @@ bool _mapEquals<K, V>(Map<K, V>? a, Map<K, V>? b) =>
     MapEquality<K, V>().equals(a, b);
 bool _setEquals<T>(Set<T>? a, Set<T>? b) => SetEquality<T>().equals(a, b);
 
-/// Starting Equipment Preset Item Request
-@immutable
-class StartingEquipmentItemRequest {
-  final EntityReference<DomainEntity> itemRef;
-  final int quantity;
-  final bool equipImmediately;
-  final String? defaultSlot;
-  final Map<String, dynamic> customProperties;
-
-  const StartingEquipmentItemRequest({
-    required this.itemRef,
-    this.quantity = 1,
-    this.equipImmediately = false,
-    this.defaultSlot,
-    this.customProperties = const {},
-  });
-}
-
 /// Generic, ruleset-agnostic attribute pool operating dynamically over keys
 /// defined by an [IAttributeSystem].
 @immutable
@@ -119,7 +101,7 @@ class AttributePool {
 
 /// Generic Inventory Item Instance representing an equipped or unequipped item.
 @immutable
-class InventoryItemInstance {
+class TabletopItemInstance {
   final EntityReference<DomainEntity> itemRef;
   final String instanceId;
   final int quantity;
@@ -127,7 +109,7 @@ class InventoryItemInstance {
   final dynamic equippedSlot;
   final Map<String, dynamic> customProperties;
 
-  InventoryItemInstance({
+  TabletopItemInstance({
     required this.itemRef,
     required this.instanceId,
     this.quantity = 1,
@@ -136,7 +118,7 @@ class InventoryItemInstance {
     Map<String, dynamic> customProperties = const {},
   }) : customProperties = deepFreezeMap(customProperties);
 
-  const InventoryItemInstance.constant({
+  const TabletopItemInstance.constant({
     required this.itemRef,
     required this.instanceId,
     this.quantity = 1,
@@ -146,7 +128,7 @@ class InventoryItemInstance {
 
   String get displayName => itemRef.displayName;
 
-  InventoryItemInstance copyWith({
+  TabletopItemInstance copyWith({
     EntityReference<DomainEntity>? itemRef,
     String? instanceId,
     int? quantity,
@@ -154,7 +136,7 @@ class InventoryItemInstance {
     dynamic equippedSlot,
     Map<String, dynamic>? customProperties,
   }) {
-    return InventoryItemInstance(
+    return TabletopItemInstance(
       itemRef: itemRef ?? this.itemRef,
       instanceId: instanceId ?? this.instanceId,
       quantity: quantity ?? this.quantity,
@@ -174,8 +156,8 @@ class InventoryItemInstance {
         'customProperties': customProperties,
       };
 
-  factory InventoryItemInstance.fromMap(Map<String, dynamic> map) {
-    return InventoryItemInstance(
+  factory TabletopItemInstance.fromMap(Map<String, dynamic> map) {
+    return TabletopItemInstance(
       itemRef: EntityReference<DomainEntity>.fromMap(
           Map<String, dynamic>.from(map['itemRef'] as Map? ?? {})),
       instanceId: map['instanceId']?.toString() ?? '',
@@ -192,7 +174,7 @@ class InventoryItemInstance {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is InventoryItemInstance &&
+      other is TabletopItemInstance &&
           runtimeType == other.runtimeType &&
           itemRef == other.itemRef &&
           instanceId == other.instanceId &&
@@ -214,7 +196,7 @@ class InventoryItemInstance {
 
 /// Generic character resource pools.
 @immutable
-class CharacterResourcePool {
+class TabletopResourcePool {
   final EntityVitals? _rawVitals;
   final int? _rawCurrentHp;
   final int? _rawTempHp;
@@ -222,7 +204,7 @@ class CharacterResourcePool {
   final Map<String, int> customResourcesMax;
   final Map<String, dynamic> auxiliaryData;
 
-  const CharacterResourcePool({
+  const TabletopResourcePool({
     EntityVitals? vitals,
     int? currentHp,
     int? tempHp,
@@ -249,7 +231,7 @@ class CharacterResourcePool {
             )
           : null);
 
-  CharacterResourcePool copyWith({
+  TabletopResourcePool copyWith({
     EntityVitals? vitals,
     int? currentHp,
     int? tempHp,
@@ -257,7 +239,7 @@ class CharacterResourcePool {
     Map<String, int>? customResourcesMax,
     Map<String, dynamic>? auxiliaryData,
   }) {
-    return CharacterResourcePool(
+    return TabletopResourcePool(
       vitals: vitals ?? _rawVitals,
       currentHp: currentHp ?? _rawCurrentHp,
       tempHp: tempHp ?? _rawTempHp,
@@ -281,7 +263,7 @@ class CharacterResourcePool {
         'auxiliaryData': auxiliaryData,
       };
 
-  factory CharacterResourcePool.fromMap(Map<String, dynamic> map) {
+  factory TabletopResourcePool.fromMap(Map<String, dynamic> map) {
     final cur = <String, int>{};
     if (map['customResourcesCurrent'] is Map) {
       (map['customResourcesCurrent'] as Map).forEach((k, v) {
@@ -296,7 +278,7 @@ class CharacterResourcePool {
       });
     }
 
-    return CharacterResourcePool(
+    return TabletopResourcePool(
       currentHp: (map['currentHp'] as num?)?.toInt(),
       tempHp: (map['tempHp'] as num?)?.toInt(),
       customResourcesCurrent: cur,
@@ -309,7 +291,7 @@ class CharacterResourcePool {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is CharacterResourcePool &&
+      other is TabletopResourcePool &&
           runtimeType == other.runtimeType &&
           currentHp == other.currentHp &&
           tempHp == other.tempHp &&
@@ -441,7 +423,7 @@ class AttributeKeySet with SetMixin<String> {
 
 /// Root Character Domain Entity adhering to DomainEntity interface.
 /// Encapsulates generic tabletop character state without game-specific assumptions.
-class Character extends DomainEntity {
+class TabletopCharacter extends DomainEntity {
   @override
   final EntityId id;
   @override
@@ -455,17 +437,17 @@ class Character extends DomainEntity {
   final Set<dynamic> savingThrowProficiencies;
   final List<String> toolProficiencies;
   final List<String> languages;
-  final List<InventoryItemInstance> inventory;
+  final List<TabletopItemInstance> inventory;
   final PartyPurse purse;
   final List<EntityReference<DomainEntity>> feats;
-  final CharacterResourcePool resources;
+  final TabletopResourcePool resources;
   final List<CharacterCondition> conditions;
   final int? baseSpeed;
   final String rulesetId;
   @override
   final Map<String, dynamic> customProperties;
 
-  const Character({
+  const TabletopCharacter({
     required this.id,
     required this.name,
     required this.speciesRef,
@@ -480,7 +462,7 @@ class Character extends DomainEntity {
     this.inventory = const [],
     this.purse = const PartyPurse.empty(),
     this.feats = const [],
-    this.resources = const CharacterResourcePool(),
+    this.resources = const TabletopResourcePool(),
     this.conditions = const [],
     this.baseSpeed,
     this.rulesetId = 'default',
@@ -488,7 +470,7 @@ class Character extends DomainEntity {
   });
 
   @override
-  EntityType get entityType => EntityType.character;
+  TabletopEntityType get entityType => TabletopEntityType.character;
 
   /// Machine-readable identifier of the active ruleset module.
   String get activeModuleId => rulesetId;
@@ -703,7 +685,7 @@ class Character extends DomainEntity {
         'customProperties': customProperties,
       };
 
-  factory Character.fromMap(Map<String, dynamic> map) {
+  factory TabletopCharacter.fromMap(Map<String, dynamic> map) {
     final traits = <String, double>{};
     if (map['traitProficiencies'] is Map) {
       (map['traitProficiencies'] as Map).forEach((k, v) {
@@ -718,7 +700,7 @@ class Character extends DomainEntity {
       }
     }
 
-    return Character(
+    return TabletopCharacter(
       id: map['id'] is Map
           ? EntityId.fromMap(Map<String, dynamic>.from(map['id'] as Map))
           : EntityId(
@@ -746,7 +728,7 @@ class Character extends DomainEntity {
       inventory: (map['inventory'] as List? ?? [])
           .whereType<Map<dynamic, dynamic>>()
           .map((i) =>
-              InventoryItemInstance.fromMap(Map<String, dynamic>.from(i)))
+              TabletopItemInstance.fromMap(Map<String, dynamic>.from(i)))
           .toList(),
       purse: map['purse'] != null
           ? PartyPurse.fromMap(
@@ -757,7 +739,7 @@ class Character extends DomainEntity {
           .map((f) => EntityReference<DomainEntity>.fromMap(
               Map<String, dynamic>.from(f)))
           .toList(),
-      resources: CharacterResourcePool.fromMap(
+      resources: TabletopResourcePool.fromMap(
           map['resources'] is Map
               ? Map<String, dynamic>.from(map['resources'] as Map)
               : <String, dynamic>{
@@ -776,7 +758,7 @@ class Character extends DomainEntity {
     );
   }
 
-  Character copyWith({
+  TabletopCharacter copyWith({
     EntityId? id,
     String? name,
     EntityReference<DomainEntity>? speciesRef,
@@ -788,16 +770,16 @@ class Character extends DomainEntity {
     Set<dynamic>? savingThrowProficiencies,
     List<String>? toolProficiencies,
     List<String>? languages,
-    List<InventoryItemInstance>? inventory,
+    List<TabletopItemInstance>? inventory,
     PartyPurse? purse,
     List<EntityReference<DomainEntity>>? feats,
-    CharacterResourcePool? resources,
+    TabletopResourcePool? resources,
     List<CharacterCondition>? conditions,
     int? baseSpeed,
     String? rulesetId,
     Map<String, dynamic>? customProperties,
   }) {
-    return Character(
+    return TabletopCharacter(
       id: id ?? this.id,
       name: name ?? this.name,
       speciesRef: speciesRef ?? this.speciesRef,
@@ -834,7 +816,7 @@ class Character extends DomainEntity {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is Character &&
+      other is TabletopCharacter &&
           runtimeType == other.runtimeType &&
           id == other.id &&
           name == other.name &&

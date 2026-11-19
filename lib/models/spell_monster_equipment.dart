@@ -23,7 +23,7 @@ class GenericItem extends DomainEntity {
   });
 
   @override
-  EntityType get entityType => EntityType.item;
+  TabletopEntityType get entityType => TabletopEntityType.item;
 
   @override
   Map<String, dynamic> toMap() => {

@@ -80,7 +80,7 @@ void main() {
     group('EntityReference Deep Value Semantics', () {
       test('independently allocated nested-equal EntityReferences are equal with identical hashCodes', () {
         final refA = EntityReference(
-          refType: const EntityType('item'),
+          refType: const TabletopEntityType('item'),
           slug: 'ring_protection',
           displayName: 'Ring of Protection',
           grantedSkills: ['acrobatics', 'athletics'],
@@ -91,7 +91,7 @@ void main() {
         );
 
         final refB = EntityReference(
-          refType: const EntityType('item'),
+          refType: const TabletopEntityType('item'),
           slug: 'ring_protection',
           displayName: 'Ring of Protection',
           grantedSkills: ['acrobatics', 'athletics'],
@@ -108,7 +108,7 @@ void main() {
 
       test('reordered nested map keys remain equal with equal hashCodes', () {
         final refA = EntityReference(
-          refType: const EntityType('spell'),
+          refType: const TabletopEntityType('spell'),
           slug: 'fireball',
           displayName: 'Fireball',
           customProperties: {
@@ -118,7 +118,7 @@ void main() {
         );
 
         final refB = EntityReference(
-          refType: const EntityType('spell'),
+          refType: const TabletopEntityType('spell'),
           slug: 'fireball',
           displayName: 'Fireball',
           customProperties: {
@@ -133,14 +133,14 @@ void main() {
 
       test('nested list element order differences remain unequal', () {
         final refA = EntityReference(
-          refType: const EntityType('item'),
+          refType: const TabletopEntityType('item'),
           slug: 'item1',
           displayName: 'Item 1',
           grantedSkills: ['athletics', 'acrobatics'],
         );
 
         final refB = EntityReference(
-          refType: const EntityType('item'),
+          refType: const TabletopEntityType('item'),
           slug: 'item1',
           displayName: 'Item 1',
           grantedSkills: ['acrobatics', 'athletics'],
@@ -151,14 +151,14 @@ void main() {
 
       test('nested metadata difference causes inequality', () {
         final refA = EntityReference(
-          refType: const EntityType('feat'),
+          refType: const TabletopEntityType('feat'),
           slug: 'alert',
           displayName: 'Alert',
           customProperties: {'initiative': 5},
         );
 
         final refB = EntityReference(
-          refType: const EntityType('feat'),
+          refType: const TabletopEntityType('feat'),
           slug: 'alert',
           displayName: 'Alert',
           customProperties: {'initiative': 4},
@@ -169,7 +169,7 @@ void main() {
 
       test('copyWith and cast preserve deep equality semantics', () {
         final refA = EntityReference(
-          refType: const EntityType('feat'),
+          refType: const TabletopEntityType('feat'),
           slug: 'alert',
           displayName: 'Alert',
           customProperties: {'val': 1},
@@ -190,9 +190,9 @@ void main() {
           containerId: 'chest_1',
           name: 'Old Chest',
           items: [
-            InventoryItemInstance(
+            TabletopItemInstance(
               itemRef: const EntityReference.empty(
-                refType: EntityType('item'),
+                refType: TabletopEntityType('item'),
                 slug: 'potion',
                 displayName: 'Potion',
               ),
@@ -207,9 +207,9 @@ void main() {
           containerId: 'chest_1',
           name: 'Old Chest',
           items: [
-            InventoryItemInstance(
+            TabletopItemInstance(
               itemRef: const EntityReference.empty(
-                refType: EntityType('item'),
+                refType: TabletopEntityType('item'),
                 slug: 'potion',
                 displayName: 'Potion',
               ),
@@ -228,9 +228,9 @@ void main() {
       });
 
       test('InventoryItemInstance observes customProperties changes even with identical length', () {
-        final itemA = InventoryItemInstance(
+        final itemA = TabletopItemInstance(
           itemRef: const EntityReference.empty(
-            refType: EntityType('weapon'),
+            refType: TabletopEntityType('weapon'),
             slug: 'dagger',
             displayName: 'Dagger',
           ),
@@ -238,9 +238,9 @@ void main() {
           customProperties: {'damage': '1d4'},
         );
 
-        final itemB = InventoryItemInstance(
+        final itemB = TabletopItemInstance(
           itemRef: const EntityReference.empty(
-            refType: EntityType('weapon'),
+            refType: TabletopEntityType('weapon'),
             slug: 'dagger',
             displayName: 'Dagger',
           ),

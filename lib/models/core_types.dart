@@ -4,20 +4,20 @@ export '../homebrew/value_objects/ruleset_version.dart';
 
 /// Generic Extensible Entity Type Classification.
 @immutable
-class EntityType {
+class TabletopEntityType {
   final String key;
-  const EntityType(this.key);
+  const TabletopEntityType(this.key);
 
-  static const EntityType character = EntityType('character');
-  static const EntityType item = EntityType('item');
-  static const EntityType custom = EntityType('custom');
+  static const TabletopEntityType character = TabletopEntityType('character');
+  static const TabletopEntityType item = TabletopEntityType('item');
+  static const TabletopEntityType custom = TabletopEntityType('custom');
 
   String get name => key;
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is EntityType && key == other.key;
+      other is TabletopEntityType && key == other.key;
 
   @override
   int get hashCode => key.hashCode;
