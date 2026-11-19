@@ -311,6 +311,7 @@ class TabletopResourcePool {
 class CharacterCondition {
   final String conditionId;
   final String name;
+  final int? spellSaveDc;
   final int durationRounds;
   final String? sourceEntityId;
   final Map<String, dynamic> customProperties;
