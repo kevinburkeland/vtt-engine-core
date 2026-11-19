@@ -39,7 +39,6 @@ lib/
 │   ├── party_purse.dart            # Shared & character currency CRDT tracking
 │   └── session_graph_models.dart   # Session timeline & room events
 ├── simulation/    # Probabilistic dice & combat simulation engines
-│   ├── dpr_simulator.dart          # Damage-per-round mathematical modeling
 │   ├── precomputed_attack.dart     # Precomputed attack and damage distributions
 │   └── combat_rider.dart           # Hit/crit condition triggers & riders
 ├── rules/         # Abstract ruleset SPI / anti-corruption layer

@@ -1,4 +1,5 @@
 import '../currency/i_currency_system.dart';
+import '../models/character_models.dart';
 import '../models/generic_tabletop_primitives.dart';
 import 'i_combat_resolver.dart';
 
@@ -6,7 +7,7 @@ import 'i_combat_resolver.dart';
 ///
 /// Implementations encapsulate system-specific rules mechanics, attribute calculations,
 /// resting frameworks, exhaustion states, action economies, and combat resolvers.
-abstract interface class IRulesetModule {
+abstract interface class IRulesetModule<C extends TabletopCharacter> {
   /// Unique machine-readable identifier for the ruleset module (e.g. 'fantasy_module', 'space_opera_module', 'pf2e').
   String get moduleId;
 
@@ -57,7 +58,7 @@ abstract interface class IRulesetModule {
 
   /// Calculates a derived entity statistic dynamically (e.g. 'defense', 'initiative', 'perception').
   int calculateDerivedStat({
-    required dynamic character,
+    required C character,
     required String statKey,
     Map<String, dynamic> context = const {},
   });
@@ -71,8 +72,8 @@ abstract interface class IExhaustionMechanic implements IRulesetCapability {
   /// Maximum number of exhaustion tiers permitted before fatality.
   int get maxExhaustionTiers;
 
-  /// Check / test penalty (if applicable) at the given exhaustion tier.
-  int calculateD20Penalty(int tier);
+  /// Check / test roll penalty (if applicable) at the given exhaustion tier.
+  int calculateRollPenalty(int tier);
 
   /// Movement speed reduction at the given exhaustion tier.
   int calculateSpeedPenalty(int tier, int baseSpeed);

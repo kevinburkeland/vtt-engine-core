@@ -1,2 +1,9 @@
 # Removed test names ratchet whitelist.
 # Format: <test-name> | <reason>
+DprSimulator | tested DprSimulator, deleted as dead code in Cleanup slice 13
+runs 10,000 iterations synchronously with reasonable statistics | tested DprSimulator, deleted as dead code in Cleanup slice 13
+handles extreme AC cases (nat 20 hit, nat 1 miss) | tested DprSimulator, deleted as dead code in Cleanup slice 13
+executes in background Isolate without throwing | tested DprSimulator, deleted as dead code in Cleanup slice 13
+evaluates damage riders (PeriodicDamageRider, AttributeDrainRider) to reflect higher DPR than base attack | tested DprSimulator, deleted as dead code in Cleanup slice 13
+PeriodicDamageRider doubles damage dice on crits without doubling flat bonus | tested DprSimulator, deleted as dead code in Cleanup slice 13
+runInIsolate with identical seed produces bit-identical DprSimulationResult | tested DprSimulator, deleted as dead code in Cleanup slice 13

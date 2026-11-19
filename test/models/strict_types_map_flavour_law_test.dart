@@ -228,21 +228,8 @@ TabletopCharacter _buildRandomCharacter(int seed) {
   final invCount = _variedCount(rng, seed);
   final featCount = _variedCount(rng, seed);
   final condCount = _variedCount(rng, seed);
-  final toolCount = _variedCount(rng, seed);
   final langCount = _variedCount(rng, seed);
-  final traitCount = _variedCount(rng, seed);
-  final saveCount = _variedCount(rng, seed);
   final resCount = _variedCount(rng, seed);
-
-  final traits = <String, double>{};
-  for (var i = 0; i < traitCount; i++) {
-    traits['skill_$i'] = (i.isEven ? 1.0 : 2.0);
-  }
-
-  final saves = <String>{};
-  for (var i = 0; i < saveCount; i++) {
-    saves.add('attr_$i');
-  }
 
   final curRes = <String, int>{};
   final maxRes = <String, int>{};
@@ -257,18 +244,6 @@ TabletopCharacter _buildRandomCharacter(int seed) {
       ruleset: RulesetVersion.values[rng.nextInt(RulesetVersion.values.length)],
     ),
     name: 'Hero $seed',
-    speciesRef: _randomRef(rng, const TabletopEntityType('lineage'), 'lineage', seed),
-    backgroundRef: (seed == 0 || rng.nextBool())
-        ? _randomRef(rng, const TabletopEntityType('origin'), 'bg', seed)
-        : null,
-    progression: seed == 1
-        ? null
-        : <String, dynamic>{
-            'level': 1 + rng.nextInt(20),
-            'classes': <Map<String, dynamic>>[
-              <String, dynamic>{'slug': 'warrior', 'level': 1 + rng.nextInt(5)},
-            ],
-          },
     baseScores: AttributePool(<String, int>{
       'str': 8 + rng.nextInt(10),
       'dex': 8 + rng.nextInt(10),
@@ -279,9 +254,6 @@ TabletopCharacter _buildRandomCharacter(int seed) {
           ? const <String, int>{}
           : <String, int>{'str': rng.nextInt(3)},
     ),
-    traitProficiencies: traits,
-    savingThrowProficiencies: saves,
-    toolProficiencies: List<String>.generate(toolCount, (i) => 'tool_$i'),
     languages: List<String>.generate(langCount, (i) => 'lang_$i'),
     inventory: List<TabletopItemInstance>.generate(
       invCount,

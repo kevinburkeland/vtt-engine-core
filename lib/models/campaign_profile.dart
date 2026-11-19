@@ -7,6 +7,7 @@ import '../crdt/stateful_hlc_clock.dart';
 import '../rules/i_ruleset_module.dart';
 import '../rules/ruleset_edition.dart';
 import '../utils/aggregate_join_utils.dart';
+import 'character_models.dart';
 import 'session_graph_models.dart';
 import 'value_objects/blob_ref.dart';
 import 'value_objects/map_grid.dart';
@@ -271,7 +272,7 @@ class CampaignProfile {
     RulesetRef? edition,
     String? rulesetId,
     Set<String> defaultPinnedRules = const {},
-    IRulesetModule? rulesetModule,
+    IRulesetModule<TabletopCharacter>? rulesetModule,
     required String nodeId,
     HybridLogicalClock? timestamp,
     StatefulHlcClock? clock,

@@ -1,5 +1,5 @@
 path	floor
-TOTAL	71.0
+TOTAL	72.5
 lib/crdt/crdt_equality.dart	100.0
 lib/crdt/crdt_lww_register.dart	86.8
 lib/crdt/crdt_or_set.dart	93.5
@@ -14,17 +14,17 @@ lib/homebrew/value_objects/github_repo_source.dart	97.3
 lib/homebrew/value_objects/ruleset_version.dart	0.0
 lib/models/aggregate_hlc_extractor.dart	100.0
 lib/models/campaign_profile.dart	95.6
-lib/models/character_models.dart	38.5
+lib/models/character_models.dart	40.2
 lib/models/core_types.dart	53.5
 lib/models/entity_link_crdt_set.dart	86.0
 lib/models/entity_reference.dart	71.7
+lib/models/generic_item.dart	0.0
 lib/models/generic_tabletop_primitives.dart	1.1
 lib/models/loot_models.dart	76.8
 lib/models/party_event.dart	77.1
 lib/models/party_purse.dart	81.8
 lib/models/room_roll.dart	36.5
 lib/models/session_graph_models.dart	90.9
-lib/models/spell_monster_equipment.dart	0.0
 lib/models/value_objects/blob_ref.dart	100.0
 lib/models/value_objects/hit_points.dart	85.1
 lib/models/value_objects/map_grid.dart	100.0
@@ -38,8 +38,7 @@ lib/ports/transport_state.dart	0.0
 lib/rules/i_combat_resolver.dart	0.0
 lib/rules/i_ruleset_module.dart	0.0
 lib/rules/ruleset_edition.dart	30.7
-lib/simulation/combat_rider.dart	17.6
-lib/simulation/dpr_simulator.dart	74.6
+lib/simulation/combat_rider.dart	55.8
 lib/simulation/i_simulation_strategy.dart	40.0
 lib/simulation/precomputed_attack.dart	87.5
 lib/storage/models/engine_profile.dart	0.0

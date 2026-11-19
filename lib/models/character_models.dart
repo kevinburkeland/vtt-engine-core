@@ -3,7 +3,6 @@ import 'dart:collection';
 import 'dart:math' as math;
 import 'package:collection/collection.dart';
 import 'package:meta/meta.dart';
-import '../rules/i_ruleset_module.dart';
 import 'core_types.dart';
 import 'entity_reference.dart';
 import 'party_purse.dart';
@@ -13,7 +12,6 @@ bool _listEquals<T>(List<T>? a, List<T>? b) =>
     ListEquality<T>().equals(a, b);
 bool _mapEquals<K, V>(Map<K, V>? a, Map<K, V>? b) =>
     MapEquality<K, V>().equals(a, b);
-bool _setEquals<T>(Set<T>? a, Set<T>? b) => SetEquality<T>().equals(a, b);
 
 /// Generic, ruleset-agnostic attribute pool operating dynamically over keys
 /// defined by an [IAttributeSystem].
@@ -428,14 +426,8 @@ class TabletopCharacter extends DomainEntity {
   final EntityId id;
   @override
   final String name;
-  final EntityReference<DomainEntity> speciesRef;
-  final EntityReference<DomainEntity>? backgroundRef;
-  final dynamic progression;
   final AttributePool baseScores;
   final AttributePool bonusScores;
-  final Map<dynamic, dynamic> traitProficiencies;
-  final Set<dynamic> savingThrowProficiencies;
-  final List<String> toolProficiencies;
   final List<String> languages;
   final List<TabletopItemInstance> inventory;
   final PartyPurse purse;
@@ -450,14 +442,8 @@ class TabletopCharacter extends DomainEntity {
   const TabletopCharacter({
     required this.id,
     required this.name,
-    required this.speciesRef,
-    this.backgroundRef,
-    this.progression,
     this.baseScores = const AttributePool.zero(),
     this.bonusScores = const AttributePool.zero(),
-    this.traitProficiencies = const {},
-    this.savingThrowProficiencies = const {},
-    this.toolProficiencies = const [],
     this.languages = const [],
     this.inventory = const [],
     this.purse = const PartyPurse.empty(),
@@ -586,13 +572,8 @@ class TabletopCharacter extends DomainEntity {
     return false;
   }
 
-  /// Generic stat query interface allowing ruleset modules to resolve derived statistics dynamically.
-  int queryStat(String statKey,
-      {IRulesetModule? module, Map<String, dynamic> context = const {}}) {
-    if (module != null) {
-      return module.calculateDerivedStat(
-          character: this, statKey: statKey, context: context);
-    }
+  /// Generic stat query interface returning custom overrides or the neutral fallback (10).
+  int queryStat(String statKey, {Map<String, dynamic> context = const {}}) {
     if (customProperties[statKey] is num) {
       return (customProperties[statKey] as num).toInt();
     }
@@ -603,74 +584,12 @@ class TabletopCharacter extends DomainEntity {
   int getAttributeModifier(String key, [IAttributeSystem? system]) =>
       effectiveAbilityScores.getModifier(key, system);
 
-  /// Resolves trait proficiency multiplier dynamically (e.g. 1.0 for proficient, 2.0 for double).
-  double getTraitProficiency(dynamic traitKey) {
-    final clean = (traitKey is Enum ? traitKey.name : traitKey.toString())
-        .trim()
-        .toLowerCase();
-    for (final entry in traitProficiencies.entries) {
-      final kStr = (entry.key is Enum ? entry.key.name : entry.key.toString())
-          .trim()
-          .toLowerCase();
-      if (kStr == clean) {
-        final val = entry.value;
-        if (val is num) return val.toDouble();
-        if (val is Enum) {
-          if (val.name == 'proficient') return 1.0;
-          if (val.name == 'expertise') return 2.0;
-          if (val.name == 'half') return 0.5;
-        }
-      }
-    }
-    return 0.0;
-  }
-
-  /// Whether the character is proficient in saving throws for [key].
-  bool hasSavingThrowProficiency(dynamic key) {
-    final clean = (key is Enum ? key.name : key.toString()).trim().toLowerCase();
-    for (final s in savingThrowProficiencies) {
-      final sStr = (s is Enum ? s.name : s.toString()).trim().toLowerCase();
-      if (sStr == clean) return true;
-    }
-    return false;
-  }
-
-  /// Resolves skill or trait modifier dynamically from generic [ITraitDefinition].
-  int getTraitModifier(ITraitDefinition trait,
-      [IAttributeSystem? attributeSystem]) {
-    final attrKey = trait.governedAttribute;
-    final baseMod =
-        attrKey != null ? getAttributeModifier(attrKey, attributeSystem) : 0;
-    return baseMod;
-  }
-
-  /// Dynamic Saving Throw Modifier calculation factoring in ability modifiers.
-  int getSaveModifier(dynamic attributeKey,
-      [IAttributeSystem? attributeSystem]) {
-    final keyStr =
-        (attributeKey is Enum ? attributeKey.name : attributeKey.toString())
-            .trim()
-            .toLowerCase();
-    return getAttributeModifier(keyStr, attributeSystem);
-  }
-
   @override
   Map<String, dynamic> toMap() => {
         'id': id.toMap(),
         'name': name,
-        'speciesRef': speciesRef.toMap(),
-        'backgroundRef': backgroundRef?.toMap(),
-        if (progression != null)
-          'progression': progression is Map
-              ? progression
-              : (progression?.toMap != null
-                  ? (progression as dynamic).toMap()
-                  : progression.toString()),
         'baseScores': baseScores.toMap(),
         'bonusScores': bonusScores.toMap(),
-        'traitProficiencies': traitProficiencies,
-        'savingThrowProficiencies': savingThrowProficiencies.toList(),
-        'toolProficiencies': toolProficiencies,
         'languages': languages,
         'inventory': inventory.map((i) => i.toMap()).toList(),
         'purse': purse.toMap(),
@@ -686,42 +605,16 @@ class TabletopCharacter extends DomainEntity {
       };
 
   factory TabletopCharacter.fromMap(Map<String, dynamic> map) {
-    final traits = <String, double>{};
-    if (map['traitProficiencies'] is Map) {
-      (map['traitProficiencies'] as Map).forEach((k, v) {
-        if (v is num) traits[k.toString().toLowerCase().trim()] = v.toDouble();
-      });
-    }
-
-    final saves = <String>{};
-    if (map['savingThrowProficiencies'] is List) {
-      for (final s in (map['savingThrowProficiencies'] as List)) {
-        saves.add(s.toString().toLowerCase().trim());
-      }
-    }
-
     return TabletopCharacter(
       id: map['id'] is Map
           ? EntityId.fromMap(Map<String, dynamic>.from(map['id'] as Map))
           : EntityId(
               slug: map['id']?.toString() ?? '', ruleset: RulesetVersion.homebrew),
       name: map['name']?.toString() ?? '',
-      speciesRef: EntityReference<DomainEntity>.fromMap(
-          Map<String, dynamic>.from(map['speciesRef'] as Map? ?? {})),
-      backgroundRef: map['backgroundRef'] != null
-          ? EntityReference<DomainEntity>.fromMap(
-              Map<String, dynamic>.from(map['backgroundRef'] as Map? ?? {}))
-          : null,
-      progression: map['progression'],
       baseScores: AttributePool.fromMap(
           Map<String, dynamic>.from(map['baseScores'] as Map? ?? {})),
       bonusScores: AttributePool.fromMap(
           Map<String, dynamic>.from(map['bonusScores'] as Map? ?? {})),
-      traitProficiencies: traits,
-      savingThrowProficiencies: saves,
-      toolProficiencies: (map['toolProficiencies'] as List? ?? [])
-          .whereType<String>()
-          .toList(),
       languages: (map['languages'] as List? ?? const [])
           .whereType<String>()
           .toList(),
@@ -761,14 +654,8 @@ class TabletopCharacter extends DomainEntity {
   TabletopCharacter copyWith({
     EntityId? id,
     String? name,
-    EntityReference<DomainEntity>? speciesRef,
-    EntityReference<DomainEntity>? backgroundRef,
-    dynamic progression,
     AttributePool? baseScores,
     AttributePool? bonusScores,
-    Map<dynamic, dynamic>? traitProficiencies,
-    Set<dynamic>? savingThrowProficiencies,
-    List<String>? toolProficiencies,
     List<String>? languages,
     List<TabletopItemInstance>? inventory,
     PartyPurse? purse,
@@ -782,18 +669,8 @@ class TabletopCharacter extends DomainEntity {
     return TabletopCharacter(
       id: id ?? this.id,
       name: name ?? this.name,
-      speciesRef: speciesRef ?? this.speciesRef,
-      backgroundRef: backgroundRef ?? this.backgroundRef,
-      progression: progression ?? this.progression,
       baseScores: baseScores ?? this.baseScores,
       bonusScores: bonusScores ?? this.bonusScores,
-      traitProficiencies: traitProficiencies != null
-          ? Map.unmodifiable(traitProficiencies)
-          : this.traitProficiencies,
-      savingThrowProficiencies: savingThrowProficiencies ?? this.savingThrowProficiencies,
-      toolProficiencies: toolProficiencies != null
-          ? List.unmodifiable(toolProficiencies)
-          : this.toolProficiencies,
       languages:
           languages != null ? List.unmodifiable(languages) : this.languages,
       inventory: inventory != null
@@ -820,14 +697,8 @@ class TabletopCharacter extends DomainEntity {
           runtimeType == other.runtimeType &&
           id == other.id &&
           name == other.name &&
-          speciesRef == other.speciesRef &&
-          backgroundRef == other.backgroundRef &&
-          progression == other.progression &&
           baseScores == other.baseScores &&
           bonusScores == other.bonusScores &&
-          _mapEquals(traitProficiencies, other.traitProficiencies) &&
-          _setEquals(savingThrowProficiencies, other.savingThrowProficiencies) &&
-          _listEquals(toolProficiencies, other.toolProficiencies) &&
           _listEquals(languages, other.languages) &&
           _listEquals(inventory, other.inventory) &&
           purse == other.purse &&
@@ -842,14 +713,8 @@ class TabletopCharacter extends DomainEntity {
   int get hashCode =>
       id.hashCode ^
       name.hashCode ^
-      speciesRef.hashCode ^
-      (backgroundRef?.hashCode ?? 0) ^
-      (progression?.hashCode ?? 0) ^
       baseScores.hashCode ^
       bonusScores.hashCode ^
-      traitProficiencies.length.hashCode ^
-      savingThrowProficiencies.length.hashCode ^
-      toolProficiencies.length.hashCode ^
       languages.length.hashCode ^
       inventory.length.hashCode ^
       purse.hashCode ^

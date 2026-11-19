@@ -46,12 +46,11 @@ vtt_engine_core/
 │   │   ├── generic_tabletop_primitives.dart # Agnostic primitives & scalar invariants
 │   │   ├── entity_reference.dart       # Typed entity references & polymorphic links
 │   │   ├── loot_models.dart            # Inventory & loot containers
-│   │   ├── spell_monster_equipment.dart# GenericItem representation
+│   │   ├── generic_item.dart           # GenericItem representation
 │   │   ├── party_event.dart            # Party timeline events
 │   │   └── room_roll.dart              # Agnostic dice roll records
 │   └── simulation/    # [Simulation Engine] Probabilistic dice & combat simulation engines
 │       ├── i_simulation_strategy.dart  # Simulation strategy contract
-│       ├── dpr_simulator.dart          # Damage-per-round mathematical modeling
 │       ├── precomputed_attack.dart     # Precomputed attack distributions
 │       └── combat_rider.dart           # Hit/crit condition triggers & riders
 └── test/
@@ -66,7 +65,7 @@ vtt_engine_core/
 ### ⚠️ Status Notice: Foundational Core vs. Transitional Domain
 Decoupling the engine core from legacy tabletop concepts is actively ongoing:
 - **Foundational Core Primitives:** `lib/crdt/`, `lib/ports/`, `lib/rules/`, `lib/storage/`, and `lib/currency/` are architecturally required to remain in core. They define the pure mathematical, transport, and SPI boundaries of the engine.
-- **Transitional Domain Models:** The presence of specific files under `lib/models/` and `lib/simulation/` (e.g., `HitPoints`, `PartyPurse`, `DprSimulator`, combat models) reflects **current implementation reality for navigation**, NOT an architectural mandate that these concepts permanently belong in core or an endorsement to add similar mechanics.
+- **Transitional Domain Models:** The presence of specific files under `lib/models/` and `lib/simulation/` (e.g., `HitPoints`, `PartyPurse`, combat models) reflects **current implementation reality for navigation**, NOT an architectural mandate that these concepts permanently belong in core or an endorsement to add similar mechanics.
 - Core models must never assume tabletop conventions as universal:
   - Not all tabletop systems use Hit Points; core models must allow vitals to be optional or nullable (`int?`).
   - Not all tabletop systems use classes, levels, initiative, or traditional combat rounds.

@@ -1,11 +1,10 @@
 import 'package:test/test.dart';
 import 'package:vtt_engine_core/models/character_models.dart';
 import 'package:vtt_engine_core/models/core_types.dart';
-import 'package:vtt_engine_core/models/entity_reference.dart';
 import 'package:vtt_engine_core/models/session_graph_models.dart';
 import 'package:vtt_engine_core/rules/i_ruleset_module.dart';
 
-class MinimalTestRuleset implements IRulesetModule {
+class MinimalTestRuleset implements IRulesetModule<TabletopCharacter> {
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 
@@ -89,25 +88,18 @@ void main() {
     });
 
     test('Can represent a ruleset-neutral Character without class, level, or speed', () {
-      final character = TabletopCharacter(
-        id: const EntityId(
+      const character = TabletopCharacter(
+        id: EntityId(
           slug: 'inspector-legrasse',
           ruleset: RulesetVersion.homebrew,
         ),
         name: 'Inspector Legrasse',
-        speciesRef: EntityReference<DomainEntity>(
-          refType: TabletopEntityType.custom,
-          slug: 'human',
-          displayName: 'Human',
-        ),
         rulesetId: 'coc_7e',
-        // No class progression
-        progression: null,
         // No speed
         baseSpeed: null,
         // Generic scores
-        baseScores: const AttributePool({'sanity': 65, 'investigation': 70}),
-        bonusScores: const AttributePool.zero(),
+        baseScores: AttributePool({'sanity': 65, 'investigation': 70}),
+        bonusScores: AttributePool.zero(),
         customProperties: {
           'occupation': 'Detective',
           'insanityStatus': 'normal',
@@ -115,7 +107,6 @@ void main() {
       );
 
       expect(character.name, equals('Inspector Legrasse'));
-      expect(character.progression, isNull);
       expect(character.baseSpeed, isNull);
       expect(character.baseScores.getScore('sanity'), equals(65));
       expect(character.customProperties['occupation'], equals('Detective'));
@@ -123,7 +114,6 @@ void main() {
       final map = character.toMap();
       final restored = TabletopCharacter.fromMap(map);
       expect(restored.name, equals('Inspector Legrasse'));
-      expect(restored.progression, isNull);
       expect(restored.baseSpeed, isNull);
       expect(restored.baseScores.getScore('sanity'), equals(65));
       expect(restored.customProperties['insanityStatus'], equals('normal'));

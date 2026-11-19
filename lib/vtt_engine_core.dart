@@ -35,7 +35,7 @@ export 'models/party_event.dart';
 export 'models/party_purse.dart';
 export 'models/room_roll.dart';
 export 'models/session_graph_models.dart';
-export 'models/spell_monster_equipment.dart';
+export 'models/generic_item.dart';
 export 'models/value_objects/blob_ref.dart';
 export 'models/value_objects/hit_points.dart';
 export 'models/value_objects/map_grid.dart';
@@ -56,7 +56,6 @@ export 'rules/ruleset_edition.dart';
 
 // Simulation
 export 'simulation/combat_rider.dart';
-export 'simulation/dpr_simulator.dart';
 export 'simulation/i_simulation_strategy.dart';
 export 'simulation/precomputed_attack.dart';
 
