@@ -1,0 +1,28 @@
+From e8a68d418e98c08ffa297e64a9db19957721fc61 Mon Sep 17 00:00:00 2001
+From: Kevin Burkeland <kevin@burke.land>
+Date: Wed, 18 Nov 2026 22:10:50 -0800
+Subject: [PATCH] =?UTF-8?q?MUTATION=20=E2=80=94=20do=20not=20merge:=20W1?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Kevin Burkeland <kevin@burke.land>
+---
+ lib/models/character_models.dart | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/lib/models/character_models.dart b/lib/models/character_models.dart
+index 80e7b6f..e0b4b09 100644
+--- a/lib/models/character_models.dart
++++ b/lib/models/character_models.dart
+@@ -311,6 +311,7 @@ class TabletopResourcePool {
+ class CharacterCondition {
+   final String conditionId;
+   final String name;
++  final int? spellSaveDc;
+   final int durationRounds;
+   final String? sourceEntityId;
+   final Map<String, dynamic> customProperties;
+-- 
+2.55.0
+

@@ -1,0 +1,31 @@
+From 8f9cfbf4637fc77f67fd1bfdb883a044ce4bdce5 Mon Sep 17 00:00:00 2001
+From: Kevin Burkeland <kevin@burke.land>
+Date: Wed, 18 Nov 2026 22:09:54 -0800
+Subject: [PATCH] =?UTF-8?q?MUTATION=20=E2=80=94=20do=20not=20merge:=20F1?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Kevin Burkeland <kevin@burke.land>
+---
+ scripts/check_dependencies.py | 4 +---
+ 1 file changed, 1 insertion(+), 3 deletions(-)
+
+diff --git a/scripts/check_dependencies.py b/scripts/check_dependencies.py
+index eb3ad8a..3a930f1 100755
+--- a/scripts/check_dependencies.py
++++ b/scripts/check_dependencies.py
+@@ -504,9 +504,7 @@ def opt_child(obj, path, key, input_name):
+     elif isinstance(obj, dict):
+         raw_dict = obj
+     else:
+-        got_name = type(obj._unwrap('opt_child') if isinstance(obj, _GuardedContainer) else obj).__name__
+-        print(f"Error: Schema failure in '{input_name}' at path '{path}': expected dict, got {got_name}.", file=sys.stderr)
+-        sys.exit(1)
++        return None
+     if key not in raw_dict:
+         return spec.get('default', None)
+     val = raw_dict[key]
+-- 
+2.55.0
+

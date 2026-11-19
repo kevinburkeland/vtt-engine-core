@@ -1,0 +1,29 @@
+From cfcfb643dd5397cf5d4b2089ec052f9232a3ef50 Mon Sep 17 00:00:00 2001
+From: Kevin Burkeland <kevin@burke.land>
+Date: Wed, 18 Nov 2026 22:10:46 -0800
+Subject: [PATCH] =?UTF-8?q?MUTATION=20=E2=80=94=20do=20not=20merge:=20F2?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Kevin Burkeland <kevin@burke.land>
+---
+ scripts/check_coverage_floor.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/scripts/check_coverage_floor.py b/scripts/check_coverage_floor.py
+index cd11d99..e4d1653 100755
+--- a/scripts/check_coverage_floor.py
++++ b/scripts/check_coverage_floor.py
+@@ -193,7 +193,7 @@ def check_floor_history(
+             "Coverage floor check needs full history (repository is a shallow clone; use fetch-depth: 0)."
+         )
+ 
+-    commits_out = _run_git(repo_root, ["log", "--format=%H", "--", rel_floors])
++    commits_out = _run_git(repo_root, ["log", "-n", "1", "--format=%H", "--", rel_floors])
+     commits = [c.strip() for c in commits_out.splitlines() if c.strip()]
+ 
+     errors: List[str] = []
+-- 
+2.55.0
+
