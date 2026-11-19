@@ -3416,4 +3416,67 @@ for bad in ("0", ["0"], 42, None):
             sys.exit(1)
 EOF_DC74
 
-echo "All 74 dependency check self-tests (DC1 - DC74) passed successfully!"
+# DC75: Malformed versions in OSV advisory ranges fail closed (Fix 4.2)
+echo "Running DC75: Malformed versions fail closed..."
+python3 -I - "$SCRIPT_DIR/check_dependencies.py" << 'EOF_DC75'
+import importlib.util, io, sys
+from contextlib import redirect_stderr
+spec = importlib.util.spec_from_file_location("cd", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+bad_cases = [
+    ("fixed", "banana"),
+    ("last_affected", "x.y"),
+    ("introduced", "1.2.three"),
+    ("fixed", "1..2"),
+    ("fixed", "-1.0.0"),
+    ("fixed", "1.2.3.4"),
+]
+for field, bad_val in bad_cases:
+    events = [{"introduced": "0"}, {field: bad_val}] if field != "introduced" else [{field: bad_val}]
+    ranges = [{"type": "ECOSYSTEM", "events": events}]
+    buf = io.StringIO()
+    try:
+        with redirect_stderr(buf):
+            res = mod.is_version_in_ranges("1.0.0", ranges, "dc75_advisories.json")
+        print(f"FAIL DC75: {field}={bad_val!r} did not fail closed (returned {res!r})", file=sys.stderr)
+        sys.exit(1)
+    except SystemExit as e:
+        err = buf.getvalue()
+        if e.code != 1 or bad_val not in err or "dc75_advisories.json" not in err:
+            print(f"FAIL DC75: {field}={bad_val!r} exited {e.code}, stderr={err!r}", file=sys.stderr)
+            sys.exit(1)
+EOF_DC75
+
+# DC76: Valid versions (fixed 2.0.0, introduced 0, prerelease, build suffix) keep today's answers (Fix 4.2)
+echo "Running DC76: Valid semver versions keep expected answers..."
+python3 -I - "$SCRIPT_DIR/check_dependencies.py" << 'EOF_DC76'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("cd", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+# fixed: "2.0.0" -> 1.0.0 is affected, 2.0.0 is not affected
+r_fixed = [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "2.0.0"}]}]
+assert mod.is_version_in_ranges("1.0.0", r_fixed, "dc76") is True, "FAIL DC76: 1.0.0 < fixed 2.0.0"
+assert mod.is_version_in_ranges("2.0.0", r_fixed, "dc76") is False, "FAIL DC76: 2.0.0 >= fixed 2.0.0"
+
+# introduced: "0" alone -> 1.0.0 is affected
+r_intro0 = [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}]}]
+assert mod.is_version_in_ranges("1.0.0", r_intro0, "dc76") is True, "FAIL DC76: introduced 0"
+
+# real pre-release: 2.0.0-beta.1 < 2.0.0
+r_pre = [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "2.0.0-beta.1"}]}]
+assert mod.is_version_in_ranges("1.9.9", r_pre, "dc76") is True, "FAIL DC76: 1.9.9 < 2.0.0-beta.1"
+assert mod.is_version_in_ranges("2.0.0-beta.1", r_pre, "dc76") is False, "FAIL DC76: 2.0.0-beta.1 >= fixed"
+assert mod.semver_cmp("2.0.0-beta.1", "2.0.0") < 0, "FAIL DC76: prerelease < release"
+
+# real build suffix: 2.0.0+1 compares equal to 2.0.0
+assert mod.semver_cmp("2.0.0+1", "2.0.0") == 0, "FAIL DC76: build suffix ignored"
+r_build = [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "2.0.0+1"}]}]
+assert mod.is_version_in_ranges("1.0.0", r_build, "dc76") is True, "FAIL DC76: 1.0.0 < 2.0.0+1"
+assert mod.is_version_in_ranges("2.0.0", r_build, "dc76") is False, "FAIL DC76: 2.0.0 >= 2.0.0+1"
+EOF_DC76
+
+echo "All 76 dependency check self-tests (DC1 - DC76) passed successfully!"

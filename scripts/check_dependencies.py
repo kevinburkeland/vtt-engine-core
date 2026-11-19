@@ -530,30 +530,88 @@ def guarded_to_text(obj):
         return str(obj._unwrap('guarded_to_text'))
     return str(obj)
 
-def parse_semver(v_str):
-    cleaned = re.sub(r'^[v\^~>=<]+', '', str(v_str).strip())
+def parse_semver(
+    v_str,
+    *,
+    source=None,
+    field=None,
+    allow_short=False,
+    allow_zero_sentinel=False,
+):
+    """Parse a semantic version string into ((major, minor, patch), prerelease).
+
+    Fails closed (exits 1 naming input, field, and value) when any core part is
+    not a non-negative ASCII integer or when the core does not have 3 parts
+    (unless `allow_short=True` for GitHub Action major/minor tags like `v4` or
+    `v4.2`, or `allow_zero_sentinel=True` for OSV `introduced: "0"`).
+    """
+    def _fail():
+        loc = f" in '{source}'" if source else ""
+        where = f" at '{field}'" if field else ""
+        print(
+            f"Error: Malformed version {v_str!r}{loc}{where}: "
+            "expected non-negative integer semver parts.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if v_str is None:
+        _fail()
+    raw = str(v_str).strip()
+    if not raw:
+        _fail()
+    cleaned = re.sub(r'^(?:>=|<=|[v^~><])+', '', raw).strip()
+    if not cleaned:
+        _fail()
     without_build = cleaned.split('+', 1)[0]
     parts = without_build.split('-', 1)
     core = parts[0]
     prerelease = parts[1] if len(parts) > 1 else None
 
+    if allow_zero_sentinel and core == '0' and prerelease is None:
+        return (0, 0, 0), None
+
+    raw_parts = core.split('.')
+    if allow_short:
+        if not (1 <= len(raw_parts) <= 3):
+            _fail()
+    else:
+        if len(raw_parts) != 3:
+            _fail()
+
     core_parts = []
-    for p in core.split('.'):
-        try:
-            core_parts.append(int(p))
-        except ValueError:
-            core_parts.append(0)
+    for p in raw_parts:
+        if not re.fullmatch(r'[0-9]+', p):
+            _fail()
+        core_parts.append(int(p))
     while len(core_parts) < 3:
         core_parts.append(0)
-    return tuple(core_parts[:3]), prerelease
+    return tuple(core_parts), prerelease
 
-def semver_tuple(v_str):
-    c, _ = parse_semver(v_str)
+def semver_tuple(v_str, *, source=None, field=None, allow_short=False):
+    c, _ = parse_semver(v_str, source=source, field=field, allow_short=allow_short)
     return c
 
-def semver_cmp(v1_str, v2_str):
-    c1, pre1 = parse_semver(v1_str)
-    c2, pre2 = parse_semver(v2_str)
+def semver_cmp(
+    v1_str,
+    v2_str,
+    *,
+    source=None,
+    field1=None,
+    field2=None,
+    allow_short=False,
+    allow_zero_sentinel_2=False,
+):
+    c1, pre1 = parse_semver(
+        v1_str, source=source, field=field1, allow_short=allow_short
+    )
+    c2, pre2 = parse_semver(
+        v2_str,
+        source=source,
+        field=field2,
+        allow_short=allow_short,
+        allow_zero_sentinel=allow_zero_sentinel_2,
+    )
     if c1 < c2:
         return -1
     elif c1 > c2:
@@ -642,13 +700,32 @@ def is_version_in_ranges(v_str, ranges, input_name):
 
         matches = True
         if introduced is not None:
-            if semver_cmp(v_str, introduced) < 0:
+            if semver_cmp(
+                v_str,
+                introduced,
+                source=input_name,
+                field1='installed_version',
+                field2='pub_advisories.advisories[].affected[].ranges[].events[].introduced',
+                allow_zero_sentinel_2=True,
+            ) < 0:
                 matches = False
         if fixed is not None:
-            if semver_cmp(v_str, fixed) >= 0:
+            if semver_cmp(
+                v_str,
+                fixed,
+                source=input_name,
+                field1='installed_version',
+                field2='pub_advisories.advisories[].affected[].ranges[].events[].fixed',
+            ) >= 0:
                 matches = False
         if last_affected is not None:
-            if semver_cmp(v_str, last_affected) > 0:
+            if semver_cmp(
+                v_str,
+                last_affected,
+                source=input_name,
+                field1='installed_version',
+                field2='pub_advisories.advisories[].affected[].ranges[].events[].last_affected',
+            ) > 0:
                 matches = False
         if matches and (introduced is not None or fixed is not None or last_affected is not None):
             return True
@@ -1484,7 +1561,14 @@ def main():
                                         if is_draft or is_prerelease:
                                             continue
                                         p_date = parse_date(p_date_str)
-                                        if tag and p_date and semver_cmp(tag, action_comment) > 0:
+                                        if tag and p_date and semver_cmp(
+                                            tag,
+                                            action_comment,
+                                            source=gh_all_rels_url,
+                                            field1='github_releases_list.[].tag_name',
+                                            field2=f'{wf_file}:{line_no}',
+                                            allow_short=True,
+                                        ) > 0:
                                             newer_dates.append(p_date)
                                     if newer_dates:
                                         first_newer_rel_date = min(newer_dates)
