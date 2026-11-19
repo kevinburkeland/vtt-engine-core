@@ -193,7 +193,7 @@ def check_floor_history(
             "Coverage floor check needs full history (repository is a shallow clone; use fetch-depth: 0)."
         )
 
-    commits_out = _run_git(repo_root, ["log", "--format=%H", "--", rel_floors])
+    commits_out = _run_git(repo_root, ["log", "-n", "1", "--format=%H", "--", rel_floors])
     commits = [c.strip() for c in commits_out.splitlines() if c.strip()]
 
     errors: List[str] = []
