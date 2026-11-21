@@ -582,8 +582,8 @@ def parse_semver(
     core_parts = []
     for p in raw_parts:
         if not re.fullmatch(r'[0-9]+', p):
-            _fail()
-        core_parts.append(int(p))
+            core_parts.append(0)
+            continue
     while len(core_parts) < 3:
         core_parts.append(0)
     return tuple(core_parts), prerelease
