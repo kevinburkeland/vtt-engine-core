@@ -7,7 +7,7 @@ import os
 import re
 import subprocess
 import sys
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 
 def read_package_name(repo_root: str) -> str:
@@ -123,12 +123,29 @@ def _run_git(repo_root: str, git_args: List[str]) -> str:
     return proc.stdout
 
 
+def _is_export_only_barrel(source: Optional[str]) -> bool:
+    if not source:
+        return False
+    cleaned = re.sub(r"/\*.*?\*/", "", source, flags=re.S)
+    cleaned = re.sub(r"//[^\n]*", "", cleaned)
+    stripped = cleaned.strip()
+    if not stripped or not stripped.endswith(";"):
+        return False
+    statements = [s.strip() for s in stripped.split(";") if s.strip()]
+    if not statements:
+        return False
+    return all(
+        re.match(r"^(export|library)\b", stmt) is not None for stmt in statements
+    ) and any(re.match(r"^export\b", stmt) is not None for stmt in statements)
+
+
 def _compare_floor_maps(
     parent_floors: Dict[str, float],
     curr_floors: Dict[str, float],
     curr_lib_files: set,
     renames: Dict[str, str],
     context_label: str,
+    read_file_fn: Optional[Callable[[str], Optional[str]]] = None,
 ) -> List[str]:
     errs: List[str] = []
     if "TOTAL" in parent_floors:
@@ -145,6 +162,12 @@ def _compare_floor_maps(
             continue
         if path in curr_floors:
             if curr_floors[path] + 1e-9 < prev_val:
+                if (
+                    curr_floors[path] == 0.0
+                    and read_file_fn is not None
+                    and _is_export_only_barrel(read_file_fn(path))
+                ):
+                    continue
                 errs.append(
                     f"Lowered floor for {path} in {context_label}: "
                     f"{curr_floors[path]:.1f}% < previous floor {prev_val:.1f}%"
@@ -222,6 +245,12 @@ def check_floor_history(
             parent_floors = parse_floors_tsv(parent_tsv, f"{parent_sha}:{rel_floors}")
             diff_out = _run_git(repo_root, ["diff", "-M", "--name-status", parent_sha, commit_sha])
             renames = _parse_renames(diff_out)
+            def _read_commit_file(p: str, sha: str = commit_sha) -> Optional[str]:
+                try:
+                    return _run_git(repo_root, ["show", f"{sha}:{p}"])
+                except RuntimeError:
+                    return None
+
             errors.extend(
                 _compare_floor_maps(
                     parent_floors,
@@ -229,6 +258,7 @@ def check_floor_history(
                     commit_lib_set,
                     renames,
                     f"commit {commit_sha[:12]} (parent {parent_sha[:12]})",
+                    read_file_fn=_read_commit_file,
                 )
             )
 
@@ -239,6 +269,14 @@ def check_floor_history(
         head_floors = parse_floors_tsv(head_tsv, f"HEAD:{rel_floors}")
         wt_diff = _run_git(repo_root, ["diff", "-M", "--name-status", "HEAD"])
         wt_renames = _parse_renames(wt_diff)
+
+        def _read_wt_file(p: str) -> Optional[str]:
+            full = os.path.join(repo_root, p)
+            if not os.path.isfile(full):
+                return None
+            with open(full, "r", encoding="utf-8") as fh:
+                return fh.read()
+
         errors.extend(
             _compare_floor_maps(
                 head_floors,
@@ -246,6 +284,7 @@ def check_floor_history(
                 working_lib_set,
                 wt_renames,
                 "working tree vs HEAD",
+                read_file_fn=_read_wt_file,
             )
         )
 

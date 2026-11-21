@@ -1,7 +1,7 @@
 path	floor
 TOTAL	72.5
 lib/crdt/crdt_equality.dart	100.0
-lib/crdt/crdt_lww_register.dart	86.8
+lib/crdt/crdt_lww_register.dart	88.0
 lib/crdt/crdt_or_set.dart	93.5
 lib/crdt/hybrid_logical_clock.dart	94.3
 lib/crdt/pn_counter.dart	97.2
@@ -24,7 +24,12 @@ lib/models/loot_models.dart	76.8
 lib/models/party_event.dart	77.1
 lib/models/party_purse.dart	81.8
 lib/models/room_roll.dart	36.5
-lib/models/session_graph_models.dart	90.9
+lib/models/session_graph/encounter_participant.dart	88.5
+lib/models/session_graph/entity_category.dart	71.4
+lib/models/session_graph/entity_instance.dart	93.7
+lib/models/session_graph/room_entity_link.dart	90.4
+lib/models/session_graph/room_node_state.dart	91.4
+lib/models/session_graph_models.dart	0.0
 lib/models/value_objects/blob_ref.dart	100.0
 lib/models/value_objects/hit_points.dart	85.1
 lib/models/value_objects/map_grid.dart	100.0

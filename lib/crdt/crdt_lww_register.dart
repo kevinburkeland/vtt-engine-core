@@ -105,6 +105,14 @@ class CrdtLwwRegister<T> {
       }
       return b.toString();
     }
+    if (val is Set) {
+      final b = StringBuffer('set:');
+      final encodedMembers = val.map(_encodeCanonical).toList()..sort();
+      for (final enc in encodedMembers) {
+        b.write('${enc.length}:$enc;');
+      }
+      return b.toString();
+    }
     if (val is Map) {
       final b = StringBuffer('m:');
       final sortedKeys = val.keys.map((k) => k.toString()).toList()..sort();

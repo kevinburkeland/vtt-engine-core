@@ -2,7 +2,9 @@ import 'package:collection/collection.dart';
 import '../crdt/crdt_or_set.dart';
 import '../models/loot_models.dart';
 import '../models/party_event.dart';
-import '../models/session_graph_models.dart';
+import '../models/entity_link_crdt_set.dart';
+import '../models/session_graph/entity_instance.dart';
+import '../models/session_graph/room_entity_link.dart';
 import 'deep_immutable.dart';
 
 const _deepEquality = DeepCollectionEquality();

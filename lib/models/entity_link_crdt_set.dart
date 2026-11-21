@@ -2,7 +2,7 @@ import 'package:meta/meta.dart';
 import '../crdt/crdt_lww_register.dart';
 import '../crdt/crdt_or_set.dart';
 import '../crdt/hybrid_logical_clock.dart';
-import 'session_graph_models.dart';
+import 'session_graph/room_entity_link.dart';
 
 /// Replicated tombstone tracking the removal of a specific entity-link incarnation.
 @immutable

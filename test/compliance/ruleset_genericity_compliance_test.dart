@@ -83,8 +83,8 @@ void main() {
     });
 
     test('Core models must not assume mandatory HP, AC, initiative, or death', () {
-      final sessionModelsFile = File('lib/models/session_graph_models.dart');
-      final content = sessionModelsFile.readAsStringSync();
+      final encounterParticipantFile = File('lib/models/session_graph/encounter_participant.dart');
+      final content = encounterParticipantFile.readAsStringSync();
 
       // EncounterParticipant must allow optional/nullable combat stats
       expect(content.contains('final int? currentHp;'), isTrue);

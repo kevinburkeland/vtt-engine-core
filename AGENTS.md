@@ -41,7 +41,8 @@ vtt_engine_core/
 │   │   │   └── hit_points.dart         # HP clamp/vitals value object (transitional; not all TTRPGs use HP)
 │   │   ├── campaign_profile.dart       # Campaign state & metadata
 │   │   ├── party_purse.dart            # Shared currency CRDT tracking
-│   │   ├── session_graph_models.dart   # Session timeline, room nodes, encounter participants
+│   │   ├── session_graph_models.dart   # Barrel exporting lib/models/session_graph/ types
+│   │   ├── session_graph/              # EntityCategory, EntityInstance, RoomEntityLink, EncounterParticipant, RoomNodeState
 │   │   ├── character_models.dart       # Generic character entity, AttributePool, condition models
 │   │   ├── generic_tabletop_primitives.dart # Agnostic primitives & scalar invariants
 │   │   ├── entity_reference.dart       # Typed entity references & polymorphic links

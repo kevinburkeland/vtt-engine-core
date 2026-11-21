@@ -259,5 +259,36 @@ git -C "$REPO_LAG_PASS" add coverage_floors.tsv && git -C "$REPO_LAG_PASS" commi
 assert_pass "18. floor 0.5 below measured passes" \
   python3 -I "$CHECK_SCRIPT" "$REPO_LAG_PASS/coverage" "$REPO_LAG_PASS/coverage_floors.tsv" --repo-root "$REPO_LAG_PASS"
 
+# 19. File split into export-only barrel may lower its own floor to 0.0 while TOTAL stays >= previous
+REPO_BARREL_PASS="$TMPDIR/barrel_split_pass"
+make_fixture_repo "$REPO_BARREL_PASS"
+cat > "$REPO_BARREL_PASS/lib/a_impl.dart" <<'EOF'
+int f() => 1;
+EOF
+cat > "$REPO_BARREL_PASS/lib/a.dart" <<'EOF'
+export 'a_impl.dart';
+EOF
+printf "path\tfloor\nTOTAL\t60.0\nlib/a.dart\t0.0\nlib/a_impl.dart\t80.0\nlib/b.dart\t40.0\n" > "$REPO_BARREL_PASS/coverage_floors.tsv"
+git -C "$REPO_BARREL_PASS" add lib/a.dart lib/a_impl.dart coverage_floors.tsv && git -C "$REPO_BARREL_PASS" commit -q -m "split a into barrel"
+cat > "$REPO_BARREL_PASS/coverage/test_1.vm.json" <<'EOF'
+{
+  "type": "CodeCoverage",
+  "coverage": [
+    {"source": "package:sample_pkg/a_impl.dart", "hits": [1,1,2,1,3,1,4,1,5,1,6,1,7,1,8,1,9,0,10,0]},
+    {"source": "package:sample_pkg/b.dart", "hits": [1,1,2,1,3,1,4,1,5,0,6,0,7,0,8,0,9,0,10,0]}
+  ]
+}
+EOF
+assert_pass "19. export-only barrel split lowering its own floor to 0.0 passes" \
+  python3 -I "$CHECK_SCRIPT" "$REPO_BARREL_PASS/coverage" "$REPO_BARREL_PASS/coverage_floors.tsv" --repo-root "$REPO_BARREL_PASS"
+
+# 20. Non-barrel file lowering its floor to 0.0 still fails
+REPO_NONBARREL_FAIL="$TMPDIR/nonbarrel_zero_fail"
+make_fixture_repo "$REPO_NONBARREL_FAIL"
+printf "path\tfloor\nTOTAL\t60.0\nlib/a.dart\t0.0\nlib/b.dart\t40.0\n" > "$REPO_NONBARREL_FAIL/coverage_floors.tsv"
+git -C "$REPO_NONBARREL_FAIL" add coverage_floors.tsv && git -C "$REPO_NONBARREL_FAIL" commit -q -m "lower non-barrel to zero"
+assert_fail "20. non-barrel file lowering floor to 0.0 still fails" "Lowered floor for lib/a\.dart" \
+  python3 -I "$CHECK_SCRIPT" "$REPO_NONBARREL_FAIL/coverage" "$REPO_NONBARREL_FAIL/coverage_floors.tsv" --repo-root "$REPO_NONBARREL_FAIL"
+
 echo "Summary: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
