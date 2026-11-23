@@ -1,0 +1,29 @@
+From 57422c144cb6e5e23b01154834815dc5a1535d8e Mon Sep 17 00:00:00 2001
+From: Kevin Burkeland <kevin@burke.land>
+Date: Sat, 21 Nov 2026 13:16:13 -0800
+Subject: [PATCH] =?UTF-8?q?MUTATION=20=E2=80=94=20do=20not=20merge:=20E1?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Kevin Burkeland <kevin@burke.land>
+---
+ lib/crdt/crdt_lww_register.dart | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/lib/crdt/crdt_lww_register.dart b/lib/crdt/crdt_lww_register.dart
+index f9776be..0f93fca 100644
+--- a/lib/crdt/crdt_lww_register.dart
++++ b/lib/crdt/crdt_lww_register.dart
+@@ -107,7 +107,7 @@ class CrdtLwwRegister<T> {
+     }
+     if (val is Set) {
+       final b = StringBuffer('set:');
+-      final encodedMembers = val.map(_encodeCanonical).toList()..sort();
++      final encodedMembers = val.map(_encodeCanonical).toList();
+       for (final enc in encodedMembers) {
+         b.write('${enc.length}:$enc;');
+       }
+-- 
+2.55.0
+
