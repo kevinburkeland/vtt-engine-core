@@ -290,5 +290,104 @@ git -C "$REPO_NONBARREL_FAIL" add coverage_floors.tsv && git -C "$REPO_NONBARREL
 assert_fail "20. non-barrel file lowering floor to 0.0 still fails" "Lowered floor for lib/a\.dart" \
   python3 -I "$CHECK_SCRIPT" "$REPO_NONBARREL_FAIL/coverage" "$REPO_NONBARREL_FAIL/coverage_floors.tsv" --repo-root "$REPO_NONBARREL_FAIL"
 
+# 21. File with one function and one export line lowering floor to 0.0 while TOTAL stays up fails (Fix 1.2a)
+REPO_MIXED_FN="$TMPDIR/mixed_fn_export_fail"
+make_fixture_repo "$REPO_MIXED_FN"
+cat > "$REPO_MIXED_FN/lib/a_impl.dart" <<'EOF'
+int f() => 1;
+EOF
+cat > "$REPO_MIXED_FN/lib/a.dart" <<'EOF'
+export 'a_impl.dart';
+int g() => 2;
+EOF
+printf "path\tfloor\nTOTAL\t60.0\nlib/a.dart\t0.0\nlib/a_impl.dart\t80.0\nlib/b.dart\t40.0\n" > "$REPO_MIXED_FN/coverage_floors.tsv"
+git -C "$REPO_MIXED_FN" add lib/a.dart lib/a_impl.dart coverage_floors.tsv && git -C "$REPO_MIXED_FN" commit -q -m "add export plus fn and lower a to 0.0"
+cat > "$REPO_MIXED_FN/coverage/test_1.vm.json" <<'EOF'
+{
+  "type": "CodeCoverage",
+  "coverage": [
+    {"source": "package:sample_pkg/a_impl.dart", "hits": [1,1,2,1,3,1,4,1,5,1,6,1,7,1,8,1,9,0,10,0]},
+    {"source": "package:sample_pkg/b.dart", "hits": [1,1,2,1,3,1,4,1,5,0,6,0,7,0,8,0,9,0,10,0]}
+  ]
+}
+EOF
+assert_fail "21. file with function and export lowering floor to 0.0 fails" "Lowered floor for lib/a\.dart.*0\.0%" \
+  python3 -I "$CHECK_SCRIPT" "$REPO_MIXED_FN/coverage" "$REPO_MIXED_FN/coverage_floors.tsv" --repo-root "$REPO_MIXED_FN"
+
+# 22. Export-only file with library directive and comments passes at 0.0 (Fix 1.2b)
+REPO_LIB_COMMENTS="$TMPDIR/barrel_lib_comments_pass"
+make_fixture_repo "$REPO_LIB_COMMENTS"
+cat > "$REPO_LIB_COMMENTS/lib/a_impl.dart" <<'EOF'
+int f() => 1;
+EOF
+cat > "$REPO_LIB_COMMENTS/lib/a.dart" <<'EOF'
+/// Barrel doc comment.
+library sample_a;
+
+/* Block comment */
+export 'a_impl.dart';
+// Trailing comment
+EOF
+printf "path\tfloor\nTOTAL\t60.0\nlib/a.dart\t0.0\nlib/a_impl.dart\t80.0\nlib/b.dart\t40.0\n" > "$REPO_LIB_COMMENTS/coverage_floors.tsv"
+git -C "$REPO_LIB_COMMENTS" add lib/a.dart lib/a_impl.dart coverage_floors.tsv && git -C "$REPO_LIB_COMMENTS" commit -q -m "split a into barrel with library and comments"
+cat > "$REPO_LIB_COMMENTS/coverage/test_1.vm.json" <<'EOF'
+{
+  "type": "CodeCoverage",
+  "coverage": [
+    {"source": "package:sample_pkg/a_impl.dart", "hits": [1,1,2,1,3,1,4,1,5,1,6,1,7,1,8,1,9,0,10,0]},
+    {"source": "package:sample_pkg/b.dart", "hits": [1,1,2,1,3,1,4,1,5,0,6,0,7,0,8,0,9,0,10,0]}
+  ]
+}
+EOF
+assert_pass "22. export-only file with library directive and comments passes at 0.0" \
+  python3 -I "$CHECK_SCRIPT" "$REPO_LIB_COMMENTS/coverage" "$REPO_LIB_COMMENTS/coverage_floors.tsv" --repo-root "$REPO_LIB_COMMENTS"
+
+# 23. File with export lines plus one const declaration fails at 0.0 (Fix 1.2c)
+REPO_EXPORT_CONST="$TMPDIR/export_plus_const_fail"
+make_fixture_repo "$REPO_EXPORT_CONST"
+cat > "$REPO_EXPORT_CONST/lib/a_impl.dart" <<'EOF'
+int f() => 1;
+EOF
+cat > "$REPO_EXPORT_CONST/lib/a.dart" <<'EOF'
+export 'a_impl.dart';
+const int kVersion = 1;
+EOF
+printf "path\tfloor\nTOTAL\t60.0\nlib/a.dart\t0.0\nlib/a_impl.dart\t80.0\nlib/b.dart\t40.0\n" > "$REPO_EXPORT_CONST/coverage_floors.tsv"
+git -C "$REPO_EXPORT_CONST" add lib/a.dart lib/a_impl.dart coverage_floors.tsv && git -C "$REPO_EXPORT_CONST" commit -q -m "export plus const lowering a to 0.0"
+cat > "$REPO_EXPORT_CONST/coverage/test_1.vm.json" <<'EOF'
+{
+  "type": "CodeCoverage",
+  "coverage": [
+    {"source": "package:sample_pkg/a_impl.dart", "hits": [1,1,2,1,3,1,4,1,5,1,6,1,7,1,8,1,9,0,10,0]},
+    {"source": "package:sample_pkg/b.dart", "hits": [1,1,2,1,3,1,4,1,5,0,6,0,7,0,8,0,9,0,10,0]}
+  ]
+}
+EOF
+assert_fail "23. export lines plus const declaration lowering floor to 0.0 fails" "Lowered floor for lib/a\.dart.*0\.0%" \
+  python3 -I "$CHECK_SCRIPT" "$REPO_EXPORT_CONST/coverage" "$REPO_EXPORT_CONST/coverage_floors.tsv" --repo-root "$REPO_EXPORT_CONST"
+
+# 24. Export-only file whose floor row is removed entirely fails (Fix 1.2d)
+REPO_BARREL_REMOVED="$TMPDIR/barrel_row_removed_fail"
+make_fixture_repo "$REPO_BARREL_REMOVED"
+cat > "$REPO_BARREL_REMOVED/lib/a_impl.dart" <<'EOF'
+int f() => 1;
+EOF
+cat > "$REPO_BARREL_REMOVED/lib/a.dart" <<'EOF'
+export 'a_impl.dart';
+EOF
+printf "path\tfloor\nTOTAL\t60.0\nlib/a_impl.dart\t80.0\nlib/b.dart\t40.0\n" > "$REPO_BARREL_REMOVED/coverage_floors.tsv"
+git -C "$REPO_BARREL_REMOVED" add lib/a.dart lib/a_impl.dart coverage_floors.tsv && git -C "$REPO_BARREL_REMOVED" commit -q -m "remove floor row for export-only barrel"
+cat > "$REPO_BARREL_REMOVED/coverage/test_1.vm.json" <<'EOF'
+{
+  "type": "CodeCoverage",
+  "coverage": [
+    {"source": "package:sample_pkg/a_impl.dart", "hits": [1,1,2,1,3,1,4,1,5,1,6,1,7,1,8,1,9,0,10,0]},
+    {"source": "package:sample_pkg/b.dart", "hits": [1,1,2,1,3,1,4,1,5,0,6,0,7,0,8,0,9,0,10,0]}
+  ]
+}
+EOF
+assert_fail "24. export-only file with removed floor row fails" "Missing row in coverage_floors\.tsv for lib/a\.dart|Removed floor row for existing file lib/a\.dart" \
+  python3 -I "$CHECK_SCRIPT" "$REPO_BARREL_REMOVED/coverage" "$REPO_BARREL_REMOVED/coverage_floors.tsv" --repo-root "$REPO_BARREL_REMOVED"
+
 echo "Summary: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

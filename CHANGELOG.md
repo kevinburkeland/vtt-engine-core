@@ -3,6 +3,9 @@
 One line per slice, newest first. Each line: date, slice name, what changed for a user or a developer.
 Work before Map slice 1.1 (hardening passes 0 to 12) is in the git history.
 
+## 2026-11-23
+- Cleanup slice 15: Retire cs14 mutation branches and add coverage floor barrel self-test cases 21-24 covering mixed export/code files, library/comment barrels, and removed barrel rows (Fixes 1.1, 1.2).
+
 ## 2026-11-19
 - Cleanup slice 14: Add canonical sorted Set encoding to CrdtLwwRegister._encodeCanonical with 360-seed laws, split session_graph_models.dart into five files under lib/models/session_graph/ with updated coverage floors, and add a 1500-line big-file bar with an empty allowlist (Fixes 7.1-7.3).
 - Cleanup slice 14: Make parse_semver fail closed on malformed or short version strings in check_dependencies.py and add DC75-DC76 self-tests (Fix 4.2).
