@@ -134,9 +134,7 @@ def _is_export_only_barrel(source: Optional[str]) -> bool:
     statements = [s.strip() for s in stripped.split(";") if s.strip()]
     if not statements:
         return False
-    return all(
-        re.match(r"^(export|library)\b", stmt) is not None for stmt in statements
-    ) and any(re.match(r"^export\b", stmt) is not None for stmt in statements)
+    return any(re.match(r"^export\b", stmt) is not None for stmt in statements)
 
 
 def _compare_floor_maps(
