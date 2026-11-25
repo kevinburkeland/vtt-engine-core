@@ -1,0 +1,31 @@
+From 0ae6dc882f1529fa86711315c0244dafd5843416 Mon Sep 17 00:00:00 2001
+From: Kevin Burkeland <kevin@burke.land>
+Date: Tue, 24 Nov 2026 15:01:12 -0800
+Subject: [PATCH] =?UTF-8?q?MUTATION=20=E2=80=94=20do=20not=20merge:=20c1?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Kevin Burkeland <kevin@burke.land>
+---
+ scripts/check_coverage_floor.py | 4 +---
+ 1 file changed, 1 insertion(+), 3 deletions(-)
+
+diff --git a/scripts/check_coverage_floor.py b/scripts/check_coverage_floor.py
+index 9902810..996e014 100755
+--- a/scripts/check_coverage_floor.py
++++ b/scripts/check_coverage_floor.py
+@@ -134,9 +134,7 @@ def _is_export_only_barrel(source: Optional[str]) -> bool:
+     statements = [s.strip() for s in stripped.split(";") if s.strip()]
+     if not statements:
+         return False
+-    return all(
+-        re.match(r"^(export|library)\b", stmt) is not None for stmt in statements
+-    ) and any(re.match(r"^export\b", stmt) is not None for stmt in statements)
++    return any(re.match(r"^export\b", stmt) is not None for stmt in statements)
+ 
+ 
+ def _compare_floor_maps(
+-- 
+2.55.0
+
