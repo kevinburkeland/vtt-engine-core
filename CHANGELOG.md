@@ -3,6 +3,9 @@
 One line per slice, newest first. Each line: date, slice name, what changed for a user or a developer.
 Work before Map slice 1.1 (hardening passes 0 to 12) is in the git history.
 
+## 2026-11-25
+- Cleanup slice 16: Retire cs15 mutation branch and run 14-day dependency look-ahead (upgraded local coverage to 1.16.2) (Fixes 1.1, 1.5).
+
 ## 2026-11-23
 - Cleanup slice 15: Retire cs14 mutation branches and add coverage floor barrel self-test cases 21-24 covering mixed export/code files, library/comment barrels, and removed barrel rows (Fixes 1.1, 1.2).
 
