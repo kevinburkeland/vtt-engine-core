@@ -4,6 +4,7 @@ One line per slice, newest first. Each line: date, slice name, what changed for 
 Work before Map slice 1.1 (hardening passes 0 to 12) is in the git history.
 
 ## 2026-11-27
+- Cleanup slice 19: Add rule D7 (every declared dependency must be used) to check_dependencies.py with DC77-DC85 self-tests (Step 5, Fix 5.4).
 - Cleanup slice 19: Verify zero cs18 mutation branches and confirm 14-day dependency look-ahead passes (Fixes 1.1, 1.3).
 - Cleanup slice 18: Verify zero cs17 mutation branches and confirm 14-day dependency look-ahead passes (Fixes 1.1, 1.5).
 

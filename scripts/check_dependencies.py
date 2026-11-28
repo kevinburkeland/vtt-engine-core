@@ -1234,6 +1234,166 @@ def main():
         if not check_exception('D5', pkg, v):
             failures.append(f"D5: Package '{pkg}' has exact version pin '{v}' in {args.pubspec}")
 
+    # D7: every declared dependency must be used
+    def strip_dart_comments(text):
+        out = []
+        i = 0
+        n = len(text)
+        while i < n:
+            ch = text[i]
+            # String literals (triple or single quoted, optional raw prefix)
+            if ch in ("'", '"') or (ch == 'r' and i + 1 < n and text[i + 1] in ("'", '"')):
+                is_raw = (ch == 'r')
+                if is_raw:
+                    out.append(ch)
+                    i += 1
+                q = text[i]
+                if text[i:i + 3] == q * 3:
+                    delim = q * 3
+                    out.append(delim)
+                    i += 3
+                    while i < n:
+                        if not is_raw and text[i] == '\\' and i + 1 < n:
+                            out.append(text[i:i + 2])
+                            i += 2
+                            continue
+                        if text[i:i + 3] == delim:
+                            out.append(delim)
+                            i += 3
+                            break
+                        out.append(text[i])
+                        i += 1
+                else:
+                    out.append(q)
+                    i += 1
+                    while i < n:
+                        if not is_raw and text[i] == '\\' and i + 1 < n:
+                            out.append(text[i:i + 2])
+                            i += 2
+                            continue
+                        if text[i] == q or text[i] == '\n':
+                            out.append(text[i])
+                            i += 1
+                            break
+                        out.append(text[i])
+                        i += 1
+                continue
+            # Single-line comment
+            if ch == '/' and i + 1 < n and text[i + 1] == '/':
+                i += 2
+                while i < n and text[i] != '\n':
+                    i += 1
+                continue
+            # Block comment (supports nesting in Dart)
+            if ch == '/' and i + 1 < n and text[i + 1] == '*':
+                depth = 1
+                i += 2
+                while i < n and depth > 0:
+                    if text[i:i + 2] == '/*':
+                        depth += 1
+                        i += 2
+                    elif text[i:i + 2] == '*/':
+                        depth -= 1
+                        i += 2
+                    else:
+                        if text[i] == '\n':
+                            out.append('\n')
+                        i += 1
+                out.append(' ')
+                continue
+            out.append(ch)
+            i += 1
+        return ''.join(out)
+
+    def scan_dart_package_imports(root_dir, subdirs):
+        used = set()
+        for sub in subdirs:
+            d = os.path.join(root_dir, sub)
+            if not os.path.isdir(d):
+                continue
+            for r, _, files in os.walk(d):
+                for fn in files:
+                    if not fn.endswith('.dart'):
+                        continue
+                    fpath = os.path.join(r, fn)
+                    with open(fpath, 'r', encoding='utf-8', errors='ignore') as df:
+                        stripped = strip_dart_comments(df.read())
+                    for stmt in re.finditer(r'(?:^|;)\s*(?:import|export)\s+([^;]+);', stripped, re.MULTILINE):
+                        for m in re.finditer(r'''['"]package:([a-zA-Z0-9_]+)/[^'"]*['"]''', stmt.group(1)):
+                            used.add(m.group(1))
+        return used
+
+    def scan_analysis_options_includes(root_dir):
+        used = set()
+        ao_path = os.path.join(root_dir, 'analysis_options.yaml')
+        if not os.path.isfile(ao_path):
+            return used
+        with open(ao_path, 'r', encoding='utf-8', errors='ignore') as f:
+            in_include_block = False
+            for raw in f:
+                clean = raw.split('#', 1)[0].rstrip()
+                if not clean.strip():
+                    continue
+                if re.match(r'^\s*include\s*:', clean):
+                    in_include_block = True
+                    for m in re.finditer(r'package:([a-zA-Z0-9_]+)/', clean):
+                        used.add(m.group(1))
+                elif in_include_block:
+                    if re.match(r'^\s*-\s+', clean):
+                        for m in re.finditer(r'package:([a-zA-Z0-9_]+)/', clean):
+                            used.add(m.group(1))
+                    elif not clean.startswith(' '):
+                        in_include_block = False
+                    else:
+                        in_include_block = False
+        return used
+
+    def scan_workflow_and_script_runs(wf_dir, root_dir):
+        used = set()
+        files_to_scan = []
+        if os.path.isdir(wf_dir):
+            for fn in sorted(os.listdir(wf_dir)):
+                if fn.endswith('.yml') or fn.endswith('.yaml'):
+                    files_to_scan.append(os.path.join(wf_dir, fn))
+        scripts_dir = os.path.join(root_dir, 'scripts')
+        if os.path.isdir(scripts_dir):
+            for r, _, files in os.walk(scripts_dir):
+                for fn in sorted(files):
+                    if fn.endswith(('.sh', '.py', '.dart')):
+                        files_to_scan.append(os.path.join(r, fn))
+        for fpath in files_to_scan:
+            with open(fpath, 'r', encoding='utf-8', errors='ignore') as f:
+                lines = []
+                for idx, raw in enumerate(f):
+                    if idx == 0 and raw.startswith('#!'):
+                        continue
+                    lines.append(raw.split('#', 1)[0])
+            text = '\n'.join(lines)
+            for m in re.finditer(r'\b(?:dart|flutter\s+pub|pub)\s+run\s+([a-zA-Z0-9_\-]+)', text):
+                used.add(m.group(1))
+            if re.search(r'\bdart\s+test\b', text):
+                used.add('test')
+            if re.search(r'\bflutter\s+test\b', text):
+                used.add('flutter_test')
+        return used
+
+    repo_root = os.path.dirname(os.path.abspath(args.pubspec))
+    main_used_pkgs = scan_dart_package_imports(repo_root, ['lib', 'bin'])
+    dev_used_pkgs = (
+        main_used_pkgs
+        | scan_dart_package_imports(repo_root, ['test', 'integration_test', 'tool'])
+        | scan_analysis_options_includes(repo_root)
+        | scan_workflow_and_script_runs(args.workflows, repo_root)
+    )
+    for pkg in sorted(direct_deps):
+        if pkg not in main_used_pkgs:
+            if not check_exception('D7', pkg, '*'):
+                failures.append(f"D7: Declared dependency '{pkg}' is unused in lib/ or bin/ in {args.pubspec}")
+    for pkg in sorted(dev_deps):
+        if pkg not in dev_used_pkgs:
+            if not check_exception('D7', pkg, '*'):
+                failures.append(f"D7: Declared dev_dependency '{pkg}' is unused in {args.pubspec}")
+
     # Read pub outdated JSON
     if not os.path.exists(args.pub_outdated):
         print(f"Error: Outdated file '{args.pub_outdated}' not found.", file=sys.stderr)

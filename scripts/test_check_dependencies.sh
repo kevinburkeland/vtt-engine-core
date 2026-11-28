@@ -135,6 +135,10 @@ EOF
   # Base exceptions
   touch "$case_dir/dependency_exceptions.tsv"
 
+  # Base lib/ so D7 sees meta as used
+  mkdir -p "$case_dir/lib"
+  echo "import 'package:meta/meta.dart';" > "$case_dir/lib/main.dart"
+
   # Base npm dir
   mkdir -p "$case_dir/npm"
   echo '{"name": "test_pkg", "version": "1.0.0"}' > "$case_dir/npm/package.json"
@@ -460,6 +464,7 @@ cat << 'EOF' > "$d3/pub_outdated.json"
 }
 EOF
 echo "  pkg_fresh: ^1.0.0" >> "$d3/pubspec.yaml"
+echo "import 'package:pkg_fresh/pkg_fresh.dart';" >> "$d3/lib/main.dart"
 out3=$(run_check "$d3")
 [[ "$out3" == *"pending (3 days old)"* ]] || { echo "FAIL DC3: $out3"; exit 1; }
 
@@ -583,6 +588,7 @@ cat << 'EOF' > "$d7/pub_outdated.json"
 }
 EOF
 echo "  pkg_adv: ^1.0.0" >> "$d7/pubspec.yaml"
+echo "import 'package:pkg_adv/pkg_adv.dart';" >> "$d7/lib/main.dart"
 set +e; out7=$(run_check "$d7" 2>&1); rc7=$?; set -e
 [ "$rc7" -ne 0 ] || { echo "FAIL DC7: expected failure"; exit 1; }
 [[ "$out7" == *"D2"* && "$out7" == *"pkg_adv"* ]] || { echo "FAIL DC7 output: $out7"; exit 1; }
@@ -664,6 +670,7 @@ cat << 'EOF' > "$d10/pub_outdated.json"
 }
 EOF
 sed -i 's/meta: \^1.19.0/pkg_old: ^1.0.0/' "$d10/pubspec.yaml"
+echo "import 'package:pkg_old/pkg_old.dart';" > "$d10/lib/main.dart"
 set +e; out10=$(run_check "$d10" 2>&1); rc10=$?; set -e
 [ "$rc10" -ne 0 ] || { echo "FAIL DC10: expected failure"; exit 1; }
 [[ "$out10" == *"D4"* && "$out10" == *"pkg_old"* ]] || { echo "FAIL DC10 output: $out10"; exit 1; }
@@ -688,6 +695,7 @@ cat << 'EOF' > "$d11/pub_outdated.json"
 }
 EOF
 sed -i 's/meta: \^1.19.0/pkg_old: ^1.0.0/' "$d11/pubspec.yaml"
+echo "import 'package:pkg_old/pkg_old.dart';" > "$d11/lib/main.dart"
 printf "D4\tpkg_old\t1.0.0\t2026-12-01\tMaintained upstream fork is pending migration.\n" > "$d11/dependency_exceptions.tsv"
 out11=$(run_check "$d11")
 [[ "$out11" == *"Dependencies up to date"* || "$out11" == *"Summary"* ]] || { echo "FAIL DC11: $out11"; exit 1; }
@@ -712,6 +720,7 @@ cat << 'EOF' > "$d12/pub_outdated.json"
 }
 EOF
 sed -i 's/meta: \^1.19.0/pkg_old: ^1.0.0/' "$d12/pubspec.yaml"
+echo "import 'package:pkg_old/pkg_old.dart';" > "$d12/lib/main.dart"
 printf "D4\tpkg_old\t1.0.0\t2026-11-09\tMaintained upstream fork is pending migration.\n" > "$d12/dependency_exceptions.tsv"
 set +e; out12=$(run_check "$d12" 2>&1); rc12=$?; set -e
 [ "$rc12" -ne 0 ] || { echo "FAIL DC12: expected failure"; exit 1; }
@@ -737,6 +746,7 @@ cat << 'EOF' > "$d13/pub_outdated.json"
 }
 EOF
 sed -i 's/meta: \^1.19.0/pkg_old: ^1.0.0/' "$d13/pubspec.yaml"
+echo "import 'package:pkg_old/pkg_old.dart';" > "$d13/lib/main.dart"
 printf "D4\tpkg_old\t1.0.0\t2027-02-15\tMaintained upstream fork is pending migration.\n" > "$d13/dependency_exceptions.tsv"
 set +e; out13=$(run_check "$d13" 2>&1); rc13=$?; set -e
 [ "$rc13" -ne 0 ] || { echo "FAIL DC13: expected failure"; exit 1; }
@@ -762,6 +772,7 @@ cat << 'EOF' > "$d14/pub_outdated.json"
 }
 EOF
 sed -i 's/meta: \^1.19.0/pkg_old: ^1.0.0/' "$d14/pubspec.yaml"
+echo "import 'package:pkg_old/pkg_old.dart';" > "$d14/lib/main.dart"
 printf "D4\tpkg_old\t1.0.0\t2026-12-01\tToo short reason\n" > "$d14/dependency_exceptions.tsv"
 set +e; out14=$(run_check "$d14" 2>&1); rc14=$?; set -e
 [ "$rc14" -ne 0 ] || { echo "FAIL DC14: expected failure"; exit 1; }
@@ -1598,6 +1609,7 @@ cat << 'EOF2' > "$d50/pub_outdated.json"
 }
 EOF2
 sed -i 's/meta: \^1.19.0/pkg_multi_pub: ^1.0.0/' "$d50/pubspec.yaml"
+echo "import 'package:pkg_multi_pub/pkg_multi_pub.dart';" > "$d50/lib/main.dart"
 set +e
 out50=$(run_check "$d50" --today 2026-11-10 2>&1)
 rc50=$?
@@ -1804,6 +1816,7 @@ environment:
 dependencies:
   pkg_d6: ^1.12.0
 EOF2
+echo "import 'package:pkg_d6/pkg_d6.dart';" > "$d57/lib/main.dart"
 cat << 'EOF2' > "$d57/pub_outdated.json"
 {
   "packages": [
@@ -1836,6 +1849,7 @@ environment:
 dependencies:
   pkg_d6: ^1.17.0
 EOF2
+echo "import 'package:pkg_d6/pkg_d6.dart';" > "$d58/lib/main.dart"
 cat << 'EOF2' > "$d58/pub_outdated.json"
 {
   "packages": [
@@ -1872,6 +1886,7 @@ dependencies:
   flutter:
     sdk: flutter
 EOF2
+printf "import 'package:vtt_engine_core/vtt_engine_core.dart';\nimport 'package:flutter/widgets.dart';\n" > "$d59/lib/main.dart"
 cat << 'EOF2' > "$d59/pub_outdated.json"
 {
   "packages": []
@@ -2319,6 +2334,10 @@ jobs:
             f.write("0\n")
         open(os.path.join(npm_dir, 'outdated.stderr'), 'w').close()
         open(os.path.join(npm_dir, 'audit.stderr'), 'w').close()
+        lib_dir = os.path.join(case_dir, 'lib')
+        os.makedirs(lib_dir, exist_ok=True)
+        with open(os.path.join(lib_dir, 'main.dart'), 'w') as f:
+            f.write("import 'package:meta/meta.dart';\n")
 
         return case_dir
 
@@ -3479,4 +3498,140 @@ assert mod.is_version_in_ranges("1.0.0", r_build, "dc76") is True, "FAIL DC76: 1
 assert mod.is_version_in_ranges("2.0.0", r_build, "dc76") is False, "FAIL DC76: 2.0.0 >= 2.0.0+1"
 EOF_DC76
 
-echo "All 76 dependency check self-tests (DC1 - DC76) passed successfully!"
+# DC77 - DC85: D7 declared package must be used
+echo "Running DC77: D7 clean tree control..."
+d77="$TMP_DIR/dc77"
+setup_base_fixtures "$d77"
+cat << 'EOF' > "$d77/pubspec.yaml"
+name: test_pkg
+environment:
+  sdk: ^3.13.0
+  flutter: 3.47.9
+dependencies:
+  meta: ^1.19.0
+dev_dependencies:
+  fake_async: ^1.3.3
+EOF
+cat << 'EOF' > "$d77/pub_outdated.json"
+{
+  "packages": [
+    {"package": "meta", "kind": "direct", "isDiscontinued": false, "isCurrentRetracted": false, "isCurrentAffectedByAdvisory": false, "current": {"version": "1.19.0"}, "upgradable": {"version": "1.19.0"}, "resolvable": {"version": "1.19.0"}, "latest": {"version": "1.19.0"}},
+    {"package": "fake_async", "kind": "dev", "isDiscontinued": false, "isCurrentRetracted": false, "isCurrentAffectedByAdvisory": false, "current": {"version": "1.3.3"}, "upgradable": {"version": "1.3.3"}, "resolvable": {"version": "1.3.3"}, "latest": {"version": "1.3.3"}}
+  ]
+}
+EOF
+mkdir -p "$d77/test"
+echo "import 'package:fake_async/fake_async.dart';" > "$d77/test/sample_test.dart"
+out77=$(run_check "$d77" 2>&1) || { echo "FAIL DC77: clean tree failed: $out77"; exit 1; }
+
+echo "Running DC78: D7 unused main dependency fails..."
+d78="$TMP_DIR/dc78"
+cp -r "$d77" "$d78"
+cat << 'EOF' > "$d78/pubspec.yaml"
+name: test_pkg
+environment:
+  sdk: ^3.13.0
+  flutter: 3.47.9
+dependencies:
+  meta: ^1.19.0
+  unused_pkg: ^1.0.0
+EOF
+cat << 'EOF' > "$d78/pub_outdated.json"
+{
+  "packages": [
+    {"package": "meta", "kind": "direct", "isDiscontinued": false, "isCurrentRetracted": false, "isCurrentAffectedByAdvisory": false, "current": {"version": "1.19.0"}, "upgradable": {"version": "1.19.0"}, "resolvable": {"version": "1.19.0"}, "latest": {"version": "1.19.0"}},
+    {"package": "unused_pkg", "kind": "direct", "isDiscontinued": false, "isCurrentRetracted": false, "isCurrentAffectedByAdvisory": false, "current": {"version": "1.0.0"}, "upgradable": {"version": "1.0.0"}, "resolvable": {"version": "1.0.0"}, "latest": {"version": "1.0.0"}}
+  ]
+}
+EOF
+mkdir -p "$HTTP_ROOT/api/packages/unused_pkg"
+cat << 'EOF' > "$HTTP_ROOT/api/packages/unused_pkg.json"
+{"name": "unused_pkg", "latest": {"version": "1.0.0", "published": "2026-01-01T00:00:00.000Z"}, "versions": [{"version": "1.0.0", "published": "2026-01-01T00:00:00.000Z"}]}
+EOF
+echo '{"advisories": []}' > "$HTTP_ROOT/api/packages/unused_pkg/advisories.json"
+set +e; out78=$(run_check "$d78" 2>&1); rc78=$?; set -e
+if [ "$rc78" -eq 0 ] || ! echo "$out78" | grep -q "D7:.*unused_pkg"; then
+  echo "FAIL DC78: expected D7 failure for unused_pkg, rc=$rc78, out=$out78"; exit 1
+fi
+
+echo "Running DC79: D7 main dependency only in test/ fails..."
+d79="$TMP_DIR/dc79"
+cp -r "$d78" "$d79"
+echo "import 'package:unused_pkg/unused_pkg.dart';" > "$d79/test/sample_test.dart"
+set +e; out79=$(run_check "$d79" 2>&1); rc79=$?; set -e
+if [ "$rc79" -eq 0 ] || ! echo "$out79" | grep -q "D7:.*unused_pkg"; then
+  echo "FAIL DC79: expected D7 failure for main dep only in test/, rc=$rc79, out=$out79"; exit 1
+fi
+
+echo "Running DC80: D7 unused dev dependency fails..."
+d80="$TMP_DIR/dc80"
+cp -r "$d77" "$d80"
+echo "// no imports" > "$d80/test/sample_test.dart"
+set +e; out80=$(run_check "$d80" 2>&1); rc80=$?; set -e
+if [ "$rc80" -eq 0 ] || ! echo "$out80" | grep -q "D7:.*fake_async"; then
+  echo "FAIL DC80: expected D7 failure for unused dev dep fake_async, rc=$rc80, out=$out80"; exit 1
+fi
+
+echo "Running DC81: D7 dev dependency via analysis_options.yaml include passes..."
+d81="$TMP_DIR/dc81"
+cp -r "$d77" "$d81"
+cat << 'EOF' > "$d81/analysis_options.yaml"
+include: package:fake_async/recommended.yaml
+EOF
+echo "// no imports" > "$d81/test/sample_test.dart"
+out81=$(run_check "$d81" 2>&1) || { echo "FAIL DC81: analysis_options.yaml include failed: $out81"; exit 1; }
+
+echo "Running DC82: D7 dev dependency run by workflow or script passes..."
+d82="$TMP_DIR/dc82"
+cp -r "$d77" "$d82"
+echo "// no imports" > "$d82/test/sample_test.dart"
+cat << 'EOF' >> "$d82/.github/workflows/ci.yml"
+      - run: dart run fake_async
+EOF
+out82=$(run_check "$d82" 2>&1) || { echo "FAIL DC82: workflow dart run failed: $out82"; exit 1; }
+
+d82b="$TMP_DIR/dc82b"
+cp -r "$d77" "$d82b"
+echo "// no imports" > "$d82b/test/sample_test.dart"
+mkdir -p "$d82b/scripts"
+echo "dart run fake_async" > "$d82b/scripts/run_tool.sh"
+out82b=$(run_check "$d82b" 2>&1) || { echo "FAIL DC82b: script dart run failed: $out82b"; exit 1; }
+
+echo "Running DC83: D7 conditional import passes..."
+d83="$TMP_DIR/dc83"
+cp -r "$d78" "$d83"
+cat << 'EOF' > "$d83/lib/main.dart"
+import 'package:meta/meta.dart';
+import 'stub.dart' if (dart.library.js_interop) 'package:unused_pkg/unused_pkg.dart';
+EOF
+out83=$(run_check "$d83" 2>&1) || { echo "FAIL DC83: conditional import failed: $out83"; exit 1; }
+
+echo "Running DC84: D7 commented-out import still fails..."
+d84="$TMP_DIR/dc84"
+cp -r "$d78" "$d84"
+cat << 'EOF' > "$d84/lib/main.dart"
+import 'package:meta/meta.dart';
+// import 'package:unused_pkg/unused_pkg.dart';
+/*
+import 'package:unused_pkg/unused_pkg.dart';
+*/
+EOF
+set +e; out84=$(run_check "$d84" 2>&1); rc84=$?; set -e
+if [ "$rc84" -eq 0 ] || ! echo "$out84" | grep -q "D7:.*unused_pkg"; then
+  echo "FAIL DC84: expected D7 failure for commented-out import, rc=$rc84, out=$out84"; exit 1
+fi
+
+echo "Running DC85: D7 exception before/after review_by..."
+d85="$TMP_DIR/dc85"
+cp -r "$d78" "$d85"
+printf "D7\tunused_pkg\t*\t2026-11-15\tTemporary exception for unused_pkg during refactor\n" > "$d85/dependency_exceptions.tsv"
+out85a=$(run_check "$d85" --today "2026-11-10" 2>&1) || { echo "FAIL DC85a: valid D7 exception failed: $out85a"; exit 1; }
+set +e
+out85b=$(run_check "$d85" --today "2026-11-16" 2>&1)
+rc85b=$?
+set -e
+if [ "$rc85b" -eq 0 ] || ! echo "$out85b" | grep -q "E1:"; then
+  echo "FAIL DC85b: expected E1 failure after review_by, rc=$rc85b, out=$out85b"; exit 1
+fi
+
+echo "All 85 dependency check self-tests (DC1 - DC85) passed successfully!"
