@@ -3520,6 +3520,11 @@ cat << 'EOF' > "$d77/pub_outdated.json"
   ]
 }
 EOF
+mkdir -p "$HTTP_ROOT/api/packages/fake_async"
+cat << 'EOF' > "$HTTP_ROOT/api/packages/fake_async.json"
+{"name": "fake_async", "latest": {"version": "1.3.3", "published": "2026-01-01T00:00:00.000Z"}, "versions": [{"version": "1.3.3", "published": "2026-01-01T00:00:00.000Z"}]}
+EOF
+echo '{"advisories": []}' > "$HTTP_ROOT/api/packages/fake_async/advisories.json"
 mkdir -p "$d77/test"
 echo "import 'package:fake_async/fake_async.dart';" > "$d77/test/sample_test.dart"
 out77=$(run_check "$d77" 2>&1) || { echo "FAIL DC77: clean tree failed: $out77"; exit 1; }
